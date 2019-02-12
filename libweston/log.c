@@ -31,10 +31,12 @@
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
+#include <fcntl.h>
 
 #include <wayland-util.h>
 
 #include "compositor.h"
+#include "os-compatibility.h"
 
 static int
 default_log_handler(const char *fmt, va_list ap);
@@ -116,3 +118,15 @@ weston_log_continue(const char *fmt, ...)
 
 	return l;
 }
+
+WL_EXPORT void
+weston_place_marker(const char *name)
+{
+        int fd = open("/sys/kernel/debug/bootkpi/kpi_values",O_WRONLY);
+
+        if (fd > 0) {
+                write(fd, name, strlen(name));
+                close(fd);
+        }
+}
+

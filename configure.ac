@@ -78,6 +78,14 @@ m4_if(m4_cmp(weston_micro_version, [90]), [-1],
 
 # Check for programs
 AC_PROG_CC
+AM_PROG_CC_C_O
+AC_PROG_CXX
+AC_PROG_LIBTOOL
+AC_PROG_AWK
+AC_PROG_CPP
+AC_PROG_INSTALL
+AC_PROG_LN_S
+AC_PROG_MAKE_SET
 AC_PROG_SED
 
 # Initialize libtool
@@ -113,7 +121,7 @@ AC_CHECK_FUNCS([mkostemp strchrnul initgroups posix_fallocate])
 
 # check for libdrm as a build-time dependency only
 # libdrm 2.4.30 introduced drm_fourcc.h.
-PKG_CHECK_MODULES(LIBDRM, [libdrm >= 2.4.68], [], [AC_MSG_ERROR([
+PKG_CHECK_MODULES(LIBDRM, [libdrm >= 2.4.66], [], [AC_MSG_ERROR([
      libdrm is a hard build-time dependency for libweston core,
      but a sufficient version was not found. However, libdrm
      is not a runtime dependency unless you have features

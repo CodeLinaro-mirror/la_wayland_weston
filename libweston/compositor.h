@@ -78,6 +78,7 @@ struct weston_output;
 struct input_method;
 struct weston_pointer;
 struct linux_dmabuf_buffer;
+struct gbm_buffer;
 struct weston_recorder;
 struct weston_pointer_constraint;
 
@@ -230,6 +231,9 @@ struct weston_output {
 	/** Used only between repaint_begin and repaint_cancel. */
 	bool repainted;
 
+	/* Indicate current repainting need gpu do compositon. */
+	bool need_gpu_composition;
+
 	/** State of the repaint loop */
 	enum {
 		REPAINT_NOT_SCHEDULED = 0, /**< idle; no repaint will occur */
@@ -287,6 +291,9 @@ struct weston_output {
 			  uint16_t *r,
 			  uint16_t *g,
 			  uint16_t *b);
+
+	void (*enable_ppm)(struct weston_output *output, int32_t enable);
+	void (*set_ppm)(struct weston_output *output, int32_t ppm);
 
 	struct weston_timeline_object timeline;
 
@@ -2036,6 +2043,10 @@ weston_log(const char *fmt, ...)
 int
 weston_log_continue(const char *fmt, ...)
 	__attribute__ ((format (printf, 1, 2)));
+
+void
+weston_place_marker(const char *name);
+
 
 enum {
 	TTY_ENTER_VT,

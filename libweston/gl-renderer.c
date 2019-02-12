@@ -59,6 +59,7 @@
 #include "shared/platform.h"
 #include "shared/timespec-util.h"
 #include "weston-egl-ext.h"
+#include "gbm_priv.h"
 
 #define GR_GL_VERSION(major, minor) \
 	(((uint32_t)(major) << 16) | (uint32_t)(minor))
@@ -202,6 +203,8 @@ struct gl_renderer {
 	EGLDisplay egl_display;
 	EGLContext egl_context;
 	EGLConfig egl_config;
+	/* gbm device handle*/
+	struct gbm_device *gbm_hdle;
 
 	EGLSurface dummy_surface;
 
@@ -890,6 +893,63 @@ shader_uniforms(struct gl_shader *shader,
 }
 
 static void
+gl_renderer_surface_set_color(struct weston_surface *surface,
+                 float red, float green, float blue, float alpha);
+
+/* clear_view: It composes onto GPU composed layer a clear transparent
+               bounding box of the size same as that of overlay layer
+               to allow overlay plane to be visible through the GPU
+               composed layer.
+   Inputs:
+               struct weston_view   *ev       : weston overlay view
+               struct weston_output *output
+               pixman_region32_t    *damage
+   Output:
+               GPU composed layer ev->surface will have a clear
+               transparent bounding box with alpha = 0 and all
+               3 color channels also equal to 0.
+*/
+static void
+clear_view(struct weston_view *ev, struct weston_output *output,
+           pixman_region32_t *damage) /* in global coordinates */
+{
+        struct weston_compositor *ec = ev->surface->compositor;
+        struct gl_renderer *gr = get_renderer(ec);
+        struct gl_surface_state *gs = get_surface_state(ev->surface);
+        /* repaint bounding region in global coordinates: */
+        pixman_region32_t repaint;
+        /* non-opaque region in surface coordinates: */
+        pixman_region32_t surface_blend;
+
+        if (!gs->shader) {
+            return;
+        }
+
+        pixman_region32_init(&repaint);
+        pixman_region32_intersect(&repaint, &ev->transform.boundingbox, damage);
+        pixman_region32_subtract(&repaint, &repaint, &ev->clip);
+
+        if (!pixman_region32_not_empty(&repaint))
+            goto out_clear_view;
+
+        glDisable(GL_BLEND);
+        gl_renderer_surface_set_color(ev->surface, 0.0f, 0.0f, 0.0f, 0.0f);
+
+        use_shader(gr, &gr->solid_shader);
+        shader_uniforms(&gr->solid_shader, ev, output);
+
+        pixman_region32_init_rect(&surface_blend, 0, 0,
+                                  ev->surface->width, ev->surface->height);
+        repaint_region(ev, &repaint, &surface_blend);
+
+        pixman_region32_fini(&surface_blend);
+
+out_clear_view:
+        pixman_region32_fini(&repaint);
+}
+
+
+static void
 draw_view(struct weston_view *ev, struct weston_output *output,
 	  pixman_region32_t *damage) /* in global coordinates */
 {
@@ -1259,6 +1319,12 @@ gl_renderer_repaint_output(struct weston_output *output,
 		return;
 
 	begin_render_sync = timeline_create_render_sync(gr);
+
+	/* Clear all unknown regions */
+	if (output->need_gpu_composition) {
+		glClearColor(0,0,0,0);
+		glClear(GL_COLOR_BUFFER_BIT);
+	}
 
 	/* Calculate the viewport */
 	glViewport(go->borders[GL_RENDERER_BORDER_LEFT].width,
@@ -3441,6 +3507,8 @@ gl_renderer_display_create(struct weston_compositor *ec, EGLenum platform,
 		gl_renderer_surface_get_content_size;
 	gr->base.surface_copy_content = gl_renderer_surface_copy_content;
 	gr->egl_display = NULL;
+	//gbm device handle
+	gr->gbm_hdle =(struct gbm_device *)native_window;
 
 	/* extension_suffix is supported */
 	if (supports) {

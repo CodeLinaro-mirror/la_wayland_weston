@@ -30,7 +30,8 @@ ivi-shell/weston.ini : $(srcdir)/ivi-shell/weston.ini.in
 
 all-local : weston.ini ivi-shell/weston.ini
 
-AM_CFLAGS = $(GCC_CFLAGS)
+AM_CFLAGS = $(GCC_CFLAGS) -DENABLE_EGL
+SIMPLE_EGL_CLIENT_LIBS +=  -lgbm -lEGL_adreno -lGLESv2_adreno -lwayland-egl
 
 AM_CPPFLAGS = 					\
 	-I$(top_builddir)/libweston		\
@@ -39,6 +40,7 @@ AM_CPPFLAGS = 					\
 	-I$(top_builddir)/tests			\
 	-I$(top_srcdir)/shared			\
 	-I$(top_builddir)/protocol		\
+	-I$(top_srcdir)/sdm-service		\
 	-DLIBWESTON_MODULEDIR='"$(libweston_moduledir)"' \
 	-DLIBEXECDIR='"$(libexecdir)"'		\
 	-DBINDIR='"$(bindir)"'
@@ -47,6 +49,13 @@ CLEANFILES = weston.ini				\
 	ivi-shell/weston.ini			\
 	internal-screenshot-00.png		\
 	$(BUILT_SOURCES)
+
+bin_PROGRAMS += weston
+if ENABLE_DRM_COMPOSITOR
+COMPOSITOR_LIBS += -lgbm -lEGL_adreno -lGLESv2_adreno
+COMPOSITOR_CFLAGS += -DENABLE_EGL $(AM_CPPFLAGS)
+COMPOSITOR_LIBS += -lsdmutils -lhdr_tm -lsdmcore -lsdedrm
+endif
 
 # Libtool race fix
 # libweston-desktop depends on libweston, and desktop-shell depends on both.
@@ -63,7 +72,7 @@ libweston_@LIBWESTON_MAJOR@_la_CFLAGS = $(AM_CFLAGS) \
 libweston_@LIBWESTON_MAJOR@_la_LIBADD = $(COMPOSITOR_LIBS) \
 	$(DL_LIBS) -lm $(CLOCK_GETTIME_LIBS) \
 	$(LIBINPUT_BACKEND_LIBS) libshared.la
-libweston_@LIBWESTON_MAJOR@_la_LDFLAGS = -version-info $(LT_VERSION_INFO)
+libweston_@LIBWESTON_MAJOR@_la_LDFLAGS =  -export-dynamic -version-info $(LT_VERSION_INFO)
 
 libweston_@LIBWESTON_MAJOR@_la_SOURCES =			\
 	libweston/git-version.h				\
@@ -162,6 +171,8 @@ nodist_libweston_@LIBWESTON_MAJOR@_la_SOURCES =				\
 	protocol/viewporter-server-protocol.h		\
 	protocol/linux-dmabuf-unstable-v1-protocol.c	\
 	protocol/linux-dmabuf-unstable-v1-server-protocol.h		\
+	protocol/pll-protocol.c                         \
+	protocol/pll-server-protocol.h                  \
 	protocol/relative-pointer-unstable-v1-protocol.c		\
 	protocol/relative-pointer-unstable-v1-server-protocol.h		\
 	protocol/pointer-constraints-unstable-v1-protocol.c		\
@@ -211,6 +222,11 @@ libsession_helper_la_SOURCES =			\
 	libweston/launcher-direct.c
 libsession_helper_la_CFLAGS = $(AM_CFLAGS) $(LIBDRM_CFLAGS) $(PIXMAN_CFLAGS) $(COMPOSITOR_CFLAGS)
 libsession_helper_la_LIBADD = libweston-@LIBWESTON_MAJOR@.la
+libsession_helper_la_CPPFLAGS = -Wundef -Wno-trigraphs -I$(top_src_dir)/sdm-service --std=c++11 -std=c++11 \
+       $(COMPOSITOR_CFLAGS)                    \
+       $(EGL_CFLAGS)                           \
+       $(DRM_COMPOSITOR_CFLAGS)                \
+       $(AM_CFLAGS)
 
 if ENABLE_DRM_COMPOSITOR
 libsession_helper_la_LIBADD += $(LIBDRM_LIBS)
@@ -365,8 +381,14 @@ drm_backend_la_LIBADD =				\
 	$(COMPOSITOR_LIBS)			\
 	$(DRM_COMPOSITOR_LIBS)			\
 	$(INPUT_BACKEND_LIBS)			\
-	libshared.la				\
+	libshared.la -lrt			\
 	$(CLOCK_GETTIME_LIBS)
+drm_backend_la_CPPFLAGS = -Wundef -Wno-trigraphs -I$(top_src_dir)/sdm-service --std=c++11 -std=c++11 \
+       $(COMPOSITOR_CFLAGS)                    \
+       $(EGL_CFLAGS)                           \
+       $(DRM_COMPOSITOR_CFLAGS)                \
+       $(AM_CFLAGS)
+
 drm_backend_la_CFLAGS =				\
 	$(COMPOSITOR_CFLAGS)			\
 	$(EGL_CFLAGS)				\
@@ -374,13 +396,21 @@ drm_backend_la_CFLAGS =				\
 	$(INPUT_BACKEND_CFLAGS)			\
 	$(AM_CFLAGS)
 drm_backend_la_SOURCES =			\
-	libweston/compositor-drm.c		\
+	libweston/compositor-sdm.c		\
 	libweston/compositor-drm.h		\
 	$(INPUT_BACKEND_SOURCES)		\
 	shared/helpers.h			\
 	shared/timespec-util.h			\
 	libweston/libbacklight.c		\
-	libweston/libbacklight.h
+	libweston/libbacklight.h		\
+	sdm-service/sdm_display.cpp             \
+	sdm-service/sdm_display_debugger.cpp    \
+	sdm-service/sdm_display_buffer_allocator.cpp \
+	sdm-service/sdm_display_buffer_sync_handler.cpp \
+	sdm-service/sdm_display_socket_handler.cpp \
+	sdm-service/sdm_display_connect.cpp \
+	sdm-service/uevent.c
+
 
 if ENABLE_VAAPI_RECORDER
 drm_backend_la_SOURCES += libweston/vaapi-recorder.c libweston/vaapi-recorder.h

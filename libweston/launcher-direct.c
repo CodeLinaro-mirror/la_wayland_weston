@@ -220,7 +220,11 @@ launcher_direct_open(struct weston_launcher *launcher_base, const char *path, in
 	struct stat s;
 	int fd;
 
-	fd = open(path, flags | O_CLOEXEC);
+	if (!strcmp(path, "/dev/dri/card0"))
+		fd = get_drm_master_fd();
+	else
+		fd = open(path, flags | O_CLOEXEC);
+
 	if (fd == -1)
 		return -1;
 
