@@ -87,6 +87,7 @@
 extern "C" {
 #endif
 #include "linux-dmabuf.h"
+#include "gbm-buffer-backend.h"
 #ifdef __cplusplus
 }
 #endif

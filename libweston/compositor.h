@@ -923,6 +923,10 @@ struct weston_renderer {
 	bool (*import_dmabuf)(struct weston_compositor *ec,
 			      struct linux_dmabuf_buffer *buffer);
 
+	/** See weston_compositor_import_gbm_buffer() */
+	bool (*import_gbm_buffer)(struct weston_compositor *ec,
+			          struct gbm_buffer *buffer);
+
 	/** On error sets num_formats to zero */
 	void (*query_dmabuf_formats)(struct weston_compositor *ec,
 				int **formats, int *num_formats);
@@ -1970,6 +1974,10 @@ weston_compositor_read_presentation_clock(
 bool
 weston_compositor_import_dmabuf(struct weston_compositor *compositor,
 				struct linux_dmabuf_buffer *buffer);
+
+bool
+weston_compositor_import_gbm_buffer(struct weston_compositor *compositor,
+                                                        struct gbm_buffer *buffer);
 
 void
 weston_compositor_shutdown(struct weston_compositor *ec);
