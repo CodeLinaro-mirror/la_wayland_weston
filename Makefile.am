@@ -105,6 +105,8 @@ libweston_@LIBWESTON_MAJOR@_la_SOURCES =			\
 	libweston/linux-dmabuf.h			\
 	libweston/gbm-buffer-backend.c			\
 	libweston/gbm-buffer-backend.h			\
+	libweston/screen-capture.c			\
+	libweston/screen-capture.h			\
 	libweston/pixel-formats.c			\
 	libweston/pixel-formats.h			\
 	shared/helpers.h				\
@@ -177,6 +179,8 @@ nodist_libweston_@LIBWESTON_MAJOR@_la_SOURCES =				\
 	protocol/pll-server-protocol.h                  \
 	protocol/gbm-buffer-backend-protocol.c          \
 	protocol/gbm-buffer-backend-server-protocol.h   \
+	protocol/screen-capture-protocol.c              \
+	protocol/screen-capture-server-protocol.h       \
 	protocol/relative-pointer-unstable-v1-protocol.c		\
 	protocol/relative-pointer-unstable-v1-server-protocol.h		\
 	protocol/pointer-constraints-unstable-v1-protocol.c		\
@@ -942,6 +946,8 @@ BUILT_SOURCES +=					\
 	protocol/linux-dmabuf-unstable-v1-client-protocol.h		\
 	protocol/gbm-buffer-backend-protocol.c	\
 	protocol/gbm-buffer-backend-client-protocol.h		\
+	protocol/screen-capture-client-protocol.h       \
+	protocol/screen-capture-protocol.c		\
 	protocol/tablet-unstable-v2-protocol.c		\
 	protocol/tablet-unstable-v2-client-protocol.h			\
 	protocol/input-timestamps-unstable-v1-protocol.c		\
