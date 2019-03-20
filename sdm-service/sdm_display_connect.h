@@ -146,6 +146,23 @@ int Prepare(int display_id, struct drm_output *output);
 */
 int Commit(int display_id, struct drm_output *output);
 
+/*! @brief Method to flush any pending buffers/fences submitted previously via Commit() call.
+
+    @details Client shall call this method to request the Display manager to release all buffers and
+    respective fences currently in use. This operation may result in a blank display on the panel
+    until a new frame is submitted for composition.
+
+    For virtual displays this would result in output buffer getting cleared with border color.
+
+    @param[in] display_id \link int \endlink
+
+    @return \link DisplayError \endlink
+
+    @sa Prepare
+    @sa Commit
+*/
+int Flush(int display_id);
+
 /*! @brief Method to obtain display property for a display_id requested.
     @details Client shall use this method to display properties of requested
     display id.
@@ -266,6 +283,17 @@ int UpdateDisplayPll(int display_id, int ppm);
 */
 char *GetConnectorName(uint32_t display_id);
 
+/*! @brief Method to get connector id.
+
+    @details weston backend shall use this method to obtain connector id.
+
+    @param[in] display_id \link int \endlink
+
+    @return \link uint32_t \endlink
+
+    @sa
+*/
+uint32_t GetConnectorId(uint32_t display_id);
 #ifdef __cplusplus
 }
 #endif

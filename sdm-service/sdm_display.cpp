@@ -886,6 +886,15 @@ DisplayError SdmDisplay::Commit(struct drm_output *output)
     return ret;
 }
 
+DisplayError SdmDisplay::Flush()
+{
+    DisplayError ret = kErrorNone;
+
+    ret = display_intf_->Flush(&layer_stack_);
+
+    return ret;
+}
+
 /* Adding following  support functions */
 LayerBufferFormat SdmDisplay::GetSDMFormat(uint32_t src_fmt, struct LayerGeometryFlags flags)
 {
@@ -1432,6 +1441,9 @@ DisplayError SdmNullDisplay::Prepare(struct drm_output *output) {
   return kErrorNone;
 }
 DisplayError SdmNullDisplay::Commit(struct drm_output *output) {
+  return kErrorNone;
+}
+DisplayError SdmNullDisplay::Flush() {
   return kErrorNone;
 }
 DisplayError SdmNullDisplay::SetDisplayState(DisplayState state) {

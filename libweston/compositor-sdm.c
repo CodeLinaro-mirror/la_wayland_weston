@@ -138,6 +138,7 @@ struct drm_head {
 
 	//drmModeConnector *connector;
 	uint32_t connector_id;
+	uint32_t display_id;
 	//struct drm_edid edid;
 
 	/* Holds the properties for the connector */
@@ -466,11 +467,13 @@ static int get_fence_timestamp(int fd, struct timespec *ts)
 }
 
 static void
+on_pageflip(struct drm_output *output);
+
+static void
 retire_fence_cb(int fd, uint32_t mask, void *data)
 {
     struct drm_output *output = (struct drm_output *) data;
     struct timespec ts;
-    uint64_t v = 1;
 
     wl_event_source_remove(output->retire_fence_source);
     output->retire_fence_source = NULL;
@@ -483,7 +486,7 @@ retire_fence_cb(int fd, uint32_t mask, void *data)
     output->last_vblank.sec = ts.tv_sec;
     output->last_vblank.usec = ts.tv_nsec / 1000;
 
-    write(output->pageflip_ev_fd, &v, sizeof v);
+    on_pageflip(output);
 }
 
 static int
@@ -509,7 +512,9 @@ output_repaint(struct weston_output *output_base,
     SetVSyncState(output->display_id, ENABLE, output);
     if (output->prev_layer_none_commit && output->layer_none_commit)
         weston_log("skip commit if two consecutive frames have no layers\n");
-    else {
+    else if (output->layer_none_commit){
+        Flush(output->display_id);
+    } else {
         ret = Commit(output->display_id, output);
 
         if (!commit) {
@@ -519,12 +524,9 @@ output_repaint(struct weston_output *output_base,
     }
 
     if (ret) {
-        weston_log("fail to commit to sdm display! err=%d\n", ret);
+        weston_log("fail to commit or flush to sdm display! err=%d\n", ret);
 
         if (!is_virtual_output) {
-            /* This is workaround for IVI shell. If two consecutive frames commit no
-             * surfaces, repaint skip the commit, we need to do finish frame here.
-             */
             drm_output_release_fb(output, output->current);
         }
         output->current = output->next;
@@ -659,33 +661,15 @@ static void
 drm_output_destroy(struct weston_output *output_base);
 
 static void
-pageflip_handler(unsigned int frame, unsigned int sec, unsigned int usec,
-           void *data)
+on_pageflip(struct drm_output *output)
 {
-    struct drm_output *output = (struct drm_output *) data;
-    uint64_t v = 1;
-
-    output->last_vblank.frame = frame;
-    output->last_vblank.sec = sec;
-    output->last_vblank.usec = usec;
-
-    write(output->pageflip_ev_fd, &v, sizeof v);
-}
-
-static int
-on_pageflip(int fd, uint32_t mask, void *data)
-{
-    struct drm_output *output = (struct drm_output *) data;
     struct timespec ts;
-    uint64_t v;
     uint32_t flags = WP_PRESENTATION_FEEDBACK_KIND_VSYNC |
              WP_PRESENTATION_FEEDBACK_KIND_HW_COMPLETION |
              WP_PRESENTATION_FEEDBACK_KIND_HW_COMPLETION;
     struct sdm_layer *sdm_layer, *next_sdm_layer;
 
-    read(fd, &v, sizeof v);
-
-    drm_output_update_msc(output, output->last_vblank.frame);
+    drm_output_update_msc(output, output->last_vblank.frame++);
 
     /* We don't set page_flip_pending on start_repaint_loop, in that case
      * we just want to page flip to the current buffer to get an accurate
@@ -709,11 +693,9 @@ on_pageflip(int fd, uint32_t mask, void *data)
         output->disable_pending = 0;
         output->destroy_pending = 0;
         drm_output_destroy(&output->base);
-        return 0;
     } else if (output->disable_pending) {
         output->disable_pending = 0;
         weston_output_disable(&output->base);
-        return 0;
     } else if (!output->frame_pending) {
         ts.tv_sec = output->last_vblank.sec;
         ts.tv_nsec = output->last_vblank.usec * 1000;
@@ -725,8 +707,6 @@ on_pageflip(int fd, uint32_t mask, void *data)
         if (output->recorder)
             weston_output_schedule_repaint(&output->base);
     }
-
-    return 0;
 }
 
 static int
@@ -989,37 +969,6 @@ drm_assign_planes(struct weston_output *output_base)
     return;
 }
 
-static int
-drm_output_enable_pageflip(struct drm_output *output)
-{
-     struct wl_event_loop *loop;
-
-     output->pageflip_ev_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-     if (output->pageflip_ev_fd < 0)
-
-        return -1;
-
-     loop = wl_display_get_event_loop(output->base.compositor->wl_display);
-
-     output->pageflip_ev_source = wl_event_loop_add_fd(loop, output->pageflip_ev_fd,
-                                                     WL_EVENT_READABLE, on_pageflip, output);
-
-     return 0;
-}
-
-drm_output_disable_pageflip(struct drm_output *output)
-{
-       if (output->pageflip_ev_source != NULL) {
-               wl_event_source_remove(output->pageflip_ev_source);
-               output->pageflip_ev_source = NULL;
-       }
-
-       if (output->pageflip_ev_fd != -1) {
-               close(output->pageflip_ev_fd);
-               output->pageflip_ev_fd = -1;
-       }
-}
-
 static void
 drm_output_fini_pixman(struct drm_output *output);
 
@@ -1070,7 +1019,6 @@ drm_output_destroy(struct weston_output *output_base)
 	drm_output_deinit(&output->base);
 
     drm_mode_list_destroy(b, &output->base.mode_list);
-    drm_output_disable_pageflip(output);
 
     weston_plane_release(&output->fb_plane);
     weston_plane_release(&output->cursor_plane);
@@ -1746,107 +1694,6 @@ get_gbm_format_from_section(struct weston_config_section *section,
     return ret;
 }
 
-/**
- * Choose suitable mode for an output
- *
- * Find the most suitable mode to use for initial setup (or reconfiguration on
- * hotplug etc) for a DRM output.
- *
- * @param output DRM output to choose mode for
- * @param kind Strategy and preference to use when choosing mode
- * @param width Desired width for this output
- * @param height Desired height for this output
- * @param current_mode Mode currently being displayed on this output
- * @param modeline Manually-entered mode (may be NULL)
- * @returns A mode from the output's mode list, or NULL if none available
- */
-static struct drm_mode *
-drm_output_choose_initial_mode(struct drm_output *output,
-                   enum output_config kind,
-                   int width, int height,
-                   const drmModeModeInfo *current_mode,
-                   const drmModeModeInfo *modeline)
-{
-    struct drm_mode *preferred = NULL;
-    struct drm_mode *current = NULL;
-    struct drm_mode *configured = NULL;
-    struct drm_mode *best = NULL;
-    struct drm_mode *drm_mode;
-
-    wl_list_for_each_reverse(drm_mode, &output->base.mode_list, base.link) {
-        if (kind == OUTPUT_CONFIG_MODE &&
-            width == drm_mode->base.width &&
-            height == drm_mode->base.height)
-            configured = drm_mode;
-
-        if (memcmp(&current_mode, &drm_mode->mode_info,
-               sizeof *current_mode) == 0)
-            current = drm_mode;
-
-        if (drm_mode->base.flags & WL_OUTPUT_MODE_PREFERRED)
-            preferred = drm_mode;
-
-        best = drm_mode;
-    }
-
-    if (kind == OUTPUT_CONFIG_MODELINE) {
-        configured = drm_output_add_mode(output, modeline);
-        if (!configured)
-            return NULL;
-    }
-
-    if (current == NULL && current_mode->clock != 0) {
-        current = drm_output_add_mode(output, current_mode);
-        if (!current)
-            return NULL;
-    }
-
-    if (kind == OUTPUT_CONFIG_CURRENT)
-        configured = current;
-
-    if (option_current_mode && current)
-        return current;
-
-    if (configured)
-        return configured;
-
-    if (preferred)
-        return preferred;
-
-    if (current)
-        return current;
-
-    if (best)
-        return best;
-
-    weston_log("no available modes for %s\n", output->base.name);
-    return NULL;
-}
-
-static int
-connector_get_current_mode(drmModeConnector *connector, int drm_fd,
-               drmModeModeInfo *mode)
-{
-    drmModeEncoder *encoder;
-    drmModeCrtc *crtc;
-
-    /* Get the current mode on the crtc that's currently driving
-     * this connector. */
-    encoder = drmModeGetEncoder(drm_fd, connector->encoder_id);
-    memset(mode, 0, sizeof *mode);
-    if (encoder != NULL) {
-        crtc = drmModeGetCrtc(drm_fd, encoder->crtc_id);
-        drmModeFreeEncoder(encoder);
-        if (crtc == NULL)
-            return -1;
-        if (crtc->mode_valid)
-            *mode = crtc->mode;
-        drmModeFreeCrtc(crtc);
-    }
-
-    return 0;
-}
-
 static void
 headless_output_start_repaint_loop(struct weston_output *output)
 {
@@ -1983,8 +1830,8 @@ drm_output_set_mode(struct weston_output *base,
 	struct drm_backend *b = to_drm_backend(base->compositor);
 	struct drm_head *head = to_drm_head(weston_output_get_first_head(base));
 	struct drm_mode *current;
-	output->display_id = head->connector_id;
 
+	output->display_id = head->display_id;
 	/*don't consider clone mode first*/
 	current = zalloc(sizeof *current);
 	if (!current)
@@ -2079,7 +1926,8 @@ drm_head_create(struct drm_backend *backend, uint32_t display_id,struct DisplayC
 
 	weston_head_init(&head->base, name);
 
-	head->connector_id = display_id;
+	head->display_id = display_id;
+	head->connector_id = GetConnectorId(display_id);
 	head->backend = backend;
 
 	//head->backlight = backlight_init(drm_device, connector->connector_type);
@@ -2181,10 +2029,6 @@ drm_output_enable(struct weston_output *base)
 	weston_compositor_stack_plane(b->compositor, &output->fb_plane,
 						 &b->compositor->primary_plane);
 
-	if (drm_output_enable_pageflip(output)) {
-		   weston_log("Failed to create pageflip event\n");
-		   goto err;
-	   }
 	drm_output_print_modes(output);
 	output->prev_layer_none_commit = true;
 	output->layer_none_commit = true;
