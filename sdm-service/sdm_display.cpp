@@ -335,7 +335,7 @@ static bool NeedUpdateColorMetaData(struct LayerGeometry *layer_geometry)
     bool need_update = false;
 
     if (layer_geometry->flags.hdr_present ||
-        (layer_geometry->color_metadata.range == Range_Full))
+        layer_geometry->flags.metadata_present)
         need_update = true;
 
     return need_update;
@@ -529,15 +529,16 @@ int SdmDisplay::PrepareFbLayerGeometry(struct drm_output *output,
     return 0;
 }
 
-static void SetCSC(int32_t color_space, ColorMetaData *color_metadata)
+static bool SetCSC(int32_t color_space, ColorMetaData *color_metadata)
 {
+    bool csc_updated = false;
     /*
      * As any GBM color space definition can't be 0, if color_space is still 0
      * here, which means nobody touched color space or meta data info before, so
      * we should skip the following update.
      */
     if (!color_metadata || !color_space)
-        return;
+        return csc_updated;
 
     /*
      * A tricky design in gbm is, the color space will be updated according to
@@ -554,18 +555,26 @@ static void SetCSC(int32_t color_space, ColorMetaData *color_metadata)
         case GBM_METADATA_COLOR_SPACE_ITU_R_601:
         case GBM_METADATA_COLOR_SPACE_ITU_R_601_FR:
             color_metadata->colorPrimaries = ColorPrimaries_BT601_6_625;
+            color_metadata->matrixCoefficients = MatrixCoEff_BT601_6_625;
+            csc_updated = true;
         break;
         case GBM_METADATA_COLOR_SPACE_ITU_R_709:
             color_metadata->colorPrimaries = ColorPrimaries_BT709_5;
+            color_metadata->matrixCoefficients = MatrixCoEff_BT709_5;
+            csc_updated = true;
         break;
         case GBM_METADATA_COLOR_SPACE_ITU_R_2020:
         case GBM_METADATA_COLOR_SPACE_ITU_R_2020_FR:
             color_metadata->colorPrimaries = ColorPrimaries_BT2020;
+            color_metadata->matrixCoefficients = MatrixCoEff_BT2020;
+            csc_updated = true;
         break;
         default:
             DLOGE("unsupported CSC: %d", color_space);
         break;
     }
+
+    return csc_updated;
 }
 
 int SdmDisplay::PrepareNormalLayerGeometry(struct drm_output *output,
@@ -653,15 +662,19 @@ int SdmDisplay::PrepareNormalLayerGeometry(struct drm_output *output,
             uint32_t secure_status = 0;
             uint32_t ubwc_status = 0;
             int32_t color_space = 0;
+            bool metadata_present = false;
             void *prm = reinterpret_cast<void *> (&layer->color_metadata);
 
             gbm_perform(GBM_PERFORM_GET_BO_ALIGNED_WIDTH, bo, &alignedWidth);
             gbm_perform(GBM_PERFORM_GET_BO_ALIGNED_HEIGHT, bo, &alignedHeight);
             gbm_perform(GBM_PERFORM_GET_SECURE_BUFFER_STATUS, bo, &secure_status);
             ret = gbm_perform(GBM_PERFORM_GET_METADATA, bo, GBM_METADATA_GET_COLOR_METADATA, prm);
+            if (ret == GBM_ERROR_NONE)
+                metadata_present = true;
             /* Only query color space info when color meta data never be set before */
-            if (ret != GBM_ERROR_NONE)
+            if (!metadata_present) {
                 gbm_perform(GBM_PERFORM_GET_METADATA, bo, GBM_METADATA_GET_COLOR_SPACE, &color_space);
+            }
             gbm_perform(GBM_PERFORM_GET_UBWC_STATUS, bo, &ubwc_status);
 
             // Override buffer width/height to reflect aligned width and aligned height.
@@ -674,7 +687,9 @@ int SdmDisplay::PrepareNormalLayerGeometry(struct drm_output *output,
             layer->flags.has_ubwc_buf = ubwc_status;
 
             /* Update metadata info according to color space setting in gbm */
-            SetCSC(color_space, &layer->color_metadata);
+            if (!metadata_present)
+                metadata_present = SetCSC(color_space, &layer->color_metadata);
+            layer->flags.metadata_present = metadata_present;
 
             bool hdr_layer = layer->color_metadata.colorPrimaries == ColorPrimaries_BT2020 &&
                              (layer->color_metadata.transfer == Transfer_SMPTE_ST2084 ||
