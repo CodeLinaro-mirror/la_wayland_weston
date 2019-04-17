@@ -474,11 +474,17 @@ retire_fence_cb(int fd, uint32_t mask, void *data)
 {
     struct drm_output *output = (struct drm_output *) data;
     struct timespec ts;
+    static bool first_fence = true;
+
+    if (first_fence) {
+        first_fence = false;
+        weston_place_marker("W - first frame have been displayed");
+    }
 
     wl_event_source_remove(output->retire_fence_source);
     output->retire_fence_source = NULL;
 
-   if (get_fence_timestamp(output->retire_fence_fd, &ts))
+    if (get_fence_timestamp(output->retire_fence_fd, &ts))
         weston_compositor_read_presentation_clock(output->base.compositor, &ts);
 
     close(output->retire_fence_fd);
