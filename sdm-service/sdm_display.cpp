@@ -960,6 +960,9 @@ LayerBufferFormat SdmDisplay::GetSDMFormat(uint32_t src_fmt, struct LayerGeometr
         case SDM_BUFFER_FORMAT_RGB_888:
             format = sdm::kFormatRGB888;
             break;
+        case SDM_BUFFER_FORMAT_BGR_888:
+            format = sdm::kFormatBGR888;
+            break;
         case SDM_BUFFER_FORMAT_RGB_565:
             format = sdm::kFormatRGB565;
             break;

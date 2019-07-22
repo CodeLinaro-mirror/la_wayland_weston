@@ -52,6 +52,7 @@ LayerBufferFormat GetLayerBufferFormat(uint32_t format) {
        //case GBM_FORMAT_RGBA8888: layer_buffer_format = kFormatABGR8888; break;
        case GBM_FORMAT_XBGR8888: layer_buffer_format = kFormatRGBX8888; break;
        case GBM_FORMAT_BGR888: layer_buffer_format = kFormatRGB888; break;
+       case GBM_FORMAT_RGB888: layer_buffer_format = kFormatBGR888; break;
        case GBM_FORMAT_BGR565: layer_buffer_format = kFormatRGB565; break;
        case GBM_FORMAT_RGB565: layer_buffer_format = kFormatBGR565; break;
        case GBM_FORMAT_ARGB8888: layer_buffer_format = kFormatBGRA8888; break;
@@ -172,6 +173,7 @@ int SdmDisplayBufferAllocator::SetBufferInfo(LayerBufferFormat format, uint32_t 
   case kFormatRGBX8888:                 *target = GBM_FORMAT_XBGR8888;
                                         break;
   case kFormatRGB888:                   *target = GBM_FORMAT_BGR888;               break;
+  case kFormatBGR888:                   *target = GBM_FORMAT_RGB888;               break;
   case kFormatRGB565:                   *target = GBM_FORMAT_BGR565;
                                         break;
   case kFormatBGR565:                   *target = GBM_FORMAT_RGB565;               break;
