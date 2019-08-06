@@ -2562,6 +2562,9 @@ import_simple_gbm_buffer(struct gl_renderer *gr,struct gbm_buffer *gbmbuf)
 	struct egl_image *egl_image;
 	EGLint attribs[30];
 	int atti = 0;
+	int colorspace = 0;
+	ColorMetaData colormeta = {0};
+	int result = -1;
 
 	/* This requires the Mesa commit in
 	 * Mesa 10.3 (08264e5dad4df448e7718e782ad9077902089a07) or
@@ -2600,6 +2603,73 @@ import_simple_gbm_buffer(struct gl_renderer *gr,struct gbm_buffer *gbmbuf)
 		attribs[atti++] = gbmbuf->offset[2];
 		attribs[atti++] = EGL_DMA_BUF_PLANE2_PITCH_EXT;
 		attribs[atti++] = gbmbuf->stride[2];
+	}
+
+	result = gbm_perform(GBM_PERFORM_GET_METADATA,
+			gbmbuf->bo,
+			GBM_METADATA_GET_COLOR_METADATA,
+			&colormeta);
+	if (result == GBM_ERROR_NONE) {
+		switch (colormeta.matrixCoefficients) {
+		case MatrixCoEff_BT709_5:
+			/* currently don't support the 709 full range yet.*/
+			colorspace = (colormeta.range) ? GBM_METADATA_COLOR_SPACE_ITU_R_709 :
+							GBM_METADATA_COLOR_SPACE_ITU_R_709;
+			break;
+		case MatrixCoEff_BT601_6_525:
+		case MatrixCoEff_BT601_6_625:/* fall back to BT601_6_525 case currently.*/
+			colorspace = (colormeta.range) ? GBM_METADATA_COLOR_SPACE_ITU_R_601_FR :
+							GBM_METADATA_COLOR_SPACE_ITU_R_601;
+			break;
+		case MatrixCoEff_BT2020:
+			colorspace = (colormeta.range) ? GBM_METADATA_COLOR_SPACE_ITU_R_2020_FR :
+							GBM_METADATA_COLOR_SPACE_ITU_R_2020;
+			break;
+		default:
+			break;
+		}
+	} else {
+		result = gbm_perform(GBM_PERFORM_GET_METADATA,
+				gbmbuf->bo,
+				GBM_METADATA_GET_COLOR_SPACE,
+				&colorspace);
+	}
+	if (result == GBM_ERROR_NONE) {
+		switch (colorspace) {
+		case GBM_METADATA_COLOR_SPACE_ITU_R_601:
+			attribs[atti++] = EGL_YUV_COLOR_SPACE_HINT_EXT;
+			attribs[atti++] = EGL_ITU_REC601_EXT;
+			attribs[atti++] = EGL_SAMPLE_RANGE_HINT_EXT;
+			attribs[atti++] = EGL_YUV_NARROW_RANGE_EXT;
+			break;
+		case GBM_METADATA_COLOR_SPACE_ITU_R_601_FR:
+			attribs[atti++] = EGL_YUV_COLOR_SPACE_HINT_EXT;
+			attribs[atti++] = EGL_ITU_REC601_EXT;
+			attribs[atti++] = EGL_SAMPLE_RANGE_HINT_EXT;
+			attribs[atti++] = EGL_YUV_FULL_RANGE_EXT;
+			break;
+		case GBM_METADATA_COLOR_SPACE_ITU_R_709:
+			attribs[atti++] = EGL_YUV_COLOR_SPACE_HINT_EXT;
+			attribs[atti++] = EGL_ITU_REC709_EXT;
+			attribs[atti++] = EGL_SAMPLE_RANGE_HINT_EXT;
+			attribs[atti++] = EGL_YUV_NARROW_RANGE_EXT;
+			break;
+		case GBM_METADATA_COLOR_SPACE_ITU_R_2020:
+			attribs[atti++] = EGL_YUV_COLOR_SPACE_HINT_EXT;
+			attribs[atti++] = EGL_ITU_REC2020_EXT;
+			attribs[atti++] = EGL_SAMPLE_RANGE_HINT_EXT;
+			attribs[atti++] = EGL_YUV_NARROW_RANGE_EXT;
+			break;
+		case GBM_METADATA_COLOR_SPACE_ITU_R_2020_FR:
+			attribs[atti++] = EGL_YUV_COLOR_SPACE_HINT_EXT;
+			attribs[atti++] = EGL_ITU_REC2020_EXT;
+			attribs[atti++] = EGL_SAMPLE_RANGE_HINT_EXT;
+			attribs[atti++] = EGL_YUV_FULL_RANGE_EXT;
+			break;
+		default:
+			weston_log("Unsupport GBM_METADATA_COLOR_SPACE:%d\n", colorspace);
+			break;
+		}
 	}
 	attribs[atti++] = EGL_NONE;
 
