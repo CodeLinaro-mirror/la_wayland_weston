@@ -2728,10 +2728,6 @@ import_gbm_buffer(struct gl_renderer *gr,struct gbm_buffer *gbmbuf)
 	struct gbmbuf_image *image = NULL;
 	EGLint attribs[30];
 
-	//If format is in skip list, return with out creating egl image.
-	if ((gbmbuf->format == GBM_FORMAT_YCbCr_420_TP10_UBWC)) {
-		return image;
-	}
 	memset(attribs, 0, sizeof(EGLint));
 	image = gbmbuf_image_create();
 	image->gbmbuf = gbmbuf;
@@ -2805,10 +2801,6 @@ gl_renderer_import_gbm_buffer(struct weston_compositor *ec, struct gbm_buffer *g
 
 	GBM_PROTOCOL_LOG(LOG_DBG,"gl_renderer_import_gbm_buffer:Invoke import_gbm_buffer()");
 
-	if(gbm_buf->format == GBM_FORMAT_YCbCr_420_TP10_UBWC) {
-		return true;
-	}
-
 	image = import_gbm_buffer(gr, gbm_buf);
 	if (!image)
 		return false;
@@ -2855,10 +2847,8 @@ gl_renderer_attach_gbm_buffer(struct weston_surface *surface,
 	buffer->y_inverted =
 		!!(gbmbuf->flags & ZWP_LINUX_BUFFER_PARAMS_V1_FLAGS_Y_INVERT);
 
-	if ((gbmbuf->format != GBM_FORMAT_YCbCr_420_TP10_UBWC)) {
-		for (i = 0; i < gs->num_images; i++)
-			egl_image_unref(gs->images[i]);
-	}
+	for (i = 0; i < gs->num_images; i++)
+		egl_image_unref(gs->images[i]);
 
 	gs->num_images = 0;
 
@@ -2874,37 +2864,35 @@ gl_renderer_attach_gbm_buffer(struct weston_surface *surface,
 	/* The gbmbuf_image should have been created during the import */
 	assert(image != NULL);
 
-	if ((gbmbuf->format != GBM_FORMAT_YCbCr_420_TP10_UBWC)) {
-		for (i = 0; i < image->num_images; ++i) {
-			ret = egl_image_unref(image->images[i]);
-			assert(ret == 0);
-		}
-
-		if (!import_known_gbmbuf(gr, image)) {
-			gbm_buffer_send_server_error(gbmbuf,
-			          "EGL gbmbuf import failed");
-			return;
-		}
-
-		gs->num_images = image->num_images;
-		for (i = 0; i < gs->num_images; ++i)
-			gs->images[i] = egl_image_ref(image->images[i]);
-
-		gs->target = image->target;
-		ensure_textures(gs, gs->num_images);
-
-		for (i = 0; i < gs->num_images; ++i) {
-			glActiveTexture(GL_TEXTURE0 + i);
-			glBindTexture(gs->target, gs->textures[i]);
-			gr->image_target_texture_2d(gs->target, gs->images[i]->image);
-		}
-
-		gs->shader = image->shader;
-		gs->pitch = buffer->width;
-		gs->height = buffer->height;
-		gs->buffer_type = BUFFER_TYPE_EGL;
-		gs->y_inverted = buffer->y_inverted;
+	for (i = 0; i < image->num_images; ++i) {
+		ret = egl_image_unref(image->images[i]);
+		assert(ret == 0);
 	}
+
+	if (!import_known_gbmbuf(gr, image)) {
+		gbm_buffer_send_server_error(gbmbuf,
+		          "EGL gbmbuf import failed");
+		return;
+	}
+
+	gs->num_images = image->num_images;
+	for (i = 0; i < gs->num_images; ++i)
+		gs->images[i] = egl_image_ref(image->images[i]);
+
+	gs->target = image->target;
+	ensure_textures(gs, gs->num_images);
+
+	for (i = 0; i < gs->num_images; ++i) {
+		glActiveTexture(GL_TEXTURE0 + i);
+		glBindTexture(gs->target, gs->textures[i]);
+		gr->image_target_texture_2d(gs->target, gs->images[i]->image);
+	}
+
+	gs->shader = image->shader;
+	gs->pitch = buffer->width;
+	gs->height = buffer->height;
+	gs->buffer_type = BUFFER_TYPE_EGL;
+	gs->y_inverted = buffer->y_inverted;
 }
 
 static void
