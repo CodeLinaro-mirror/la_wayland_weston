@@ -48,7 +48,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -956,12 +956,19 @@ DisplayError SdmDisplay::PrePrepareLayerStack(struct drm_output *output) {
             // to use it for egl image creation in tone mapping
             layerBufferFlags = layer_stack_.layers.at(index)->input_buffer.flags;
 
+            layer_stack_.layers.at(index)->input_buffer.acquire_fence =
+                               Fence::Create(dup(sdm_layer->acquire_fence_fd), "App_Layer_Fence");
+            DLOGD_IF(kTagNone, "Acquire fence fd: %s for layer index %d",
+                 Fence::GetStr(layer_stack_.layers.at(index)->input_buffer.acquire_fence).c_str(),
+                 index);
+            //Acquire fence fd is not received for frame buffer target layer as gl-renderer is not
+            //sending it. Hence not adding acquire fence for frame buffer target
+
             index++;
             if (sdm_layer->is_skip)
                 layer_stack_.flags.skip_present = true;
         }
     }
-
     int err = PrepareFbLayerGeometry(output, &glayer);
     if (err) {
         DLOGE("failed to prepare Layer Geometry Fb target\n");
