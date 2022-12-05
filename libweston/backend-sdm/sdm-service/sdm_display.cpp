@@ -57,6 +57,7 @@
 #include <linux/limits.h>
 #include <string>
 #include <vector>
+#include <algorithm>
 #include <map>
 #include <ostream>
 #include <fstream>
@@ -99,6 +100,7 @@ namespace sdm {
 
 #define MAX_PROP_STR_SIZE 64
 #define SDM_NULL_DISPLAY_RESOLUTON_PROP_NAME "weston.sdm.default.resolution"
+#define SDM_DISABLE_HDR_HANDLING "vendor.display.disable_hdr"
 
 SdmDisplay::SdmDisplay(DisplayType type, CoreInterface *core_intf,
                                          SdmDisplayBufferAllocator *buffer_allocator) {
@@ -125,8 +127,15 @@ const char * SdmDisplay::FourccToString(uint32_t fourcc)
 
 DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
     DisplayError error = kErrorNone;
+    struct DisplayHdrInfo display_hdr_info = {};
 
-    error = core_intf_->CreateDisplay(display_type_, this, &display_intf_);
+    char property[MAX_PROP_STR_SIZE] = {0};
+    SdmDisplayDebugger::Get()->GetProperty(SDM_DISABLE_HDR_HANDLING, property);
+    if (!(std::string(property)==std::string("1"))) {
+        disable_hdr_handling_ = 0;
+    }
+
+    error = core_intf_->CreateDisplay(display_id, this, &display_intf_);
 
     if (error != kErrorNone) {
         DLOGE("Display creation failed. Error = %d", error);
@@ -134,6 +143,27 @@ DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
         return error;
     }
 
+    GetHdrInfo(&display_hdr_info);
+    if (display_hdr_info.hdr_supported) {
+        DLOGI("Display Device supports HDR functionality");
+    } else {
+        DLOGI("Display Device doesn't support HDR functionality");
+    }
+
+    error = display_intf_->SetHDRSupportOnClient(false);
+    if (error != kErrorNone) {
+        DLOGW("Failed to Disable HDR Support on Client");
+    }
+
+    error = display_intf_->GetStcColorModes(&stc_mode_list_);
+    if (error != kErrorNone) {
+        DLOGW("Failed to get Stc color modes, error %d", error);
+        stc_mode_list_.list.clear();
+    } else {
+        DLOGI("Stc mode count %d", stc_mode_list_.list.size());
+    }
+
+    PopulateColorModes();
     return kErrorNone;
 }
 
@@ -143,6 +173,7 @@ DisplayError SdmDisplay::DestroyDisplay() {
     error = core_intf_->DestroyDisplay(display_intf_);
     display_intf_ = NULL;
 
+    color_mode_map_.clear();
     return error;
 }
 
@@ -267,6 +298,170 @@ void SdmDisplay::HandlePanelDead()
 
     RefreshWithCachedLayerstack();
     esd_reset_panel_ = false;
+}
+
+void SdmDisplay::PopulateColorModes() {
+    for (uint32_t i = 0; i < stc_mode_list_.list.size(); i++) {
+        snapdragoncolor::ColorMode stc_mode = stc_mode_list_.list[i];
+        ColorPrimaries gamut = static_cast<ColorPrimaries>(stc_mode.gamut);
+        GammaTransfer gamma = static_cast<GammaTransfer>(stc_mode.gamma);
+        RenderIntent intent = static_cast<RenderIntent>(stc_mode.intent);
+        DynamicRangeType dynamic_range = kSdrType;
+        if (std::find(stc_mode.hw_assets.begin(), stc_mode.hw_assets.end(),
+                        snapdragoncolor::kPbHdrBlob) != stc_mode.hw_assets.end()) {
+            dynamic_range = kHdrType;
+        }
+        if (gamut == ColorPrimaries_BT2020 &&
+            (gamma == Transfer_SMPTE_ST2084 || gamma == Transfer_HLG)) {
+            dynamic_range = kHdrType;
+            hdr_mode_present_ = true;
+        }
+        color_mode_map_[gamut][gamma][intent][dynamic_range] = stc_mode;
+    }
+}
+
+DisplayError SdmDisplay::ValidateColorMode(ColorMode color_mode, DynamicRangeType dynamic_range) {
+    ColorPrimaries primary = color_mode.gamut;
+    GammaTransfer transfer = color_mode.gamma;
+    RenderIntent intent = color_mode.intent;
+
+    if (color_mode_map_.find(primary) == color_mode_map_.end()) {
+        DLOGE("Could not find color primary: %d", primary);
+        return kErrorNotSupported;
+    }
+    if (color_mode_map_[primary].find(transfer) == color_mode_map_[primary].end()) {
+        DLOGE("Could not find transfer %d in primary %d", transfer, primary);
+        return kErrorNotSupported;
+    }
+    if (color_mode_map_[primary][transfer].find(intent) ==
+                                        color_mode_map_[primary][transfer].end()) {
+        DLOGE("Could not find intent %d in primary %d, transfer %d",
+                                                    intent, primary, transfer);
+        return kErrorNotSupported;
+    }
+    if (color_mode_map_[primary][transfer][intent].find(dynamic_range) ==
+                                color_mode_map_[primary][transfer][intent].end()) {
+        DLOGE("Could not find dynamic range %d in intent %d, primary %d, transfer %d",
+                                        dynamic_range, intent, primary, transfer);
+        return kErrorNotSupported;
+    }
+    return kErrorNone;
+}
+
+DisplayError SdmDisplay::SetColorModeWithRenderIntent(ColorMode color_mode) {
+    bool hdr_present = layer_stack_.flags.hdr_present;
+
+    if (current_color_mode_.gamut == color_mode.gamut &&
+        current_color_mode_.gamma == color_mode.gamma &&
+        current_color_mode_.intent == color_mode.intent &&
+        ((hdr_present && (curr_dynamic_range_ == kHdrType)) ||
+        (!hdr_present && (curr_dynamic_range_ == kSdrType)))) {
+        return kErrorNone;
+    }
+
+    DynamicRangeType dynamic_range = hdr_present ? kHdrType : kSdrType;
+
+    DisplayError error = ValidateColorMode(color_mode, dynamic_range);
+    if (error != kErrorNone) {
+        return error;
+    }
+
+    snapdragoncolor::ColorMode stc_mode = \
+        color_mode_map_[color_mode.gamut][color_mode.gamma][color_mode.intent][dynamic_range];
+    DLOGI("Applying Stc mode (gamut %d gamma %d intent %d hw_assets.size %d)",
+        stc_mode.gamut, stc_mode.gamma, stc_mode.intent, stc_mode.hw_assets.size());
+
+    error = display_intf_->SetStcColorMode(stc_mode);
+    if (error != kErrorNone) {
+        DLOGE("Failed to apply Stc color mode: gamut %d gamma %d intent %d err %d",
+            stc_mode.gamut, stc_mode.gamma, stc_mode.intent, error);
+        return kErrorNotSupported;
+    }
+
+    current_color_mode_ = color_mode;
+    curr_dynamic_range_ = dynamic_range;
+    DLOGV("Successfully applied mode gamut = %d, gamma = %d, intent = %d, dynamic range = %d",
+           color_mode.gamut, color_mode.gamma, color_mode.intent, dynamic_range);
+    return kErrorNone;
+}
+
+ColorMode SdmDisplay::GetBestHDRColorMode(ColorPrimaries layer_gamut,
+                                                GammaTransfer layer_gamma) {
+    ColorMode hdr_mode = {.gamut = layer_gamut,
+                        .gamma = layer_gamma,
+                        .intent = kRenderIntentColorimetric};
+
+    if (ValidateColorMode(hdr_mode, kHdrType) == kErrorNone) {
+        return hdr_mode;
+    }
+
+    hdr_mode.gamma = Transfer_SMPTE_ST2084;
+    if (ValidateColorMode(hdr_mode, kHdrType) == kErrorNone) {
+        return hdr_mode;
+    }
+
+    hdr_mode.gamma = Transfer_HLG;
+    if (ValidateColorMode(hdr_mode, kHdrType) == kErrorNone) {
+        return hdr_mode;
+    }
+
+    hdr_mode.gamut = ColorPrimaries_Max;
+    hdr_mode.gamma = Transfer_Max;
+    return hdr_mode;
+}
+
+ColorMode SdmDisplay::SelectBestColorSpace(bool isHdrSupported) {
+    ColorMode best_color_mode = {.gamut = ColorPrimaries_BT709_5,
+                                .gamma = Transfer_sRGB,
+                                .intent = kRenderIntentColorimetric};
+    ColorMode best_hdr_mode = {.gamut = ColorPrimaries_Max,
+                                .gamma = Transfer_Max,
+                                .intent = kRenderIntentColorimetric};
+
+    for (uint32_t i = 0; i < layer_stack_.layers.size(); i++) {
+        struct Layer *layer = nullptr;
+        struct LayerBuffer buffer = {};
+        layer = layer_stack_.layers.at(i);
+        buffer = layer->input_buffer;
+
+        if (layer->flags.skip) {
+            continue;
+        }
+
+        ColorMode color_mode = {.intent = kRenderIntentColorimetric};
+        color_mode.gamut = buffer.color_metadata.colorPrimaries;
+        color_mode.gamma = buffer.color_metadata.transfer;
+
+        switch (color_mode.gamut) {
+            case ColorPrimaries_DCIP3:
+                best_color_mode.gamut = ColorPrimaries_DCIP3;
+                best_color_mode.gamma = Transfer_sRGB;
+                break;
+            case ColorPrimaries_BT2020:
+                best_color_mode.gamut = ColorPrimaries_DCIP3;
+                best_color_mode.gamma = Transfer_sRGB;
+
+                if (!isHdrSupported || !hdr_mode_present_) {
+                    continue;
+                }
+
+                if (color_mode.gamma == Transfer_HLG &&
+                    best_hdr_mode.gamma != Transfer_SMPTE_ST2084) {
+                    best_hdr_mode = GetBestHDRColorMode(color_mode.gamut, color_mode.gamma);
+                } else {
+                    best_hdr_mode = GetBestHDRColorMode(color_mode.gamut, color_mode.gamma);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    if (best_hdr_mode.gamut == ColorPrimaries_Max || best_hdr_mode.gamma == Transfer_Max) {
+        return best_color_mode;
+    }
+
+    return best_hdr_mode;
 }
 
 DisplayError SdmDisplay::HandleEvent(DisplayEvent event) {
@@ -437,12 +632,7 @@ DisplayError SdmDisplay::PopulateLayerGeometryOnToLayerStack(struct drm_output *
     layer_buffer->flags.video = layer_geometry->flags.video_present;
     layer_buffer->flags.hdr = layer_geometry->flags.hdr_present;
 
-    if (layer_buffer->flags.hdr) {
-      layer_buffer->color_metadata = layer_geometry->color_metadata;
-
-       DLOGI("color_metadata: ColorPrimaries: %d", layer_buffer->color_metadata.colorPrimaries);
-       DLOGI("color_metadata: Transfer: %d", layer_buffer->color_metadata.transfer);
-    }
+    layer_buffer->color_metadata = layer_geometry->color_metadata;
 
     layer_buffer->flags.macro_tile = false;
     layer_buffer->flags.interlace = false;
@@ -637,14 +827,11 @@ int SdmDisplay::PrepareNormalLayerGeometry(struct drm_output *output,
     layer->format = SDM_BUFFER_FORMAT_RGBX_8888;
 
     if (sdm_layer->fb && sdm_layer->fb->bo) {
-        struct gbm_bo *bo = NULL;
-
-	bo = sdm_layer->fb->bo;
-
-         if (bo == NULL) {
+        struct gbm_bo *bo = sdm_layer->fb->bo;
+        if (bo == NULL) {
             DLOGE("fail to import gbm bo!\n");
-		return -1;
-	 } else {
+            return -1;
+        } else {
             uint32_t width, height;
 
             //save gbm bo in sdm layer for future reference.
@@ -674,6 +861,15 @@ int SdmDisplay::PrepareNormalLayerGeometry(struct drm_output *output,
             layer->ion_fd = sdm_layer->fb->ion_fd;
             layer->flags.secure_present = secure_status;
             layer->flags.has_ubwc_buf = ubwc_status;
+
+            bool hdr_layer = layer->color_metadata.colorPrimaries == ColorPrimaries_BT2020 &&
+                             (layer->color_metadata.transfer == Transfer_SMPTE_ST2084 ||
+                             layer->color_metadata.transfer == Transfer_HLG);
+
+            // Set to true if incoming layer has HDR support and Display supports HDR functionality
+            if (!disable_hdr_handling_) {
+                layer->flags.hdr_present = hdr_layer;
+            }
         }
     }
 
@@ -790,6 +986,14 @@ DisplayError SdmDisplay::PrePrepare(struct drm_output *output)
     error = PrePrepareLayerStack(output);
     if (error ) {
         DLOGE("function failed!\n", error);
+    }
+
+    if (hdr_supported_ && !disable_hdr_handling_) {
+        ColorMode best_color_mode = SelectBestColorSpace(hdr_supported_);
+        error = SetColorModeWithRenderIntent(best_color_mode);
+        if (error != kErrorNone) {
+            DLOGE("Setting color mode failed.");
+        }
     }
 
     return error;
@@ -1371,6 +1575,38 @@ const char *SdmDisplay::GetDisplayString() {
   }
 }
 
+DisplayError SdmDisplay::GetHdrInfo(struct DisplayHdrInfo *display_hdr_info) {
+  DisplayError error;
+
+  DisplayConfigFixedInfo fixed_info = {};
+  error = display_intf_->GetConfig(&fixed_info);
+
+  if (error != kErrorNone) {
+      DLOGE("Failed to get fixed info. Error = %d", error);
+      return error;
+  }
+
+  hdr_supported_ = fixed_info.hdr_supported;
+
+  if (!fixed_info.hdr_supported) {
+      DLOGI("HDR is not supported");
+      return error;
+  }
+
+  max_luminance_ = fixed_info.max_luminance;
+  max_average_luminance_ = fixed_info.average_luminance;
+  min_luminance_ = fixed_info.min_luminance;
+
+  display_hdr_info->hdr_supported = fixed_info.hdr_supported;
+  display_hdr_info->hdr_eotf = fixed_info.hdr_eotf;
+  display_hdr_info->hdr_metadata_type_one = fixed_info.hdr_metadata_type_one;
+  display_hdr_info->max_luminance = fixed_info.max_luminance;
+  display_hdr_info->average_luminance = fixed_info.average_luminance;
+  display_hdr_info->min_luminance = fixed_info.min_luminance;
+
+  return error;
+}
+
 SdmNullDisplay::SdmNullDisplay(DisplayType type, CoreInterface *core_intf) {
 }
 
@@ -1456,6 +1692,10 @@ DisplayError SdmNullDisplay::GetDisplayConfiguration(struct DisplayConfigInfo *d
 DisplayError SdmNullDisplay::RegisterCb(int display_id, vblank_cb_t vbcb) {
   vblank_cb_   = vbcb;
 
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::GetHdrInfo(struct DisplayHdrInfo *display_hdr_info) {
   return kErrorNone;
 }
 

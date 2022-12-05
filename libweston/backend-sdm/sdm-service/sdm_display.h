@@ -36,6 +36,8 @@
 #include <utils/debug.h>
 #include <utils/constants.h>
 #include <utils/formats.h>
+#include <private/color_params.h>
+#include <color_metadata.h>
 #include <stdio.h>
 #include <string>
 #include <utility>
@@ -88,6 +90,7 @@ class SdmDisplayInterface {
     virtual SdmDisplayIntfType GetDisplayIntfType() = 0;
     virtual DisplayError SetPanelBrightness(float brightness) = 0;
     virtual DisplayError GetPanelBrightness(float *brightness) = 0;
+    virtual DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info) = 0;
     static int GetDrmMasterFd();
     struct drm_output *drm_output_;
     struct drm_output *prev_output_;
@@ -112,6 +115,7 @@ class SdmNullDisplay : public SdmDisplayInterface {
     DisplayError RegisterCb(int display_id, vblank_cb_t vbcb);
     DisplayError SetPanelBrightness(float brightness);
     DisplayError GetPanelBrightness(float *brightness);
+    DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info);
 };
 
 class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDebugger {
@@ -138,6 +142,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     DisplayError GetPanelBrightness(float *brightness);
 
     int OnMinHdcpEncryptionLevelChange(uint32_t min_enc_level);
+    DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info);
 
  protected:
     virtual DisplayError VSync(const DisplayEventVSync &vsync);
@@ -205,6 +210,12 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     bool IsTransparentGbmFormat(uint32_t format);
     void HandlePanelDead();
     void RefreshWithCachedLayerstack();
+    void PopulateColorModes();
+    DisplayError ValidateColorMode(ColorMode color_mode, DynamicRangeType dynamic_range);
+    DisplayError SetColorModeWithRenderIntent(ColorMode color_mode);
+    ColorMode SelectBestColorSpace(bool isHdrSupported);
+    ColorMode GetBestHDRColorMode(ColorPrimaries layer_gamut, GammaTransfer layer_gamma);
+
     CoreInterface *core_intf_ = NULL;
     SdmDisplayBufferAllocator *buffer_allocator_;
     SdmDisplaySocketHandler socket_handler_;
@@ -222,6 +233,18 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     float min_luminance_ = 0.0;
     LayerStack prev_layer_stack_;
     bool esd_reset_panel_ = false;
+
+    int disable_hdr_handling_ = 1;
+    bool hdr_supported_ = false;
+    bool apply_mode_ = false;
+    bool hdr_mode_present_ = false;
+    ColorMode current_color_mode_ = {};
+    DynamicRangeType curr_dynamic_range_ = kSdrType;
+    snapdragoncolor::ColorModeList stc_mode_list_ = {};
+    typedef std::map<DynamicRangeType, snapdragoncolor::ColorMode> DynamicRangeMap;
+    typedef std::map<RenderIntent, DynamicRangeMap> RenderIntentMap;
+    typedef std::map<GammaTransfer, RenderIntentMap> TransferMap;
+    std::map<ColorPrimaries, TransferMap> color_mode_map_ = {};
 };
 
 class SdmDisplayProxy {
@@ -267,6 +290,9 @@ class SdmDisplayProxy {
     int HandleHotplug(bool connected);
 
     DisplayError OnMinHdcpEncryptionLevelChange(uint32_t min_enc_level);
+    DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info) {
+      return display_intf_->GetHdrInfo(display_hdr_info);
+    }
 
   private:
     // Uevent thread
