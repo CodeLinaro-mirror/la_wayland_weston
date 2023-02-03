@@ -25,6 +25,11 @@
  * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "config.h"
@@ -42,6 +47,9 @@
 #include "shared/weston-drm-fourcc.h"
 #include "drm-internal.h"
 #include "linux-dmabuf.h"
+
+#include "gbm_priv.h"
+#include "gbm-buffer-backend.h"
 
 static void
 drm_fb_destroy(struct drm_fb *fb)
@@ -160,7 +168,7 @@ drm_fb_create_dumb(struct drm_backend *b, int width, int height,
 	fb->fd = b->drm.fd;
 
 	if (drm_fb_addfb(b, fb) != 0) {
-		weston_log("failed to create kms fb: %s\n", strerror(errno));
+		weston_log("failed to create kms fb with pixman: %s\n", strerror(errno));
 		goto err_bo;
 	}
 
@@ -399,7 +407,7 @@ drm_fb_get_from_bo(struct gbm_bo *bo, struct drm_backend *backend,
 
 	if (drm_fb_addfb(backend, fb) != 0) {
 		if (type == BUFFER_GBM_SURFACE)
-			weston_log("failed to create kms fb: %s\n",
+			weston_log("failed to create kms fb with gbm: %s\n",
 				   strerror(errno));
 		goto err_free;
 	}
@@ -529,6 +537,8 @@ drm_fb_get_from_view(struct drm_output_state *state, struct weston_view *ev,
 	struct linux_dmabuf_buffer *dmabuf;
 	struct drm_fb *fb;
 	struct drm_plane *plane;
+	struct gbm_bo *bo;
+	struct gbm_buffer *gbmbuf;
 
 	if (ev->alpha != 1.0f)
 		return NULL;
@@ -568,10 +578,28 @@ drm_fb_get_from_view(struct drm_output_state *state, struct weston_view *ev,
 		if (!fb)
 			goto unsuitable;
 	} else {
-		struct gbm_bo *bo;
+		gbmbuf = gbm_buffer_get(buffer->resource);
+		if (gbmbuf) {
+			//gstreamer will use this for buffer sharing
+			struct gbm_buf_info gbmbuf_info = {
+				.fd = gbmbuf->fd,
+				.metadata_fd = gbmbuf->metadata_fd,
+				.width = gbmbuf->width,
+				.height = gbmbuf->height,
+				.format = gbmbuf->format
+			};
+			struct weston_surface *es = ev->surface;
 
-		bo = gbm_bo_import(b->gbm, GBM_BO_IMPORT_WL_BUFFER,
-				   buffer->resource, GBM_BO_USE_SCANOUT);
+			bo = gbm_bo_import(b->gbm, GBM_BO_IMPORT_GBM_BUF_TYPE,
+					&gbmbuf_info, GBM_BO_USE_SCANOUT);
+		}
+
+		if (!gbmbuf && !dmabuf) {
+			//simple-egl will use WL_BUFFER
+			bo = gbm_bo_import(b->gbm, GBM_BO_IMPORT_WL_BUFFER,
+					buffer->resource, GBM_BO_USE_SCANOUT);
+		}
+
 		if (!bo)
 			goto unsuitable;
 
