@@ -584,8 +584,13 @@ drm_output_start_repaint_loop(struct weston_output *output_base)
 			millihz_to_nsec(output->base.current_mode->refresh);
 		if (timespec_to_nsec(&vbl2now) < refresh_nsec) {
 			drm_output_update_msc(output, vbl.reply.sequence);
+#ifdef QCOM_BSP
+			weston_output_finish_frame(output_base, &tnow,
+						WP_PRESENTATION_FEEDBACK_INVALID);
+#else
 			weston_output_finish_frame(output_base, &ts,
 						WP_PRESENTATION_FEEDBACK_INVALID);
+#endif
 			return 0;
 		}
 	}
