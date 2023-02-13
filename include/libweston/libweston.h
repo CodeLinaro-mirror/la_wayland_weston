@@ -23,6 +23,11 @@
  * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef _WAYLAND_SYSTEM_COMPOSITOR_H_
@@ -81,6 +86,7 @@ struct weston_pointer_constraint;
 struct ro_anonymous_file;
 struct weston_color_profile;
 struct weston_color_transform;
+struct gbm_buffer;
 
 enum weston_keyboard_modifier {
 	MODIFIER_CTRL = (1 << 0),
@@ -961,6 +967,10 @@ struct weston_renderer {
 				    void *target, size_t size,
 				    int src_x, int src_y,
 				    int width, int height);
+
+	/** See weston_compositor_import_gbm_buffer() */
+	bool (*import_gbm_buffer)(struct weston_compositor *ec,
+			        struct gbm_buffer *buffer);
 
 	/** See weston_compositor_import_dmabuf() */
 	bool (*import_dmabuf)(struct weston_compositor *ec,

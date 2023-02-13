@@ -25,6 +25,11 @@
  * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "config.h"
@@ -65,6 +70,8 @@
 #include "linux-dmabuf.h"
 #include "linux-dmabuf-unstable-v1-server-protocol.h"
 #include "linux-explicit-synchronization.h"
+
+#include "gbm-buffer-backend.h"
 
 static const char default_seat[] = "seat0";
 
@@ -577,8 +584,13 @@ drm_output_start_repaint_loop(struct weston_output *output_base)
 			millihz_to_nsec(output->base.current_mode->refresh);
 		if (timespec_to_nsec(&vbl2now) < refresh_nsec) {
 			drm_output_update_msc(output, vbl.reply.sequence);
+#ifdef QCOM_BSP
+			weston_output_finish_frame(output_base, &tnow,
+						WP_PRESENTATION_FEEDBACK_INVALID);
+#else
 			weston_output_finish_frame(output_base, &ts,
 						WP_PRESENTATION_FEEDBACK_INVALID);
+#endif
 			return 0;
 		}
 	}
@@ -2988,6 +3000,7 @@ drm_backend_create(struct weston_compositor *compositor,
 	struct weston_drm_format_array *scanout_formats;
 	drmModeRes *res;
 	int ret;
+	int default_fmt;
 
 	session_seat = getenv("XDG_SEAT");
 	if (session_seat)
@@ -3016,8 +3029,19 @@ drm_backend_create(struct weston_compositor *compositor,
 
 	compositor->backend = &b->base;
 
-	if (parse_gbm_format(config->gbm_format, DRM_FORMAT_XRGB8888, &b->gbm_format) < 0)
+	if (config->use_pixman) {
+		weston_log("[%s] pixman with XRGB8888 (0x%x)\n",
+			__FUNCTION__, DRM_FORMAT_XRGB8888);
+		default_fmt = DRM_FORMAT_XRGB8888;
+	} else {
+		weston_log("[%s] egl with ABGR8888 (0x%x)\n",
+			__FUNCTION__, DRM_FORMAT_ABGR8888);
+		default_fmt = DRM_FORMAT_ABGR8888;
+	}
+
+	if (parse_gbm_format(config->gbm_format, default_fmt, &b->gbm_format) < 0) {
 		goto err_compositor;
+	}
 
 	/* Check if we run drm-backend using weston-launch */
 	compositor->launcher = weston_launcher_connect(compositor, config->tty,
@@ -3170,6 +3194,13 @@ drm_backend_create(struct weston_compositor *compositor,
 		if (weston_direct_display_setup(compositor) < 0)
 			weston_log("Error: initializing direct-display "
 				   "support failed.\n");
+	}
+
+	if (compositor->renderer->import_gbm_buffer) {
+
+		if (gbm_buffer_backend_setup(compositor) < 0)
+			weston_log("Error: initializing gbm_buffer_backend_setup"
+				"support failed.\n");
 	}
 
 	if (compositor->capabilities & WESTON_CAP_EXPLICIT_SYNC) {
