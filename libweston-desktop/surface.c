@@ -798,6 +798,16 @@ weston_desktop_surface_unset_relative_to(struct weston_desktop_surface *surface)
 }
 
 void
+weston_desktop_surface_set_position(struct weston_desktop *desktop,
+                                       struct weston_desktop_surface *dsurface,
+                                   uint32_t x, uint32_t y)
+{
+       struct weston_desktop_view *view;
+       wl_list_for_each(view, &dsurface->view_list, link)
+               weston_view_set_position(view->view, x, y);
+}
+
+void
 weston_desktop_surface_popup_grab(struct weston_desktop_surface *surface,
 				  struct weston_desktop_seat *seat,
 				  uint32_t serial)
