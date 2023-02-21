@@ -1,9 +1,11 @@
 project('weston',
 	'c',
+	'cpp',
 	version: '10.0.2',
 	default_options: [
 		'warning_level=3',
 		'c_std=gnu99',
+		'cpp_std=c++11',
 		'b_lundef=true',
 	],
 	meson_version: '>= 0.52.1',
@@ -74,6 +76,7 @@ foreach a : global_args_maybe
 	endif
 endforeach
 add_global_arguments(global_args, language: 'c')
+add_global_arguments(global_args, language: 'cpp')
 
 if cc.has_header_symbol('sys/sysmacros.h', 'major')
 	config_h.set('MAJOR_IN_SYSMACROS', 1)
@@ -123,7 +126,7 @@ config_h.set10('TEST_GL_RENDERER', get_option('test-gl-renderer'))
 
 backend_default = get_option('backend-default')
 if backend_default == 'auto'
-	foreach b : [ 'headless', 'x11', 'wayland', 'drm' ]
+	foreach b : [ 'headless', 'x11', 'wayland', 'drm', 'sdm' ]
 		if get_option('backend-' + b)
 			backend_default = b
 		endif
@@ -159,7 +162,12 @@ dep_libdrm_headers = dep_libdrm.partial_dependency(compile_args: true)
 dep_threads = dependency('threads')
 dep_libcutils = cc.find_library('cutils')
 dep_gbm = dependency('gbm')
-
+if get_option('backend-sdm')
+	dep_libsdmcore = cc.find_library('sdmcore')
+	dep_libsdmutils = cc.find_library('sdmutils')
+	dep_libsdmdal = cc.find_library('sdmdal')
+	dep_libdrmutils = cc.find_library('drmutils')
+endif
 dep_libdrm_version = dep_libdrm.version()
 if dep_libdrm_version.version_compare('>=2.4.107')
   message('Found libdrm with human format modifier support.')

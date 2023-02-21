@@ -41,6 +41,15 @@ simple_build_all = simple_clients_enabled.contains('all')
 
 simple_clients = [
 	{
+		'name': 'qti-extn-test',
+		'sources': [
+			'weston-qti-extn-test.c',
+			weston_qti_extn_client_protocol_h,
+			weston_qti_extn_protocol_c,
+		],
+		'dep_objs': [ dep_wayland_client, dep_libshared ]
+	},
+	{
 		'name': 'damage',
 		'sources': [
 			'simple-damage.c',

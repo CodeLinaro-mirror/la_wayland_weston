@@ -22,6 +22,11 @@
  * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "config.h"
@@ -69,24 +74,28 @@ is_drm_master(int drm_fd)
 }
 
 #else
-
-static inline int
-drmDropMaster(int drm_fd)
-{
-	return 0;
-}
-
-static inline int
-drmSetMaster(int drm_fd)
-{
-	return 0;
-}
-
+#include <xf86drm.h>
 static inline int
 is_drm_master(int drm_fd)
 {
-	return 0;
+	drm_magic_t magic;
+
+	return drmGetMagic(drm_fd, &magic) == 0 &&
+		drmAuthMagic(drm_fd, magic) == 0;
 }
+
+#endif
+
+#ifdef BUILD_DRM_COMPOSITOR
+static int get_drm_master_fd(void)
+{
+	weston_log("launcher: DRM FD is not derived from SDM compositor\n");
+	return -1;
+}
+#else
+
+#include "sdm-service/sdm_display_connect.h"
+
 
 #endif
 
@@ -230,10 +239,24 @@ launcher_direct_open(struct weston_launcher *launcher_base, const char *path, in
 	struct stat s;
 	int fd;
 
-	fd = open(path, flags | O_CLOEXEC);
-	if (fd == -1) {
-		weston_log("couldn't open: %s! error=%s\n", path, strerror(errno));
-		return -1;
+	/**
+	 * DRM Master FD is derived by SDM backend, so it can have
+	 * permission to commit.
+	 */
+	if (strcmp(path, "/dev/dri/card0") == 0) {
+		fd = get_drm_master_fd();
+		if (fd == -1) {
+			weston_log("%s: DRM device path=%s \n", __func__, path);
+			fd = open(path, flags | O_CLOEXEC);
+		}
+		if (fd == -1) {
+			weston_log("couldn't open: %s! error=%s\n", path, strerror(errno));
+			return -1;
+		}
+	} else {
+		fd = open(path, flags | O_CLOEXEC);
+		if (fd == -1)
+			return -1;
 	}
 
 	if (geteuid() != 0) {
