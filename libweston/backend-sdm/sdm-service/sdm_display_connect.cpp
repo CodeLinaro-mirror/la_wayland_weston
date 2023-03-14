@@ -474,14 +474,13 @@ void HandlePrimaryDisplayInfo() {
   }
 }
 
-void HandleNonPrimaryDisplayInfos(DisplayType type) {
+void HandleNonPrimaryDisplayInfos() {
   HWDisplaysInfo::iterator iter = hw_displays_info_.begin();
 
   for (iter; iter != hw_displays_info_.end(); ++iter) {
     if (iter->second.is_primary)
       continue;
-    if (iter->second.display_type != type)
-      continue;
+
     if (!iter->second.is_connected)
       continue;
 
@@ -502,7 +501,7 @@ int GetDisplayInfos(void) {
   /* primary display*/
   HandlePrimaryDisplayInfo();
   /* pluggable display*/
-  HandleNonPrimaryDisplayInfos(sdm::kPluggable);
+  HandleNonPrimaryDisplayInfos();
   return 0;
 }
 
@@ -513,7 +512,11 @@ char *GetConnectorName(uint32_t display_id) {
 
   switch(iter->second.display_type) {
     case kBuiltIn:
-      type_name = "DSI";
+      if (iter->second.is_primary) {
+        type_name = "DSI-1";
+      } else {
+        type_name = "DSI-2";
+      }
       break;
     case kPluggable:
       type_name = "DP";
