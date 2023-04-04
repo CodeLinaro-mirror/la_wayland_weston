@@ -914,6 +914,13 @@ DisplayError SdmDisplay::PostCommit(int *retire_fence_fd)
 
     //close release fence fds
     if (layer_stack_.retire_fence) {
+      if((*retire_fence_fd) > 0) {
+        int ret = -1;
+        ret = close(*retire_fence_fd);
+        DLOGD("Fence fd close real_pre(%d) pre(%d) ret(%d)\n",
+            (*retire_fence_fd), previous_retire_fence_fd_, ret);
+      }
+
       *retire_fence_fd = previous_retire_fence_fd_;
       previous_retire_fence_fd_ = Fence::Dup(layer_stack_.retire_fence);
     }
