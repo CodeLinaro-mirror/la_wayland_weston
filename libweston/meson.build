@@ -38,6 +38,7 @@ srcs_libweston = [
 	'weston-direct-display.c',
 	'zoom.c',
 	'gbm-buffer-backend.c',
+	'weston-qti-extn.c',
 	linux_dmabuf_unstable_v1_protocol_c,
 	linux_dmabuf_unstable_v1_server_protocol_h,
 	linux_explicit_synchronization_unstable_v1_protocol_c,
@@ -70,8 +71,10 @@ srcs_libweston = [
 	weston_debug_server_protocol_h,
 	weston_direct_display_protocol_c,
 	weston_direct_display_server_protocol_h,
-	gbm_buffer_backend_protocol_c,
-	gbm_buffer_backend_server_protocol_h,
+        gbm_buffer_backend_protocol_c,
+        gbm_buffer_backend_server_protocol_h,
+        weston_qti_extn_protocol_c,
+        weston_qti_extn_server_protocol_h,
 ]
 
 if get_option('renderer-gl')
@@ -161,6 +164,10 @@ if get_option('backend-drm')
 	deps_session_helper += dep_libdrm
 endif
 
+if get_option('backend-sdm')
+	deps_session_helper += [dep_libdrm, dep_libsdmcore, dep_libsdmutils, dep_libsdmdal]
+endif
+
 systemd_dep = dependency('', required: false)
 if get_option('launcher-logind')
 	systemd_dep = dependency('libsystemd', version: '>= 209', required: false)
@@ -204,7 +211,7 @@ endif
 lib_session_helper = static_library(
 	'session-helper',
 	srcs_session_helper,
-	include_directories: common_inc,
+	include_directories: [common_inc, ('backend-sdm')],
 	dependencies: deps_session_helper,
 	install: false
 )
@@ -268,6 +275,7 @@ install_headers(
 subdir('color-lcms')
 subdir('renderer-gl')
 subdir('backend-drm')
+subdir('backend-sdm')
 subdir('backend-fbdev')
 subdir('backend-headless')
 subdir('backend-rdp')
