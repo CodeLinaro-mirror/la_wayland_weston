@@ -453,7 +453,6 @@ weston_drm_format_add_modifier(struct weston_drm_format *format,
 			       uint64_t modifier)
 {
 	uint64_t *mod;
-	unsigned int num_modifiers;
 
 	/* We should not try to add repeated modifiers to a set. */
 	if (!weston_drm_format_has_modifier(format, modifier)) {
