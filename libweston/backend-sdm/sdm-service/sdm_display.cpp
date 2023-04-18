@@ -353,18 +353,22 @@ int SdmDisplay::OnMinHdcpEncryptionLevelChange(uint32_t min_enc_level) {
 }
 
 DisplayError SdmDisplay::FreeLayerStack() {
-    for (Layer *layer : layer_stack_.layers) {
+  for (uint32_t i = 0; i < layer_stack_.layers.size(); i++) {
+    Layer *layer = layer_stack_.layers.at(i);
+    /* only reserve the buffer fd of the GPUTarget layer */
+    if ((i != layer_stack_.layers.size()-1) && layer->input_buffer.planes[0].fd > 0)
+      close(layer->input_buffer.planes[0].fd);
 
-         layer->visible_regions.erase(layer->visible_regions.begin(),
-                                       layer->visible_regions.end());
-         layer->dirty_regions.erase(layer->dirty_regions.begin(),
-                                       layer->dirty_regions.end());
+    layer->visible_regions.erase(layer->visible_regions.begin(),
+                layer->visible_regions.end());
+    layer->dirty_regions.erase(layer->dirty_regions.begin(),
+                layer->dirty_regions.end());
 
-         delete layer;
-    }
-    layer_stack_ = {};
+    delete layer;
+  }
+  layer_stack_ = {};
 
-    return kErrorNone;
+  return kErrorNone;
 }
 
 DisplayError SdmDisplay::FreeLayerGeometry(struct LayerGeometry *glayer) {
@@ -910,6 +914,13 @@ DisplayError SdmDisplay::PostCommit(int *retire_fence_fd)
 
     //close release fence fds
     if (layer_stack_.retire_fence) {
+      if((*retire_fence_fd) > 0) {
+        int ret = -1;
+        ret = close(*retire_fence_fd);
+        DLOGD("Fence fd close real_pre(%d) pre(%d) ret(%d)\n",
+            (*retire_fence_fd), previous_retire_fence_fd_, ret);
+      }
+
       *retire_fence_fd = previous_retire_fence_fd_;
       previous_retire_fence_fd_ = Fence::Dup(layer_stack_.retire_fence);
     }

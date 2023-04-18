@@ -128,9 +128,11 @@ drm_assign_planes(struct weston_output *output_base, void *repaint_data)
 		    is_skip = true;
 		} else if (linux_dmabuf_buffer_get(es->buffer_ref.buffer->resource)) {
 		    is_skip = false;
-		}  else if (gbm_buffer_get(es->buffer_ref.buffer->resource)) {
+		} else if (gbm_buffer_get(es->buffer_ref.buffer->resource)) {
                     is_skip = false;
-		}  else if (wl_shm_buffer_get(es->buffer_ref.buffer->resource)) {
+		} else if (wl_shm_buffer_get(es->buffer_ref.buffer->resource)) {
+		    is_skip = true;
+		} else {
 		    is_skip = true;
 		}
 
