@@ -1297,13 +1297,15 @@ static int
 udev_drm_event(int fd, uint32_t mask, void *data)
 {
 	struct drm_backend *b = data;
-	struct udev_device *event;
+	struct udev_device *event = udev_monitor_receive_device(b->udev_monitor);;
+	int hpd = udev_event_is_hotplug(b, event);
+	int connected = udev_event_is_connected(b, event);
+	int disconnected = udev_event_is_disconnected(b, event);
+	int expect_hpd = hpd && (connected || disconnected);
 
-	event = udev_monitor_receive_device(b->udev_monitor);
-
-	if (udev_event_is_hotplug(b, event) ||
-		udev_event_is_connected(b, event) ||
-		udev_event_is_disconnected(b, event)) {
+	if (expect_hpd) {
+		weston_log("expected hpd event,connected=[%d] disconnected=[%d]\n",
+				connected, disconnected);
 		drm_backend_update_heads(b, event);
 	}
 
