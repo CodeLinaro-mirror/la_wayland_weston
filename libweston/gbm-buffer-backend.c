@@ -298,7 +298,9 @@ gbm_buffer_backend_create_buffer(struct wl_client *client,
 
     ret = weston_compositor_import_gbm_buffer(buffer->compositor, buffer);
     if (ret == false) {
-      weston_log("gbm_buffer_backend_create_buffer:: import_gbm_buffer failed\n");
+        weston_log("gbm_buffer_backend_create_buffer:: import_gbm_buffer failed.");
+        weston_log("Fail with fd(%d) meta_fd(%d) wxh(%dx%d) fmt(0x%x) flag(0x%x)\n",
+            fd, metadata_fd, width, height, format, flags);
     }
     // gbm bo is imported to buffer from above function to use in below perform call
     unsigned int secure_status = 0;
@@ -327,7 +329,6 @@ err_buffer:
 
 err_failed:
     gbm_buffer_params_send_failed(params_resource);
-    gbm_buffer_destroy(buffer);
 
     GBM_PROTOCOL_LOG(LOG_DBG,"gbm_buffer_backend_create_buffer::Exited with Error\n");
 }
