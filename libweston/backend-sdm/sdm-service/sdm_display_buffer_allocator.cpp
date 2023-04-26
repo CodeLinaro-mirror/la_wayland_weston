@@ -347,7 +347,7 @@ int SdmDisplayBufferAllocator::GetBufferLayout(const AllocatedBufferInfo &buf_in
 
     SetBufferInfo(buf_info.format, &format1, &flags);
 
-    import_fd_data.fd = dup(buf_info.fd);
+    import_fd_data.fd = buf_info.fd;
     import_fd_data.format = format1;
     import_fd_data.width = buf_info.aligned_width;
     import_fd_data.height = buf_info.aligned_height;
