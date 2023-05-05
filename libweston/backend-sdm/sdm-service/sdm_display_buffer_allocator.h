@@ -35,6 +35,8 @@
 #include <gbm_priv.h>
 #include "sdm-service/sdm_display_connect.h"
 #include <core/layer_stack.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 namespace sdm {
 
@@ -66,6 +68,7 @@ class SdmDisplayBufferAllocator : public BufferAllocator {
   bool IsVideoFormatLinear(uint32_t fmt, uint32_t ubwc_status);
   bool IsVideoFormatUBWC(uint32_t fmt, uint32_t ubwc_status);
   struct gbm_device *gbm_ = NULL;
+  bool is_gpu_available_ = true;
 };
 
 }  // namespace sdm

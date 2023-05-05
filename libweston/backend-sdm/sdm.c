@@ -1600,6 +1600,7 @@ drm_backend_create(struct weston_compositor *compositor,
 	const char *session_seat;
 	sdm_cbs_t sdm_cbs;
 	int ret;
+	bool is_gpu_available = true;
 
 	session_seat = getenv("XDG_SEAT");
 	if (session_seat)
@@ -1637,10 +1638,22 @@ drm_backend_create(struct weston_compositor *compositor,
 						    NULL, NULL, NULL);
 
 	compositor->backend = &b->base;
-
-	if (parse_gbm_format(config->gbm_format, GBM_FORMAT_ABGR8888, &b->gbm_format) < 0)
-		goto err_compositor;
-
+	int fd = open("/dev/kgsl-3d0", O_RDWR);
+	if (fd < 0) {
+		is_gpu_available = false;
+	}
+	if (fd >= 0) {
+		close(fd);
+		fd = -1;
+	}
+	if (!is_gpu_available) {
+		if (parse_gbm_format(config->gbm_format, GBM_FORMAT_ARGB8888, &b->gbm_format) < 0)
+		/* Mesa GBM doesn't support GBM_FORMAT_ABGR8888, passing format supported by mesa.*/
+			goto err_compositor;
+	} else {
+		if (parse_gbm_format(config->gbm_format, GBM_FORMAT_ABGR8888, &b->gbm_format) < 0)
+			goto err_compositor;
+	}
 	/* Check if we run drm-backend using weston-launch */
 	compositor->launcher = weston_launcher_connect(compositor, config->tty,
 						       seat_id, true);
