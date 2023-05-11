@@ -47,7 +47,8 @@ exe_weston = executable(
 	include_directories: common_inc,
 	dependencies: dep_libexec_weston,
 	install_rpath: dir_module_weston,
-	install: true
+	install: true,
+	c_args: ['-fstack-protector-all']
 )
 install_headers('weston.h', subdir: 'weston')
 
