@@ -353,6 +353,10 @@ int SdmDisplay::OnMinHdcpEncryptionLevelChange(uint32_t min_enc_level) {
 }
 
 DisplayError SdmDisplay::FreeLayerStack() {
+  /* block main thread execution until async commit finishes */
+  if (display_intf_)
+    display_intf_->DestroyLayer();
+
   for (uint32_t i = 0; i < layer_stack_.layers.size(); i++) {
     Layer *layer = layer_stack_.layers.at(i);
     /* only reserve the buffer fd of the GPUTarget layer */
@@ -912,11 +916,12 @@ DisplayError SdmDisplay::PostCommit(int *retire_fence_fd)
         LayerBuffer *layer_buffer = &layer->input_buffer;
     }
 
-    //close release fence fds
+    //Wait for release fence fds
     if (layer_stack_.retire_fence) {
+
       if((*retire_fence_fd) > 0) {
         int ret = -1;
-        ret = close(*retire_fence_fd);
+        ret = Fence::Wait(layer_stack_.retire_fence);
         DLOGD("Fence fd close real_pre(%d) pre(%d) ret(%d)\n",
             (*retire_fence_fd), previous_retire_fence_fd_, ret);
       }

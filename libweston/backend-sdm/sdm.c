@@ -98,14 +98,13 @@ vblank_handler(int display_id, int64_t timestamp, void *data)
 	if(output->retire_fence_fd > 0)
 	{
 		int error = 0;
-		int temp_fd = output->retire_fence_fd;
+		error = sync_wait(output->retire_fence_fd, FENCE_TIMEOUT);
+		close(output->retire_fence_fd);
 		output->retire_fence_fd = -1;
-		error = sync_wait(temp_fd, FENCE_TIMEOUT);
-		close(temp_fd);
 
 		if (error < 0)
 		{
-			weston_log("Error: retire fence timed out!");
+			weston_log("Error: retire fence timed out!\n");
 			return;
 		}
 	}
