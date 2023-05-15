@@ -383,6 +383,7 @@ egl_image_create(struct gl_renderer *gr, EGLenum target,
 				      target, buffer, attribs);
 
 	if (img->image == EGL_NO_IMAGE_KHR) {
+		gl_renderer_print_egl_error_state();
 		free(img);
 		return NULL;
 	}
@@ -3052,8 +3053,14 @@ import_gbm_buffer(struct gl_renderer *gr,struct gbm_buffer *gbmbuf)
 
 	GBM_PROTOCOL_LOG(LOG_DBG,"import_gbm_buffer::Image created =%p\n", image);
 
-	if (!image)
-			return NULL;
+	if (!image) {
+		weston_log("%s egl img create failed.", __FUNCTION__);
+		weston_log("WxH(%dx%d) fmt(0x%x) num(%d) fd(%d) str_0(%d) str_1(%d) str_2(%d)\n",
+			gbmbuf->width, gbmbuf->height, gbmbuf->format,
+			gbmbuf->num_planes, gbmbuf->fd, gbmbuf->stride[0],
+			gbmbuf->stride[1], gbmbuf->stride[2]);
+		return NULL;
+	}
 
 	/* The cache owns one ref. The caller gets another. */
 	image->gbmbuf = gbmbuf;
