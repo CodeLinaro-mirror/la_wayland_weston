@@ -28,7 +28,7 @@
  * SOFTWARE.
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  *
  */
@@ -419,6 +419,16 @@ get_drm_format(uint32_t format, struct drm_fb *fb)
 			fb->format = pixel_format_get_info(DRM_FORMAT_NV12);
 			fb->modifier = DRM_FORMAT_MOD_QCOM_COMPRESSED |
 					DRM_FORMAT_MOD_QCOM_DX | DRM_FORMAT_MOD_QCOM_TIGHT;
+			break;
+		case GBM_FORMAT_YCbCr_420_P010_UBWC:
+			fb->format = pixel_format_get_info(DRM_FORMAT_NV12);
+			fb->modifier = DRM_FORMAT_MOD_QCOM_COMPRESSED |
+					DRM_FORMAT_MOD_QCOM_DX | DRM_FORMAT_MOD_QCOM_TIGHT;
+			break;
+		case GBM_FORMAT_YCbCr_420_P010_VENUS:
+		case GBM_FORMAT_P010:
+			fb->format = pixel_format_get_info(DRM_FORMAT_NV12);
+			fb->modifier = DRM_FORMAT_MOD_QCOM_DX;
 			break;
 		default:
 			fb->format = NULL;
