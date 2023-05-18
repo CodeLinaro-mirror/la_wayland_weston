@@ -259,8 +259,8 @@ destroy_gbm_buffer(struct wl_resource *resource)
         return;
     }
 
-    if (!buffer->params_resource) {
-        weston_log("[%s] null params detected when destroy \n", __FUNCTION__);
+    if (buffer->params_resource) {
+        weston_log("[%s] params resource not released when destroy \n", __FUNCTION__);
         return;
     }
 
