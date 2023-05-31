@@ -138,7 +138,7 @@ DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
 }
 
 DisplayError SdmDisplay::DestroyDisplay() {
-    DisplayError error;
+    DisplayError error = kErrorNone;
 
     error = core_intf_->DestroyDisplay(display_intf_);
     display_intf_ = NULL;
@@ -359,9 +359,6 @@ DisplayError SdmDisplay::FreeLayerStack() {
 
   for (uint32_t i = 0; i < layer_stack_.layers.size(); i++) {
     Layer *layer = layer_stack_.layers.at(i);
-    /* only reserve the buffer fd of the GPUTarget layer */
-    if ((i != layer_stack_.layers.size()-1) && layer->input_buffer.planes[0].fd > 0)
-      close(layer->input_buffer.planes[0].fd);
 
     layer->visible_regions.erase(layer->visible_regions.begin(),
                 layer->visible_regions.end());
