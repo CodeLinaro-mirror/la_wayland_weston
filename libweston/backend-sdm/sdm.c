@@ -98,14 +98,13 @@ vblank_handler(int display_id, int64_t timestamp, void *data)
 	if(output->retire_fence_fd > 0)
 	{
 		int error = 0;
-		int temp_fd = output->retire_fence_fd;
+		error = sync_wait(output->retire_fence_fd, FENCE_TIMEOUT);
+		close(output->retire_fence_fd);
 		output->retire_fence_fd = -1;
-		error = sync_wait(temp_fd, FENCE_TIMEOUT);
-		close(temp_fd);
 
 		if (error < 0)
 		{
-			weston_log("Error: retire fence timed out!");
+			weston_log("Error: retire fence timed out!\n");
 			return;
 		}
 	}
@@ -858,9 +857,6 @@ drm_output_enable(struct weston_output *base)
 		return -1;
 	}
 
-	if (SetVSyncState(output->display_id, true, output) != 0)
-		return -1;
-
 	drm_output_print_modes(output);
 
 	return 0;
@@ -1603,6 +1599,7 @@ drm_backend_create(struct weston_compositor *compositor,
 	const char *session_seat;
 	sdm_cbs_t sdm_cbs;
 	int ret;
+	bool is_gpu_available = true;
 
 	session_seat = getenv("XDG_SEAT");
 	if (session_seat)
@@ -1640,10 +1637,22 @@ drm_backend_create(struct weston_compositor *compositor,
 						    NULL, NULL, NULL);
 
 	compositor->backend = &b->base;
-
-	if (parse_gbm_format(config->gbm_format, GBM_FORMAT_ABGR8888, &b->gbm_format) < 0)
-		goto err_compositor;
-
+	int fd = open("/dev/kgsl-3d0", O_RDWR);
+	if (fd < 0) {
+		is_gpu_available = false;
+	}
+	if (fd >= 0) {
+		close(fd);
+		fd = -1;
+	}
+	if (!is_gpu_available) {
+		if (parse_gbm_format(config->gbm_format, GBM_FORMAT_ARGB8888, &b->gbm_format) < 0)
+		/* Mesa GBM doesn't support GBM_FORMAT_ABGR8888, passing format supported by mesa.*/
+			goto err_compositor;
+	} else {
+		if (parse_gbm_format(config->gbm_format, GBM_FORMAT_ABGR8888, &b->gbm_format) < 0)
+			goto err_compositor;
+	}
 	/* Check if we run drm-backend using weston-launch */
 	compositor->launcher = weston_launcher_connect(compositor, config->tty,
 						       seat_id, true);

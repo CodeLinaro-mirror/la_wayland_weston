@@ -41,6 +41,14 @@ SdmDisplayBufferAllocator::SdmDisplayBufferAllocator() {
     int drm_fd = get_drm_master_fd();
 
     gbm_ = gbm_create_device(drm_fd);
+    int gpu_fd = open("/dev/kgsl-3d0", O_RDWR);
+    if (gpu_fd < 0) {
+      is_gpu_available_ = false;
+    }
+    if (gpu_fd >= 0) {
+      close(gpu_fd);
+      gpu_fd = -1;
+    }
 }
 
 LayerBufferFormat GetLayerBufferFormat(uint32_t format, uint32_t ubwc_status) {
@@ -344,10 +352,11 @@ int SdmDisplayBufferAllocator::GetBufferLayout(const AllocatedBufferInfo &buf_in
     uint64_t flags = 0;
     uint32_t ubwc_status = 0;
     generic_buf_layout_t buf_layout;
+    uint32_t aligned_width = 0;
 
     SetBufferInfo(buf_info.format, &format1, &flags);
 
-    import_fd_data.fd = dup(buf_info.fd);
+    import_fd_data.fd = buf_info.fd;
     import_fd_data.format = format1;
     import_fd_data.width = buf_info.aligned_width;
     import_fd_data.height = buf_info.aligned_height;
@@ -361,9 +370,20 @@ int SdmDisplayBufferAllocator::GetBufferLayout(const AllocatedBufferInfo &buf_in
 
     uint32_t height = gbm_bo_get_height(bo);
     uint32_t format = gbm_bo_get_format(bo);
+    uint32_t bpp = gbm_bo_get_bpp(bo);
 
     if (IsFormatVideo(format) == false) {
-      stride[0] = gbm_bo_get_stride(bo);
+      /* Importing bo from mesa-gbm requires stride value to be passed as part of
+      gbm_import_fd_data structure. Our gbm implementation doesn't mandate this requirement.
+      As a result, we get 0 value from gbm_bo_get_stride call for mesa-gbm case. To handle this
+      scenario, we use a custom perform API patched on top of the mesa-gbm code to handle that.
+      */
+      if (!is_gpu_available_) {
+          gbm_perform(GBM_PERFORM_GET_BO_ALIGNED_WIDTH, bo, &aligned_width);
+          stride[0] = ((bpp/8)*aligned_width);
+      } else {
+          stride[0] = gbm_bo_get_stride(bo);
+      }
       offset[0] = 0;
       *num_planes++;
       gbm_bo_destroy(bo);

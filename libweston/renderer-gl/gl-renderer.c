@@ -383,6 +383,7 @@ egl_image_create(struct gl_renderer *gr, EGLenum target,
 				      target, buffer, attribs);
 
 	if (img->image == EGL_NO_IMAGE_KHR) {
+		gl_renderer_print_egl_error_state();
 		free(img);
 		return NULL;
 	}
@@ -2974,9 +2975,17 @@ static struct egl_image *
 import_gbm_buffer(struct gl_renderer *gr,struct gbm_buffer *gbmbuf)
 {
 	struct egl_image *image;
-	EGLint attribs[30];
 	int atti = 0;
 	unsigned int secure_status = 0;
+	EGLint attribs[32] = {
+		EGL_WIDTH, 0,
+		EGL_HEIGHT, 0,
+		EGL_LINUX_DRM_FOURCC_EXT, 0,
+		EGL_DMA_BUF_PLANE0_FD_EXT, 0,
+		EGL_DMA_BUF_PLANE0_PITCH_EXT, 0,
+		EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
+		EGL_NONE
+	};
 
 	gbm_perform(GBM_PERFORM_GET_SECURE_BUFFER_STATUS, gbmbuf->bo, &secure_status, NULL);
 	//If format is in skip list, return with out creating egl image.
@@ -3023,6 +3032,10 @@ import_gbm_buffer(struct gl_renderer *gr,struct gbm_buffer *gbmbuf)
 		attribs[atti++] = EGL_DMA_BUF_PLANE1_PITCH_EXT;
 		attribs[atti++] = gbmbuf->stride[1];
 	}
+
+	// Actually we don't really need to send these two planes info to GFX
+	// GFX would process UBWC internally
+	// But if do send, they should be valid value
 	if (gbmbuf->num_planes > 2) {
 		attribs[atti++] = EGL_DMA_BUF_PLANE2_FD_EXT;
 		attribs[atti++] = -1;
@@ -3030,6 +3043,14 @@ import_gbm_buffer(struct gl_renderer *gr,struct gbm_buffer *gbmbuf)
 		attribs[atti++] = gbmbuf->offset[2];
 		attribs[atti++] = EGL_DMA_BUF_PLANE2_PITCH_EXT;
 		attribs[atti++] = gbmbuf->stride[2];
+	}
+	if (gbmbuf->num_planes > 3) {
+		attribs[atti++] = EGL_DMA_BUF_PLANE3_FD_EXT;
+		attribs[atti++] = -1;
+		attribs[atti++] = EGL_DMA_BUF_PLANE3_OFFSET_EXT;
+		attribs[atti++] = gbmbuf->offset[3];
+		attribs[atti++] = EGL_DMA_BUF_PLANE3_PITCH_EXT;
+		attribs[atti++] = gbmbuf->stride[3];
 	}
 	attribs[atti++] = EGL_NONE;
 
@@ -3046,6 +3067,8 @@ import_gbm_buffer(struct gl_renderer *gr,struct gbm_buffer *gbmbuf)
 
 	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->offset[2]=%d", gbmbuf->offset[2]);
 	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->stride[2]=%d", gbmbuf->stride[2]);
+	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->offset[3]=%d", gbmbuf->offset[3]);
+	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->stride[3]=%d", gbmbuf->stride[3]);
 
 	image = egl_image_create(gr, EGL_LINUX_DMA_BUF_EXT, NULL,
 									attribs);
