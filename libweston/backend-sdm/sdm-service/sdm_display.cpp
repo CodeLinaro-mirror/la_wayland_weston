@@ -138,7 +138,7 @@ DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
 }
 
 DisplayError SdmDisplay::DestroyDisplay() {
-    DisplayError error;
+    DisplayError error = kErrorNone;
 
     error = core_intf_->DestroyDisplay(display_intf_);
     display_intf_ = NULL;
@@ -216,7 +216,7 @@ void SdmDisplay::RefreshWithCachedLayerstack()
         DLOGE("Commit failed with error %d", error);
         return;
     } else{
-        PostCommit(&prev_output_->retire_fence_fd);
+        PostCommit();
         NotifyOnRefresh(prev_output_);
     }
 }
@@ -359,9 +359,6 @@ DisplayError SdmDisplay::FreeLayerStack() {
 
   for (uint32_t i = 0; i < layer_stack_.layers.size(); i++) {
     Layer *layer = layer_stack_.layers.at(i);
-    /* only reserve the buffer fd of the GPUTarget layer */
-    if ((i != layer_stack_.layers.size()-1) && layer->input_buffer.planes[0].fd > 0)
-      close(layer->input_buffer.planes[0].fd);
 
     layer->visible_regions.erase(layer->visible_regions.begin(),
                 layer->visible_regions.end());
@@ -905,29 +902,24 @@ DisplayError SdmDisplay::PreCommit()
 }
 
 
-DisplayError SdmDisplay::PostCommit(int *retire_fence_fd)
+DisplayError SdmDisplay::PostCommit()
 {
     DisplayError error = kErrorNone;
+
+    //Wait for retire fence fds
+    if (prev_layer_stack_.retire_fence) {
+        int ret = -1;
+        ret = Fence::Wait(prev_layer_stack_.retire_fence);
+        if (ret != kErrorNone) {
+            DLOGE("retire_fence wait timeout! ret=%d\n", ret);
+        }
+    }
 
     prev_layer_stack_ = layer_stack_;
     //Iterate through the layer buffer and close release fences
     for (uint32_t i = 0; i < layer_stack_.layers.size(); i++) {
         Layer *layer = layer_stack_.layers.at(i);
         LayerBuffer *layer_buffer = &layer->input_buffer;
-    }
-
-    //Wait for release fence fds
-    if (layer_stack_.retire_fence) {
-
-      if((*retire_fence_fd) > 0) {
-        int ret = -1;
-        ret = Fence::Wait(layer_stack_.retire_fence);
-        DLOGD("Fence fd close real_pre(%d) pre(%d) ret(%d)\n",
-            (*retire_fence_fd), previous_retire_fence_fd_, ret);
-      }
-
-      *retire_fence_fd = previous_retire_fence_fd_;
-      previous_retire_fence_fd_ = Fence::Dup(layer_stack_.retire_fence);
     }
 
     return error;
@@ -960,7 +952,7 @@ DisplayError SdmDisplay::Commit(struct drm_output *output)
     prev_output_ = output;
     ret = display_intf_->Commit(&layer_stack_);
 
-    PostCommit(&output->retire_fence_fd);
+    PostCommit();
 
     DLOGV("success");
     return ret;
