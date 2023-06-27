@@ -47,12 +47,12 @@ extern "C" {
     called only once. Parameters used in this method internally and not exposed to Client
     are noted below for information purposes only.
 
-    @param[in] void \endlink
+    @param[in] use_pixman \link bool \endlink
     @return \link DisplayError \endlink
 
     @sa DestroyCore
 */
-int CreateCore();
+int CreateCore(bool use_pixman);
 
 /*! @brief Method to release internally stored handle to display core interface.
 

@@ -214,6 +214,7 @@ enum drm_fb_type {
 	BUFFER_CLIENT, /**< directly sourced from client */
 	BUFFER_DMABUF, /**< imported from linux_dmabuf client */
 	BUFFER_PIXMAN_DUMB, /**< internal Pixman rendering */
+	BUFFER_PIXMAN_GBM,  /**< internal Pixman rendering with GBM */
 	BUFFER_GBM_SURFACE, /**< internal EGL rendering */
 	BUFFER_CURSOR, /**< internal cursor buffer */
 };
@@ -293,7 +294,7 @@ struct drm_output {
 
 	struct drm_fb *next_fb, *current_fb;
 
-	struct drm_fb *dumb[2];
+	struct gbm_bo *dumb_bo[2];
 	pixman_image_t *image[2];
 	int current_image;
 	pixman_region32_t previous_damage;

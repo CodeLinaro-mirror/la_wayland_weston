@@ -519,6 +519,8 @@ drm_fb_unref(struct drm_fb *fb)
 	case BUFFER_PIXMAN_DUMB:
 		drm_fb_destroy_dumb(fb);
 		break;
+	case BUFFER_PIXMAN_GBM:
+		break;
 #ifdef BUILD_DRM_GBM
 	case BUFFER_CURSOR:
 	case BUFFER_CLIENT:

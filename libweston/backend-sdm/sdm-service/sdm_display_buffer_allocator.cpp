@@ -37,7 +37,7 @@ extern "C" {
 #endif
 namespace sdm {
 
-SdmDisplayBufferAllocator::SdmDisplayBufferAllocator() {
+SdmDisplayBufferAllocator::SdmDisplayBufferAllocator(bool use_pixman) {
     int drm_fd = get_drm_master_fd();
 
     gbm_ = gbm_create_device(drm_fd);
@@ -49,6 +49,8 @@ SdmDisplayBufferAllocator::SdmDisplayBufferAllocator() {
       close(gpu_fd);
       gpu_fd = -1;
     }
+
+    is_pixman_available_ = use_pixman;
 }
 
 LayerBufferFormat GetLayerBufferFormat(uint32_t format, uint32_t ubwc_status) {
@@ -378,7 +380,7 @@ int SdmDisplayBufferAllocator::GetBufferLayout(const AllocatedBufferInfo &buf_in
       As a result, we get 0 value from gbm_bo_get_stride call for mesa-gbm case. To handle this
       scenario, we use a custom perform API patched on top of the mesa-gbm code to handle that.
       */
-      if (!is_gpu_available_) {
+      if (!is_gpu_available_ && !is_pixman_available_) {
           gbm_perform(GBM_PERFORM_GET_BO_ALIGNED_WIDTH, bo, &aligned_width);
           stride[0] = ((bpp/8)*aligned_width);
       } else {
