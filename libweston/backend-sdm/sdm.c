@@ -643,6 +643,7 @@ drm_output_init_pixman(struct drm_output *output, struct drm_backend *b)
 	unsigned int i;
 	const struct pixman_renderer_output_options options = {
 		.use_shadow = b->use_pixman_shadow,
+		.gbm_handle = b->gbm
 	};
 
 	switch (format) {
