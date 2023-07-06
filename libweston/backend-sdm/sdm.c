@@ -1643,10 +1643,6 @@ drm_backend_create(struct weston_compositor *compositor,
 	b->pageflip_timeout = config->pageflip_timeout;
 	b->use_pixman_shadow = config->use_pixman_shadow;
 
-	if (b->use_pixman) {
-		weston_log("Use Pixman Rendering - SDM backend\n");
-	}
-
 	b->debug = weston_compositor_add_log_scope(compositor->weston_log_ctx,
 						   "drm-backend",
 						   "Debug messages from DRM/KMS backend\n",
@@ -1669,6 +1665,12 @@ drm_backend_create(struct weston_compositor *compositor,
 		if (parse_gbm_format(config->gbm_format, GBM_FORMAT_ABGR8888, &b->gbm_format) < 0)
 			goto err_compositor;
 	}
+
+	if (b->use_pixman || !is_gpu_available) {
+		b->use_pixman = true;
+		weston_log("Use Pixman Rendering - SDM backend\n");
+	}
+
 	/* Check if we run drm-backend using weston-launch */
 	compositor->launcher = weston_launcher_connect(compositor, config->tty,
 						       seat_id, true);
