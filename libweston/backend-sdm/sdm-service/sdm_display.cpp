@@ -805,6 +805,19 @@ DisplayError SdmDisplay::PostPrepare(struct drm_output *output)
       index++;
     }
 
+    if (output->backend->use_pixman)
+    {
+        // Pixman uses double buffer,it would repaint FBT after prepare
+        // So need wait pre-reitre_fence here to avoid tearing issue
+        if (prev_layer_stack_.retire_fence) {
+            int ret = -1;
+            ret = Fence::Wait(prev_layer_stack_.retire_fence);
+            if (ret != kErrorNone) {
+                DLOGE("retire_fence wait timeout! ret=%d\n", ret);
+            }
+        }
+    }
+
     return error;
 }
 
