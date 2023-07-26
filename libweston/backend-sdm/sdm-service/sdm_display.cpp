@@ -223,6 +223,7 @@ void SdmDisplay::RefreshWithCachedLayerstack()
 
 void SdmDisplay::HandlePanelDead()
 {
+    uint32_t i = 0;
     //TODO(user): extend for multi display if needed. currently handle for primary display.
     if (display_type_ != kPrimary) {
       DLOGE("Current display is not primary");
@@ -252,8 +253,15 @@ void SdmDisplay::HandlePanelDead()
         return;
     }
 
-    error = display_intf_->SetVSyncState(true);
-    if (error != kErrorNone) {
+    do {
+        error = display_intf_->SetVSyncState(true);
+        if (error != kErrorNone) {
+            usleep(1000);
+            i++;
+        }
+    } while (error && i < 16);
+
+    if (error) {
         DLOGE("Failed to SetVSyncState  with error %d", error);
         return;
     }
