@@ -263,7 +263,6 @@ void SdmDisplay::HandlePanelDead()
 
     if (error) {
         DLOGE("Failed to SetVSyncState  with error %d", error);
-        return;
     }
 
     RefreshWithCachedLayerstack();
