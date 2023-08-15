@@ -40,6 +40,8 @@ extern "C" {
 #include "sdm-service/sdm_display_debugger.h"
 
 #define __CLASS__ "SdmDisplayDebugger"
+#define PATH_MAX 256
+#define DISPLAY_TRACE_DEBUG_PROP "persist.display.trace.debug"
 
 using std::string;
 
@@ -202,6 +204,14 @@ void SdmDisplayDebugger::config_debug_level(void) {
   }
 }
 
+void SdmDisplayDebugger::config_trace_debug(void) {
+  if (GetProperty(DISPLAY_TRACE_DEBUG_PROP, &trace_debug_) == kErrorNone) {
+    printf("found trace prop, set sdm trace debug:%s\n", trace_debug_?"enable":"disable");
+  } else {
+    printf("trace prop not found, default is disable! -%d\n", trace_debug_);
+  }
+}
+
 void SdmDisplayDebugger::Error(const char *format, ...) {
   if (verbose_level_ > NONE) {
       va_list list;
@@ -269,15 +279,22 @@ int SdmDisplayDebugger::GetProperty(const char *property_name, char *value) {
 SdmDisplayDebugger::SdmDisplayDebugger() {
   DebugHandler::Set(SdmDisplayDebugger::Get());
   config_debug_level();
+  config_trace_debug();
 }
 
 void SdmDisplayDebugger::BeginTrace(const char *class_name, const char *function_name,
                                                   const char *custom_string) {
-	ATRACE_BEGIN(function_name);
+  if (trace_debug_) {
+    char name[PATH_MAX] = {0};
+    snprintf(name, sizeof(name), "%s::%s::%s", class_name, function_name, custom_string);
+    atrace_begin(ATRACE_TAG, name);
+  }
 }
 
 void SdmDisplayDebugger::EndTrace() {
-	ATRACE_END();
+  if (trace_debug_) {
+    atrace_end(ATRACE_TAG);
+  }
 }
 
 }  // namespace sdm

@@ -223,6 +223,7 @@ void SdmDisplay::RefreshWithCachedLayerstack()
 
 void SdmDisplay::HandlePanelDead()
 {
+    uint32_t i = 0;
     //TODO(user): extend for multi display if needed. currently handle for primary display.
     if (display_type_ != kPrimary) {
       DLOGE("Current display is not primary");
@@ -252,10 +253,16 @@ void SdmDisplay::HandlePanelDead()
         return;
     }
 
-    error = display_intf_->SetVSyncState(true);
-    if (error != kErrorNone) {
+    do {
+        error = display_intf_->SetVSyncState(true);
+        if (error != kErrorNone) {
+            usleep(1000);
+            i++;
+        }
+    } while (error && i < 16);
+
+    if (error) {
         DLOGE("Failed to SetVSyncState  with error %d", error);
-        return;
     }
 
     RefreshWithCachedLayerstack();
@@ -803,6 +810,19 @@ DisplayError SdmDisplay::PostPrepare(struct drm_output *output)
         sdm_layer->composition_type = SDM_COMPOSITION_OVERLAY;
       }
       index++;
+    }
+
+    if (output->backend->use_pixman)
+    {
+        // Pixman uses double buffer,it would repaint FBT after prepare
+        // So need wait pre-reitre_fence here to avoid tearing issue
+        if (prev_layer_stack_.retire_fence) {
+            int ret = -1;
+            ret = Fence::Wait(prev_layer_stack_.retire_fence);
+            if (ret != kErrorNone) {
+                DLOGE("retire_fence wait timeout! ret=%d\n", ret);
+            }
+        }
     }
 
     return error;

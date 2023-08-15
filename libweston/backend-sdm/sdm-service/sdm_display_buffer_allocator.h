@@ -46,7 +46,7 @@ inline Type ALIGN(Type x, Type align) {
 }
 class SdmDisplayBufferAllocator : public BufferAllocator {
  public:
-  SdmDisplayBufferAllocator();
+  SdmDisplayBufferAllocator(bool use_pixman);
   ~SdmDisplayBufferAllocator() {
     gbm_device_destroy(gbm_);
     gbm_ = NULL;
@@ -69,6 +69,7 @@ class SdmDisplayBufferAllocator : public BufferAllocator {
   bool IsVideoFormatUBWC(uint32_t fmt, uint32_t ubwc_status);
   struct gbm_device *gbm_ = NULL;
   bool is_gpu_available_ = true;
+  bool is_pixman_available_ = false;
 };
 
 }  // namespace sdm

@@ -100,14 +100,14 @@ SetProperty(const char *property_name, const char *value)
   return kErrorNotSupported;
 }
 
-int CreateCore()
+int CreateCore(bool use_pixman)
 {
     DisplayError error = kErrorNone;
     if (core_intf_) {
         DLOGW("Core was already created.");
         return kErrorNone;
     }
-    buffer_allocator_ = new SdmDisplayBufferAllocator;
+    buffer_allocator_ = new SdmDisplayBufferAllocator(use_pixman);
 
     // TODO: Check the requirement for this property
     std::shared_ptr<IPCIntf> ipc_intf = nullptr;

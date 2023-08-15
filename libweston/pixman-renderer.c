@@ -38,6 +38,7 @@
 #include "shared/helpers.h"
 
 #include <linux/input.h>
+#include "gbm-buffer-backend.h"
 
 struct pixman_output_state {
 	void *shadow_buffer;
@@ -66,6 +67,7 @@ struct pixman_renderer {
 	struct weston_binding *debug_binding;
 
 	struct wl_signal destroy_signal;
+	struct gbm_device* gbm_device;
 };
 
 static inline struct pixman_output_state *
@@ -620,6 +622,15 @@ buffer_state_handle_buffer_destroy(struct wl_listener *listener, void *data)
 }
 
 static void
+pixman_renderer_attach_gbm_buffer(struct weston_surface *surface,
+                                   struct weston_buffer *buffer,
+                                   struct gbm_buffer *gbmbuf)
+{
+	buffer->width = gbmbuf->width;
+	buffer->height = gbmbuf->height;
+}
+
+static void
 pixman_renderer_attach(struct weston_surface *es, struct weston_buffer *buffer)
 {
 	struct pixman_surface_state *ps = get_surface_state(es);
@@ -646,10 +657,16 @@ pixman_renderer_attach(struct weston_surface *es, struct weston_buffer *buffer)
 	shm_buffer = wl_shm_buffer_get(buffer->resource);
 
 	if (! shm_buffer) {
-		weston_log("Pixman renderer supports only SHM buffers\n");
-		weston_buffer_reference(&ps->buffer_ref, NULL);
-		weston_buffer_release_reference(&ps->buffer_release_ref, NULL);
-		return;
+		struct gbm_buffer *gbmbuf;
+		if (gbmbuf = gbm_buffer_get(buffer->resource)) {
+			pixman_renderer_attach_gbm_buffer(es, buffer, gbmbuf);
+			return;
+		} else {
+			weston_log("Pixman renderer supports only SHM and gbm buffers\n");
+			weston_buffer_reference(&ps->buffer_ref, NULL);
+			weston_buffer_release_reference(&ps->buffer_release_ref, NULL);
+			return;
+		}
 	}
 
 	pixel_info = pixel_format_get_info_shm(wl_shm_buffer_get_format(shm_buffer));
@@ -850,6 +867,66 @@ debug_binding(struct weston_keyboard *keyboard, const struct timespec *time,
 	}
 }
 
+
+static bool
+pixman_renderer_import_gbm_buffer(
+		struct weston_compositor *compositor, struct gbm_buffer *gbm_buf)
+{
+	struct gbm_buf_info  buf_info;
+	generic_buf_layout_t buf_lyt;
+	struct gbm_bo *bo;
+	uint32_t j;
+	struct pixman_renderer *pr = get_renderer(compositor);
+	struct gbm_device *gbm = pr->gbm_device;
+
+	if (gbm == NULL) {
+		weston_log("pixman_renderer_import_gbm_buffer::gbm_device is null!\n");
+		return false;
+	}
+
+	if (gbm_buf == NULL) {
+		return false;
+	}
+
+	buf_info.fd          = gbm_buf->fd;
+	buf_info.metadata_fd = gbm_buf->metadata_fd;
+	buf_info.height      = gbm_buf->height;
+	buf_info.width       = gbm_buf->width;
+	buf_info.format      = gbm_buf->format;
+
+	GBM_PROTOCOL_LOG(LOG_DBG,"pixman_renderer_import_gbm_buffer:Invoked");
+
+	//We will import BO to create an entry into the hash map for this buf_info
+	bo = gbm_bo_import(gbm, GBM_BO_IMPORT_GBM_BUF_TYPE, &buf_info, GBM_BO_USE_RENDERING);
+
+	//save gbm buffer object
+	gbm_buf->bo = bo;
+
+	GBM_PROTOCOL_LOG(LOG_DBG,"pixman_renderer_import_gbm_buffer:bo created= %p",bo);
+
+	int ret = gbm_perform(GBM_PERFORM_GET_PLANE_INFO, bo, &buf_lyt);
+	if (ret == GBM_ERROR_NONE) {
+		gbm_buf->num_planes = buf_lyt.num_planes;
+		for(j = 0;j < buf_lyt.num_planes; j++) {
+			gbm_buf->offset[j] = buf_lyt.planes[j].offset;
+			gbm_buf->stride[j] = buf_lyt.planes[j].v_increment;
+		}
+	}
+	else {
+		GBM_PROTOCOL_LOG(LOG_DBG,"GET PLANE Info failed\n");
+		return false;
+	}
+
+	//Fill up the remaining fields with default values
+	for (;j < MAX_NUM_PLANES; j++) {
+		gbm_buf->offset[j] = 0;
+		gbm_buf->stride[j] = 0;
+	}
+
+	GBM_PROTOCOL_LOG(LOG_DBG,"pixman_renderer_import_gbm_buffer:Exited");
+	return true;
+}
+
 WL_EXPORT int
 pixman_renderer_init(struct weston_compositor *ec)
 {
@@ -873,6 +950,8 @@ pixman_renderer_init(struct weston_compositor *ec)
 		pixman_renderer_surface_get_content_size;
 	renderer->base.surface_copy_content =
 		pixman_renderer_surface_copy_content;
+	renderer->base.import_gbm_buffer =
+		pixman_renderer_import_gbm_buffer;
 	ec->renderer = &renderer->base;
 	ec->capabilities |= WESTON_CAP_ROTATION_ANY;
 	ec->capabilities |= WESTON_CAP_VIEW_CLIP_MASK;
@@ -937,6 +1016,11 @@ pixman_renderer_output_create(struct weston_output *output,
 	po = zalloc(sizeof *po);
 	if (po == NULL)
 		return -1;
+
+	if (options->gbm_handle) {
+		struct pixman_renderer *pr = get_renderer(output->compositor);
+		pr->gbm_device = options->gbm_handle;
+	}
 
 	if (options->use_shadow) {
 		/* set shadow image transformation */

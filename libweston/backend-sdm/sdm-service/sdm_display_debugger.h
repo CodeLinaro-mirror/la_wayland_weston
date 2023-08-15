@@ -41,7 +41,7 @@
 #include <cassert>
 #include <stdint.h>
 
-#define ATRACE_TAG (ATRACE_TAG_GRAPHICS | ATRACE_TAG_HAL)
+#define ATRACE_TAG (ATRACE_TAG_ALWAYS)
 
 enum {
        NONE,
@@ -63,6 +63,7 @@ class SdmDisplayDebugger : public DebugHandler {
   static inline DebugHandler* Get() { return &debug_handler_; }
   static const char *DumpDir() { return "/data/misc/display"; }
   void config_debug_level(void);
+  void config_trace_debug(void);
 
   static void DebugAll(bool enable, int verbose_level);
   static void DebugResources(bool enable, int verbose_level);
@@ -94,6 +95,7 @@ class SdmDisplayDebugger : public DebugHandler {
   static SdmDisplayDebugger debug_handler_;
   std::bitset<32> log_mask_;
   int verbose_level_ = ERROR;
+  int trace_debug_ = 0;
 };
 
 }  // namespace sdm

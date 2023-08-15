@@ -298,6 +298,7 @@ drm_output_render_pixman(struct drm_output *output,
 			 pixman_region32_t *damage)
 {
 	struct weston_compositor *ec = output->base.compositor;
+	struct drm_backend *b = to_drm_backend(ec);
 
 	output->current_image ^= 1;
 
@@ -310,7 +311,8 @@ drm_output_render_pixman(struct drm_output *output,
 
 	pixman_region32_copy(&output->previous_damage, damage);
 
-	return drm_fb_ref(output->dumb[output->current_image]);
+	return drm_fb_get_from_bo(output->dumb_bo[output->current_image],
+						b, true, BUFFER_PIXMAN_GBM);
 }
 
 static void
@@ -573,9 +575,24 @@ drm_output_switch_mode(struct weston_output *output_base, struct weston_mode *mo
 	return 0;
 }
 
+static struct gbm_device *
+create_gbm_device(int fd)
+{
+	struct gbm_device *gbm;
+
+	gbm = gbm_create_device(fd);
+
+	return gbm;
+}
+
 static int
 init_pixman(struct drm_backend *b)
 {
+	b->gbm = create_gbm_device(b->drm.fd);
+
+	if (!b->gbm)
+		return -1;
+
 	return pixman_renderer_init(b->compositor);
 }
 
@@ -626,9 +643,16 @@ drm_output_init_pixman(struct drm_output *output, struct drm_backend *b)
 	unsigned int i;
 	const struct pixman_renderer_output_options options = {
 		.use_shadow = b->use_pixman_shadow,
+		.gbm_handle = b->gbm
 	};
 
 	switch (format) {
+		case GBM_FORMAT_ABGR8888:
+			pixman_format = PIXMAN_a8b8g8r8;
+			break;
+		case GBM_FORMAT_ARGB8888:
+			pixman_format = PIXMAN_a8r8g8b8;
+			break;
 		case GBM_FORMAT_XRGB8888:
 			pixman_format = PIXMAN_x8r8g8b8;
 			break;
@@ -641,15 +665,25 @@ drm_output_init_pixman(struct drm_output *output, struct drm_backend *b)
 	}
 
 	/* FIXME error checking */
-	for (i = 0; i < ARRAY_LENGTH(output->dumb); i++) {
-		output->dumb[i] = drm_fb_create_dumb(b, w, h, format);
-		if (!output->dumb[i])
+	for (i = 0; i < ARRAY_LENGTH(output->dumb_bo); i++) {
+		output->dumb_bo[i] = gbm_bo_create(b->gbm, w, h, format, output->gbm_bo_flags);
+		if (!output->dumb_bo[i])
 			goto err;
 
+		// Use gbm buffer as pixman image
+		uint8_t *bo_mmap = NULL;
+		int ret = -1;
+		ret = gbm_perform(GBM_PERFORM_CPU_MAP_FOR_BO, output->dumb_bo[i], &bo_mmap);
+		if (ret != GBM_ERROR_NONE) {
+			weston_log("gbm bo map failed with ret = %d\n", ret);
+			goto err;
+		}
+
+		weston_log("gbm bo [%d] map = %p\n", i, bo_mmap);
+
 		output->image[i] =
-			pixman_image_create_bits(pixman_format, w, h,
-						 output->dumb[i]->map,
-						 output->dumb[i]->strides[0]);
+		pixman_image_create_bits(pixman_format, w, h,
+						 bo_mmap, gbm_bo_get_stride(output->dumb_bo[i]));
 		if (!output->image[i])
 			goto err;
 	}
@@ -666,14 +700,14 @@ drm_output_init_pixman(struct drm_output *output, struct drm_backend *b)
 	return 0;
 
 err:
-	for (i = 0; i < ARRAY_LENGTH(output->dumb); i++) {
-		if (output->dumb[i])
-			drm_fb_unref(output->dumb[i]);
+	for (i = 0; i < ARRAY_LENGTH(output->dumb_bo); i++) {
 		if (output->image[i])
 			pixman_image_unref(output->image[i]);
+		if (output->dumb_bo[i])
+			gbm_bo_destroy(output->dumb_bo[i]);
 
-		output->dumb[i] = NULL;
 		output->image[i] = NULL;
+		output->dumb_bo[i] = NULL;
 	}
 
 	return -1;
@@ -687,11 +721,11 @@ drm_output_fini_pixman(struct drm_output *output)
 	pixman_renderer_output_destroy(&output->base);
 	pixman_region32_fini(&output->previous_damage);
 
-	for (i = 0; i < ARRAY_LENGTH(output->dumb); i++) {
+	for (i = 0; i < ARRAY_LENGTH(output->dumb_bo); i++) {
 		pixman_image_unref(output->image[i]);
-		drm_fb_unref(output->dumb[i]);
-		output->dumb[i] = NULL;
 		output->image[i] = NULL;
+		gbm_bo_destroy(output->dumb_bo[i]);
+		output->dumb_bo[i] = NULL;
 	}
 }
 
@@ -1609,14 +1643,6 @@ drm_backend_create(struct weston_compositor *compositor,
 	b->pageflip_timeout = config->pageflip_timeout;
 	b->use_pixman_shadow = config->use_pixman_shadow;
 
-	if (b->use_pixman) {
-		weston_log("Error: Pixman Rendering not supported by SDM backend\n");
-		errno = -EINVAL;
-		wl_array_release(&b->unused_crtcs);
-		free(b);
-		return NULL;
-	}
-
 	b->debug = weston_compositor_add_log_scope(compositor->weston_log_ctx,
 						   "drm-backend",
 						   "Debug messages from DRM/KMS backend\n",
@@ -1639,6 +1665,12 @@ drm_backend_create(struct weston_compositor *compositor,
 		if (parse_gbm_format(config->gbm_format, GBM_FORMAT_ABGR8888, &b->gbm_format) < 0)
 			goto err_compositor;
 	}
+
+	if (b->use_pixman || !is_gpu_available) {
+		b->use_pixman = true;
+		weston_log("Use Pixman Rendering - SDM backend\n");
+	}
+
 	/* Check if we run drm-backend using weston-launch */
 	compositor->launcher = weston_launcher_connect(compositor, config->tty,
 						       seat_id, true);
@@ -1741,7 +1773,7 @@ drm_backend_create(struct weston_compositor *compositor,
 					    renderer_switch_binding, b);
 
 	/* begin SDM initialization */
-	int rc = CreateCore();
+	int rc = CreateCore(b->use_pixman);
 	if (rc != 0) {
 		weston_log("Creating SDM core failed");
 		return rc;
