@@ -45,6 +45,7 @@ const struct weston_qti_extn_interface weston_qti_extn_impl = {
   destroy,
   power_on,
   power_off,
+  set_output_state,
   set_brightness
 };
 
@@ -70,8 +71,32 @@ void power_off(struct wl_client *client, struct wl_resource *resource) {
   weston_compositor_sleep(compositor);
 }
 
+void set_output_state(struct wl_client *client, struct wl_resource *resource,
+                      const char* output_name, uint32_t state) {
+  struct weston_compositor *compositor;
+  compositor = wl_resource_get_user_data(resource);
+  if (compositor == NULL) {
+    weston_log("error: compositor not found\n");
+    return;
+  }
+
+  struct weston_output *output;
+  wl_list_for_each(output, &compositor->output_list, link) {
+    if (!strcmp(output->name, output_name)) {
+      if (state != 0) {
+        output->set_dpms(output, WESTON_DPMS_ON);
+      } else {
+        output->set_dpms(output, WESTON_DPMS_OFF);
+      }
+      weston_log("set output(%s) to state-%d\n", output->name, state);
+      return ;
+    }
+  }
+  weston_log("set_output_state failed, output not found!\n");
+}
+
 void set_brightness(struct wl_client *client, struct wl_resource *resource,
-                    uint32_t brightness_value) {
+                    const char* output_name, uint32_t brightness_value) {
   struct weston_compositor *compositor;
   compositor = wl_resource_get_user_data(resource);
   if (compositor == NULL) {
@@ -82,9 +107,13 @@ void set_brightness(struct wl_client *client, struct wl_resource *resource,
   struct weston_output *output;
   wl_list_for_each(output, &compositor->output_list, link) {
     if (output) {
-      output->set_backlight(output, brightness_value);
+      if (!strcmp(output->name, output_name)) {
+        output->set_backlight(output, brightness_value);
+        return;
+      }
     }
   }
+  weston_log("set_brightness failed, output not found!\n");
 }
 
 void destroy(struct wl_client *client, struct wl_resource *resource) {
