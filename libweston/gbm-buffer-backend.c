@@ -109,6 +109,9 @@ gbm_buffer_destroy(struct gbm_buffer *buffer)
     if (buffer->fd > 0)
       close(buffer->fd);
 
+    if (buffer->metadata_fd > 0)
+      close(buffer->metadata_fd);
+
     gbm_bo_destroy(buffer->bo);
     buffer->bo = NULL;
   }
@@ -311,6 +314,9 @@ gbm_buffer_backend_create_buffer(struct wl_client *client,
     buffer->height = height;
     buffer->format = format;
     buffer->flags  = flags;
+
+    GBM_PROTOCOL_LOG(LOG_DBG,"gbm_buffer_backend_create_buffer buffer fd[%d] metadata_fd[%d]\n",
+                                                buffer->fd, buffer->metadata_fd);
 
     buffer->buffer_resource = wl_resource_create(client,
                     &wl_buffer_interface,
