@@ -66,17 +66,24 @@
 	} \
 } while (0)
 
-
 struct screen_capture {
-	struct wl_resource *cap_res;
-	struct weston_compositor *compositor;
-	struct gbm_bo *bo;
 	uint32_t width;
 	uint32_t height;
+
+	struct weston_compositor *compositor;
+	struct weston_head *virtual_head;
+
 	bool enabled;
+	struct gbm_bo *bo;
 };
 
 int
 screen_capture_setup(struct weston_compositor *compositor);
+bool
+screen_capture_is_sc_buffer(struct weston_buffer *buffer);
+bool
+screen_capture_is_sc_view(struct weston_view *ev);
+void
+screen_capture_notify_committed(struct screen_capture *screen_cap);
 
 #endif /* WESTON_SCREEN_CAPTURE_H */
