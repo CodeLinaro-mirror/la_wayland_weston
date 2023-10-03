@@ -322,6 +322,51 @@ bool GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *disp
     return SUCCESS;
 }
 
+bool SetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config)
+{
+    DisplayError error = kErrorNone;
+    SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
+    if (!dpy) {
+        DLOGE("Failed as Display (%d) not created yet.", display_id);
+        return kErrorNotSupported;
+    }
+
+    error = dpy->SetDisplayConfiguration(display_config);
+    if (error != kErrorNone) {
+        DLOGE("Failed SetDisplayConfiguration for Display(%d).", display_id);
+        return error;
+    }
+
+    #if SDM_DISPLAY_DEBUG
+    DLOGD("function successful.");
+    #endif
+
+    return kErrorNone;
+}
+
+bool SetOutputBuffer(uint32_t display_id, void *gbm_bo)
+{
+    DisplayError error = kErrorNone;
+    shared_ptr<Fence> release_fence;
+    SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
+    if (!dpy) {
+        DLOGE("Failed as Display (%d) not created yet.", display_id);
+        return kErrorNotSupported;
+    }
+
+    error = dpy->SetOutputBuffer(gbm_bo, release_fence);
+    if (error != kErrorNone) {
+        DLOGE("Failed SetOutputBuffer for Display(%d).", display_id);
+        return error;
+    }
+
+    #if SDM_DISPLAY_DEBUG
+    DLOGD("function successful.");
+    #endif
+
+    return kErrorNone;
+}
+
 bool GetDisplayHdrInfo(uint32_t display_id, struct DisplayHdrInfo *display_hdr_info)
 {
     SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
@@ -405,15 +450,17 @@ int SetDisplayState(uint32_t display_id, int power_mode) {
 int SetVSyncState(uint32_t display_id, bool state, struct drm_output *output)
 {
     DisplayError error = kErrorNone;
+    int type = kDisplayTypeMax;
     SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
     if (!dpy) {
         DLOGE("Failed as Display (%d) not created yet.", display_id);
         return kErrorNotSupported;
     }
 
+    type = GetConnectorType(display_id);
     error = dpy->SetVSyncState(state, output);
-    if (error != kErrorNone) {
-        DLOGE("function failed with error = %d", error);
+    if (error != kErrorNone && type != kVirtual) {
+        DLOGE("function(%d) failed with error = %d type = %d", display_id, error, type);
         return error;
     }
 
@@ -521,6 +568,9 @@ char *GetConnectorName(uint32_t display_id) {
     case kPluggable:
       type_name = "DP";
       break;
+    case kVirtual:
+      type_name = "WB";
+      break;
     default:
       type_name = "unKnown";
       break;
@@ -537,6 +587,13 @@ uint32_t GetConnectorId(uint32_t display_id) {
     return -1;
   }
   return iter->second.display_id;
+}
+
+uint32_t GetConnectorType(uint32_t display_id) {
+  const char *type_name = NULL;
+  auto iter = sdm_displays_info_.find(display_id);
+
+  return (iter->second.display_type);
 }
 
 static HWDisplayInfo GetSdmDisplayInfo(int display_id) {

@@ -201,6 +201,8 @@ struct drm_backend {
 
 	/* SDM data */
 	struct DisplayConfigInfo display_config;
+
+	struct screen_capture *screen_cap;
 };
 
 struct drm_mode {
@@ -446,6 +448,15 @@ drm_assign_planes(struct weston_output *output_base, void *repaint_data);
 
 int
 parse_gbm_format(const char *s, uint32_t default_value, uint32_t *gbm_format);
+
+void
+drm_backend_update_virtual(struct drm_backend *b);
+
+void
+virtual_vblank(struct weston_output *base);
+
+bool
+is_virtual_output(int display_id);
 
 extern struct gl_renderer_interface *gl_renderer;
 

@@ -8,6 +8,7 @@ srcs_drm = [
 	'modes.c',
 	'kms.c',
 	'state-propose.c',
+	'screen-capture.c',
 	'sdm-service/sdm_display_buffer_allocator.cpp',
 	'sdm-service/sdm_display_buffer_allocator.h',
 	'sdm-service/sdm_display_buffer_sync_handler.cpp',
@@ -27,6 +28,8 @@ srcs_drm = [
 	gbm_buffer_backend_protocol_c,
 	gbm_buffer_backend_server_protocol_h,
 	presentation_time_server_protocol_h,
+	screen_capture_protocol_c,
+	screen_capture_server_protocol_h,
 ]
 
 deps_drm = [

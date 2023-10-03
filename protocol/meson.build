@@ -10,6 +10,7 @@ install_data(
 		'weston-direct-display.xml',
 		'weston-qti-extn.xml',
 		'gbm-buffer-backend.xml',
+		'screen-capture.xml',
 	],
 	install_dir: join_paths(dir_data, dir_protocol_libweston)
 )
@@ -38,6 +39,7 @@ generated_protocols = [
 	[ 'weston-direct-display', 'internal' ],
 	[ 'gbm-buffer-backend', 'internal' ],
 	[ 'weston-qti-extn', 'internal' ],
+	[ 'screen-capture', 'internal' ],
 	[ 'xdg-output', 'v1' ],
 	[ 'xdg-shell', 'v6' ],
 	[ 'xdg-shell', 'stable' ],
