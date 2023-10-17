@@ -1661,7 +1661,7 @@ drm_backend_create(struct weston_compositor *compositor,
 	sdm_cbs_t sdm_cbs;
 	int ret, count;
 	bool is_gpu_available = true;
-	const int max_retries = 5;
+	const int max_retries = 10;
 
 	session_seat = getenv("XDG_SEAT");
 	if (session_seat)
@@ -1742,7 +1742,7 @@ drm_backend_create(struct weston_compositor *compositor,
 			drm_device = find_primary_gpu(b, seat_id);
 
 		if (drm_device == NULL)
-			sleep(1);	// Wait for 1 second before retrying
+			usleep(1000*100);	// Wait for 100ms before retrying
 		else
 			break;
 	}
