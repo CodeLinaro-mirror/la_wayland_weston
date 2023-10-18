@@ -165,7 +165,7 @@ if get_option('backend-drm')
 endif
 
 if get_option('backend-sdm')
-	deps_session_helper += [dep_libdrm, dep_libsdmcore, dep_libsdmutils, dep_libsdmdal]
+	deps_session_helper += [dep_libdrm, dep_libsdmcore, dep_libsdmutils, dep_libsdmdal, dep_libqservice]
 endif
 
 systemd_dep = dependency('', required: false)

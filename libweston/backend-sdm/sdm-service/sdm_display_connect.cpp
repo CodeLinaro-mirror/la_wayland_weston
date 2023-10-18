@@ -32,6 +32,7 @@
 #include "sdm-service/sdm_display.h"
 #include "sdm-service/sdm_display_connect.h"
 #include "sdm-service/uevent.h"
+#include "sdm-service/sdm_display_qdcm_session.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,6 +59,8 @@ CreatedDisplaysInfo displays_;
 HWDisplaysInfo hw_displays_info_ = {};
 // ordered by output id
 SdmDisplaysInfo sdm_displays_info_ = {};
+
+static QDCMSession *qdcmsession_ = nullptr;
 
 SdmDisplayProxy *GetDisplayFromId(uint32_t display_id) {
     auto it = displays_.find(display_id);
@@ -108,6 +111,14 @@ int CreateCore(bool use_pixman)
         return kErrorNone;
     }
     buffer_allocator_ = new SdmDisplayBufferAllocator(use_pixman);
+    if (!qdcmsession_) {
+      qdcmsession_ = new QDCMSession;
+      if (qdcmsession_) {
+        if (qdcmsession_->Init(buffer_allocator_) != kErrorNone) {
+          DLOGE("qdcmsession Init failed");
+        }
+      }
+    }
 
     // TODO: Check the requirement for this property
     std::shared_ptr<IPCIntf> ipc_intf = nullptr;

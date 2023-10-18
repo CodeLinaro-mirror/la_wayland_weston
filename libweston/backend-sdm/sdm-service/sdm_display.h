@@ -43,6 +43,7 @@
 #include <vector>
 #include <iostream>
 #include <thread>
+#include <private/color_params.h>
 
 #include "sdm-service/sdm_display_debugger.h"
 #include "sdm-service/sdm_display_interface.h"
@@ -90,6 +91,10 @@ class SdmDisplayInterface {
     virtual SdmDisplayIntfType GetDisplayIntfType() = 0;
     virtual DisplayError SetPanelBrightness(float brightness) = 0;
     virtual DisplayError GetPanelBrightness(float *brightness) = 0;
+    virtual int ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
+                                     PPDisplayAPIPayload *out_payload,
+                                     PPPendingParams *pending_action) = 0;
+    virtual void RefreshWithCachedLayerstack() = 0;
     static int GetDrmMasterFd();
     struct drm_output *drm_output_;
     struct drm_output *prev_output_;
@@ -117,6 +122,10 @@ class SdmNullDisplay : public SdmDisplayInterface {
     DisplayError RegisterCb(int display_id, vblank_cb_t vbcb);
     DisplayError SetPanelBrightness(float brightness);
     DisplayError GetPanelBrightness(float *brightness);
+    void RefreshWithCachedLayerstack();
+    int ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
+                             PPDisplayAPIPayload *out_payload,
+                             PPPendingParams *pending_action);
 };
 
 class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDebugger {
@@ -143,6 +152,10 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     DisplayError RegisterCb(int display_id, vblank_cb_t vbcb);
     DisplayError SetPanelBrightness(float brightness);
     DisplayError GetPanelBrightness(float *brightness);
+
+    int ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
+                             PPDisplayAPIPayload *out_payload,
+                             PPPendingParams *pending_action);
 
     int OnMinHdcpEncryptionLevelChange(uint32_t min_enc_level);
 
@@ -285,6 +298,17 @@ class SdmDisplayProxy {
 
     DisplayError OnMinHdcpEncryptionLevelChange(uint32_t min_enc_level);
 
+    void RefreshWithCachedLayerstack() {
+      display_intf_->RefreshWithCachedLayerstack();
+    }
+
+    int ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
+                             PPDisplayAPIPayload *out_payload,
+                             PPPendingParams *pending_action) {
+      return display_intf_->ColorSVCRequestRoute(in_payload, out_payload, pending_action);
+    }
+
+
   private:
     // Uevent thread
     static void *UeventThread(void *context);
@@ -301,6 +325,14 @@ class SdmDisplayProxy {
     const char *uevent_thread_name_ = "SDM_UeventThread";
     hotplug_cb_t hotplug_cb_;
 };
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+SdmDisplayProxy *GetDisplayFromId(uint32_t display_id);
+#ifdef __cplusplus
+}
+#endif
 
 }  // namespace sdm
 

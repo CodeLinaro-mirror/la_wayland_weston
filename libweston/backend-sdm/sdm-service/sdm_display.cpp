@@ -1507,6 +1507,20 @@ const char *SdmDisplay::GetDisplayString() {
   }
 }
 
+int SdmDisplay::ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
+                                     PPDisplayAPIPayload *out_payload,
+                                     PPPendingParams *pending_action) {
+  int ret = 0;
+
+  if (display_intf_) {
+    ret = display_intf_->ColorSVCRequestRoute(in_payload, out_payload, pending_action);
+  } else {
+    ret = -EINVAL;
+  }
+
+  return ret;
+}
+
 SdmNullDisplay::SdmNullDisplay(DisplayType type, CoreInterface *core_intf) {
 }
 
@@ -1541,6 +1555,15 @@ DisplayError SdmNullDisplay::SetPanelBrightness(float brightness) {
 
 DisplayError SdmNullDisplay::GetPanelBrightness(float *brightness) {
   return kErrorNone;
+}
+
+int SdmNullDisplay::ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
+                                         PPDisplayAPIPayload *out_payload,
+                                         PPPendingParams *pending_action) {
+  return kErrorNone;
+}
+
+void SdmNullDisplay::RefreshWithCachedLayerstack() {
 }
 
 DisplayError SdmNullDisplay::SetVSyncState(bool enable, struct drm_output *output) {

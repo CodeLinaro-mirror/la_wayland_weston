@@ -37,6 +37,7 @@
 #include <core/layer_stack.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <utils/sys.h>
 
 namespace sdm {
 
