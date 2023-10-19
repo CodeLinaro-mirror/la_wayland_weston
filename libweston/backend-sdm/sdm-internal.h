@@ -371,9 +371,6 @@ drm_view_transform_supported(struct weston_view *ev, struct weston_output *outpu
 	    ev->transform.matrix.type >= WESTON_MATRIX_TRANSFORM_ROTATE)
 		return false;
 
-	if (viewport->buffer.transform != output->transform)
-		return false;
-
 	return true;
 }
 

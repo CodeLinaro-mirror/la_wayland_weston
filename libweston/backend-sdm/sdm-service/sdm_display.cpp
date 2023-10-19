@@ -640,22 +640,22 @@ int SdmDisplay::PrepareFbLayerGeometry(struct drm_output *output,
         return -1;
     }
 
-    fb_layer->width = output->base.width;
-    fb_layer->height = output->base.height;
-    fb_layer->unaligned_width = output->base.width;
-    fb_layer->unaligned_height = output->base.height;
+    fb_layer->width = output->base.current_mode->width;
+    fb_layer->height = output->base.current_mode->height;
+    fb_layer->unaligned_width = output->base.current_mode->width;
+    fb_layer->unaligned_height = output->base.current_mode->height;
 
     fb_layer->format = GetMappedFormatFromGbm(output->gbm_format);
     fb_layer->composition = SDM_COMPOSITION_FB_TARGET;
 
     fb_layer->src_rect.left = (float)0.0;
     fb_layer->src_rect.top = (float)0.0;
-    fb_layer->src_rect.right = (float)output->base.width;
-    fb_layer->src_rect.bottom = (float)output->base.height;
+    fb_layer->src_rect.right = (float)output->base.current_mode->width;
+    fb_layer->src_rect.bottom = (float)output->base.current_mode->height;
     fb_layer->dst_rect.left = (float)0.0;
     fb_layer->dst_rect.top = (float)0.0;
-    fb_layer->dst_rect.right = (float)output->base.width;
-    fb_layer->dst_rect.bottom = (float)output->base.height;
+    fb_layer->dst_rect.right = (float)output->base.current_mode->width;
+    fb_layer->dst_rect.bottom = (float)output->base.current_mode->height;
 
     fb_layer->visible_regions.rects = reinterpret_cast<struct Rect *> \
                               (zalloc(sizeof(struct Rect)));
@@ -704,6 +704,41 @@ int SdmDisplayInterface::GetDrmMasterFd() {
     return fd;
 }
 
+uint32_t SdmDisplay::GetSDMTransform(uint32_t wl_transform)
+{
+    uint32_t sdm_transform = SDM_TRANSFORM_NORMAL;
+
+    switch (wl_transform) {
+        case WL_OUTPUT_TRANSFORM_90:
+            sdm_transform = SDM_TRANSFORM_270;
+            break;
+        case WL_OUTPUT_TRANSFORM_180:
+            sdm_transform = SDM_TRANSFORM_180;
+            break;
+        case WL_OUTPUT_TRANSFORM_270:
+            sdm_transform = SDM_TRANSFORM_90;
+            break;
+        case WL_OUTPUT_TRANSFORM_FLIPPED:
+            sdm_transform = SDM_TRANSFORM_FLIP_H;
+            break;
+        case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+            sdm_transform = SDM_TRANSFORM_FLIP_H | SDM_TRANSFORM_270;
+            break;
+        case WL_OUTPUT_TRANSFORM_FLIPPED_180:
+            sdm_transform = SDM_TRANSFORM_FLIP_H | SDM_TRANSFORM_180;
+            break;
+        case WL_OUTPUT_TRANSFORM_FLIPPED_270:
+            sdm_transform = SDM_TRANSFORM_FLIP_H | SDM_TRANSFORM_90;
+            break;
+        case WL_OUTPUT_TRANSFORM_NORMAL:
+        default:
+            sdm_transform = SDM_TRANSFORM_NORMAL;
+            break;
+    }
+
+    return sdm_transform;
+}
+
 int SdmDisplay::PrepareNormalLayerGeometry(struct drm_output *output,
                          struct LayerGeometry **glayer,
                          struct sdm_layer *sdm_layer) {
@@ -732,12 +767,12 @@ int SdmDisplay::PrepareNormalLayerGeometry(struct drm_output *output,
     if (sdm_layer->fb && sdm_layer->fb->bo) {
         struct gbm_bo *bo = NULL;
 
-	bo = sdm_layer->fb->bo;
+        bo = sdm_layer->fb->bo;
 
-         if (bo == NULL) {
+        if (bo == NULL) {
             DLOGE("fail to import gbm bo!\n");
-		return -1;
-	 } else {
+            return -1;
+        } else {
             uint32_t width, height;
 
             //save gbm bo in sdm layer for future reference.
@@ -807,6 +842,8 @@ int SdmDisplay::PrepareNormalLayerGeometry(struct drm_output *output,
     // Video layers are always opaque
     if (layer->flags.video_present) {
         layer->blending = SDM_BLENDING_NONE;
+        // Use inline rotator to transform video layer
+        layer->transform = GetSDMTransform(output->base.transform);
     }
 
     /* Initialize all views with GPU composition first, SDM will update them after prepare */

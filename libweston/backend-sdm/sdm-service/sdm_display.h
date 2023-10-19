@@ -191,6 +191,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     LayerBufferFormat GetSDMFormat(uint32_t src_fmt,
                                    struct LayerGeometryFlags flags);
     LayerBlending GetSDMBlending(uint32_t source);
+    uint32_t GetSDMTransform(uint32_t wl_transform);
     void DumpInputBuffers(void *compositor_output);
     void DumpOutputBuffer(const BufferInfo& buffer_info,
                           void *base, int fence);
