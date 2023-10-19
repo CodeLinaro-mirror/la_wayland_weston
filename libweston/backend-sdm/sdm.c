@@ -49,14 +49,17 @@
 #include "linux-explicit-synchronization.h"
 
 #include "sdm-service/sdm_display_connect.h"
+#include "screen-capture.h"
 
 
 static const char default_seat[] = "seat0";
 #define FENCE_TIMEOUT 1000
 
 enum {
-    PRIMARY_DISPLAY_ID,
-    EXTERNAL_DISPLAY_ID
+    PRIMARY_DISPLAY_ID = 0,
+    EXTERNAL_DISPLAY_ID = 1,
+    VIRTUAL_DISPLAY_ID = 2,
+    INVALID_DISPLAY_ID,
 };
 
 static int sync_wait(int fd, int timeout)
@@ -485,7 +488,7 @@ drm_repaint_flush(struct weston_compositor *compositor, void *repaint_data)
 		ret = SetVSyncState(drm_output->display_id, true, drm_output);
 
 		if (ret != 0) {
-			weston_log("Vsync failed\n");
+			weston_log("Vsync failed disp(%d)\n", drm_output->display_id);
 			return -1;
 		}
 
@@ -494,6 +497,10 @@ drm_repaint_flush(struct weston_compositor *compositor, void *repaint_data)
 		if (ret != 0) {
 			weston_log("%s : commit failed err = %d\n", __func__, ret);
 			return -2;
+		}
+
+		if (is_virtual_output(drm_output->display_id)) {
+			screen_capture_notify_committed(b->screen_cap);
 		}
 
 		drm_output->atomic_complete_pending = true;
@@ -983,6 +990,7 @@ drm_head_create(struct drm_backend *backend, struct udev_device *drm_device, int
 	const char *model = "unknown";
 	const char *serial_number = "unknown";
 	int width = 0, height = 0, refresh = 0;
+	struct DisplayConfigInfo display_config;
 
 	if (!IsDisplayCreated(display_id)) {
 		sdm_cbs_t sdm_cbs;
@@ -1023,14 +1031,40 @@ drm_head_create(struct drm_backend *backend, struct udev_device *drm_device, int
 	weston_head_set_non_desktop(&head->base, false);
 	weston_head_set_subpixel(&head->base, WL_OUTPUT_SUBPIXEL_UNKNOWN);
 
-	struct DisplayConfigInfo display_config;
-	display_config.x_pixels        = 0;
-	display_config.y_pixels        = 0;
-	display_config.x_dpi           = 96.0f;
-	display_config.y_dpi           = 96.0f;
-	display_config.fps             = 0;
-	display_config.vsync_period_ns = 0;
-	display_config.is_yuv          = false;
+	if (is_virtual_output(display_id)) {
+		bool rc = 0;
+		display_config.x_pixels        = backend->screen_cap->width;
+		display_config.y_pixels        = backend->screen_cap->height;
+		display_config.x_dpi           = 96.0f;
+		display_config.y_dpi           = 96.0f;
+		display_config.fps             = 60;
+		display_config.vsync_period_ns = 0;
+		display_config.is_yuv          = true;
+
+		rc = SetDisplayConfiguration(display_id, &display_config);
+		if (rc != 0) {
+			weston_log("%s:virtual SetDisplayConfiguration w*h:%dx%d failed! rc(%d)\n",
+				__FUNCTION__, display_config.x_pixels, display_config.y_pixels, rc);
+			goto err_alloc;
+		}
+
+		rc = SetOutputBuffer(display_id, (void *)backend->screen_cap->bo);
+		if (rc != 0) {
+			weston_log("%s:virtual set output buffer failed! rc(%d)\n",
+				__FUNCTION__, rc);
+			goto err_alloc;
+		}
+
+		backend->screen_cap->virtual_head = &head->base;
+	} else {
+		display_config.x_pixels        = 0;
+		display_config.y_pixels        = 0;
+		display_config.x_dpi           = 96.0f;
+		display_config.y_dpi           = 96.0f;
+		display_config.fps             = 0;
+		display_config.vsync_period_ns = 0;
+		display_config.is_yuv          = false;
+	}
 
 	bool rc = GetDisplayConfiguration(display_id, &display_config);
 
@@ -1179,6 +1213,7 @@ drm_backend_create_heads(struct drm_backend *b, struct udev_device *drm_device)
 		if (head) {
 			weston_log("Head (with display_id: %d) already available.\n", display_id);
 		} else {
+			if (is_virtual_output(display_id) && !b->screen_cap) continue;
 			head = drm_head_create(b, drm_device, display_id);
 			if (!head) {
 				weston_log("DRM: failed to create head for hot-added"
@@ -1255,6 +1290,7 @@ drm_backend_update_heads(struct drm_backend *b, struct udev_device *drm_device)
 			// TODO: Implement functionality to update display config
 			// drm_head_update_info(head);
 		} else {
+			if (is_virtual_output(display_id) && !b->screen_cap) continue;
 			head = drm_head_create(b, drm_device, display_id);
 			if (!head) {
 				weston_log("DRM: failed to create head for hot-added"
@@ -1274,7 +1310,12 @@ drm_backend_update_heads(struct drm_backend *b, struct udev_device *drm_device)
 
 		for (i = 0; i < num_displays; i++) {
 			if (display_ids[i] == head->connector_id) {
-				removed = false;
+				if (is_virtual_output(display_ids[i]) &&
+						(!b->screen_cap || !b->screen_cap->bo)) {
+					removed = true;
+				} else {
+					removed = false;
+				}
 				break;
 			}
 		}
@@ -1618,8 +1659,9 @@ drm_backend_create(struct weston_compositor *compositor,
 	const char *seat_id = default_seat;
 	const char *session_seat;
 	sdm_cbs_t sdm_cbs;
-	int ret;
+	int ret, count;
 	bool is_gpu_available = true;
+	const int max_retries = 5;
 
 	session_seat = getenv("XDG_SEAT");
 	if (session_seat)
@@ -1647,6 +1689,7 @@ drm_backend_create(struct weston_compositor *compositor,
 						   "drm-backend",
 						   "Debug messages from DRM/KMS backend\n",
 						    NULL, NULL, NULL);
+	b->screen_cap = NULL;
 
 	compositor->backend = &b->base;
 	int fd = open("/dev/kgsl-3d0", O_RDWR);
@@ -1690,10 +1733,19 @@ drm_backend_create(struct weston_compositor *compositor,
 	b->session_listener.notify = session_notify;
 	wl_signal_add(&compositor->session_signal, &b->session_listener);
 
-	if (config->specific_device)
-		drm_device = open_specific_drm_device(b, config->specific_device);
-	else
-		drm_device = find_primary_gpu(b, seat_id);
+	count = 0;
+	while (count++ < max_retries) {
+		weston_log("Loading drm_device: try %d\n", count);
+		if (config->specific_device)
+			drm_device = open_specific_drm_device(b, config->specific_device);
+		else
+			drm_device = find_primary_gpu(b, seat_id);
+
+		if (drm_device == NULL)
+			sleep(1);	// Wait for 1 second before retrying
+		else
+			break;
+	}
 
 	if (drm_device == NULL) {
 		weston_log("no drm device found\n");
@@ -1799,6 +1851,9 @@ drm_backend_create(struct weston_compositor *compositor,
 
 	}
 
+	if (screen_capture_setup(compositor) < 0)
+		weston_log("Error: screen capture setup failed\n");
+
 	if (weston_qti_extn_setup(compositor) < 0)
 		weston_log("Error: weston_qti_extn_setup failed\n");
 
@@ -1880,4 +1935,38 @@ weston_backend_init(struct weston_compositor *compositor,
 void NotifyOnRefresh(struct drm_output *drm_output) {
   drm_output->base.repaint_status = REPAINT_AWAITING_COMPLETION;
   drm_output->atomic_complete_pending = true;
+}
+
+void
+drm_backend_update_virtual(struct drm_backend *b)
+{
+	struct udev_device *device = udev_monitor_receive_device(b->udev_monitor);
+	drm_backend_update_heads(b, device);
+}
+
+bool
+is_virtual_output(int display_id)
+{
+	int disp_type = GetConnectorType(display_id);
+
+	if (disp_type == VIRTUAL_DISPLAY_ID) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+void
+virtual_vblank(struct weston_output *base)
+{
+	struct drm_output *output = to_drm_output(base);
+	struct timespec ts;
+	uint64_t v = 1;
+
+	weston_compositor_read_presentation_clock(base->compositor, &ts);
+
+	output->last_vblank.sec = ts.tv_sec;
+	output->last_vblank.usec = ts.tv_nsec / 1000;
+
+	write(output->vblank_ev_fd, &v, sizeof v);
 }

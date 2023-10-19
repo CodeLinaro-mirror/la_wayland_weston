@@ -107,6 +107,15 @@ SdmDisplay::SdmDisplay(DisplayType type, CoreInterface *core_intf,
     buffer_allocator_ = buffer_allocator;
     drm_output_   = NULL;
     vblank_cb_    = NULL;
+
+    cwb_config_.tap_point = kLmTapPoint;
+    cwb_config_.cwb_roi.left = FLOAT(0);
+    cwb_config_.cwb_roi.top = FLOAT(0);
+    cwb_config_.cwb_roi.right = FLOAT(0);
+    cwb_config_.cwb_roi.bottom = FLOAT(0);
+    cwb_config_.pu_as_cwb_roi = false;
+
+    output_buffer_.buffer_id = -1;
 }
 
 SdmDisplay::~SdmDisplay() {
@@ -292,7 +301,7 @@ DisplayError SdmDisplay::SetVSyncState(bool VSyncState, struct drm_output *outpu
 
     drm_output_ = output;
     error = display_intf_->SetVSyncState(VSyncState);
-    if (error != kErrorNone) {
+    if ((error != kErrorNone) && (display_type_ != kVirtual)) {
         DLOGE("VSync state setting failed. Error = %d", error);
         return error;
     }
@@ -336,6 +345,90 @@ DisplayError SdmDisplay::GetDisplayConfiguration(struct DisplayConfigInfo *displ
     display_config->is_yuv       = disp_config.is_yuv;
     fps_                         = disp_config.fps;
     display_config->is_connected = true;
+
+    DLOGD("[%s] get W*H(%dx%d)", __FUNCTION__, display_config->x_pixels, display_config->y_pixels);
+
+    return kErrorNone;
+}
+
+DisplayError SdmDisplay::SetDisplayConfiguration(struct DisplayConfigInfo *display_config) {
+    DisplayError error = kErrorNone;
+    DisplayConfigVariableInfo disp_config;
+    uint32_t active_index = 0;
+
+    disp_config.x_pixels        = display_config->x_pixels;
+    disp_config.y_pixels        = display_config->y_pixels;
+    disp_config.x_dpi           = display_config->x_dpi;
+    disp_config.y_dpi           = display_config->y_dpi;
+    disp_config.fps             = display_config->fps;
+    disp_config.vsync_period_ns = display_config->vsync_period_ns;
+    disp_config.is_yuv          = display_config->is_yuv;
+
+    error = display_intf_->SetActiveConfig(&disp_config);
+    if (error != kErrorNone) {
+        DLOGE("Set active config. Error = %d", error);
+        return error;
+    }
+
+    DLOGD("[%s] set W*H(%dx%d)", __FUNCTION__, display_config->x_pixels, display_config->y_pixels);
+
+    return kErrorNone;
+}
+
+DisplayError SdmDisplay::SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence) {
+    struct gbm_bo *bo = NULL;
+    int data_fd = -1;
+    uint32_t width = 0, height = 0;
+    uint32_t alignedWidth = 0;
+    uint32_t alignedHeight = 0;
+    uint32_t secure_status = 0;
+    void *color_meta = reinterpret_cast<void *> (&output_buffer_.color_metadata);
+    int gbm_format = GBM_FORMAT_XBGR8888;
+    int sdm_format = SDM_BUFFER_FORMAT_INVALID;
+    struct LayerGeometryFlags ubwc_flags;
+    uint32_t ubwc_status = 0;
+
+    if (buf == nullptr) {
+        DLOGE("[%s] configed buffer is null",__FUNCTION__);
+        return kErrorParameters;
+    }
+
+    bo = static_cast<struct gbm_bo *>(buf);
+
+    data_fd = gbm_bo_get_fd(bo);
+
+    width = gbm_bo_get_width(bo);
+    height = gbm_bo_get_height(bo);
+
+    gbm_format = gbm_bo_get_format(bo);
+
+    gbm_perform(GBM_PERFORM_GET_BO_ALIGNED_WIDTH, bo, &alignedWidth);
+    gbm_perform(GBM_PERFORM_GET_BO_ALIGNED_HEIGHT, bo, &alignedHeight);
+    gbm_perform(GBM_PERFORM_GET_SECURE_BUFFER_STATUS, bo, &secure_status);
+    gbm_perform(GBM_PERFORM_GET_UBWC_STATUS, bo, &ubwc_status);
+    gbm_perform(GBM_PERFORM_GET_METADATA, bo, GBM_METADATA_GET_COLOR_METADATA, color_meta);
+
+    ubwc_flags.has_ubwc_buf = ubwc_status;
+
+    sdm_format = GetMappedFormatFromGbm(gbm_format);
+
+    // output_buffer_ update. for present/validate or other.
+    output_buffer_.flags.secure = secure_status;
+    output_buffer_.flags.video = GetVideoPresenceByFormatFromGbm(gbm_format);
+    output_buffer_.format = GetSDMFormat(sdm_format, ubwc_flags);
+    output_buffer_.buffer_id = reinterpret_cast<uint64_t>(bo);
+    output_buffer_.handle_id = bo->ion_fd;
+
+    output_buffer_.unaligned_width = width;
+    output_buffer_.unaligned_height = height;
+    output_buffer_.width = alignedWidth;
+    output_buffer_.height = alignedHeight;
+
+    output_buffer_.planes[0].fd = data_fd;
+    output_buffer_.planes[0].offset = 0;
+    output_buffer_.planes[0].stride = width;
+
+    output_buffer_.acquire_fence = release_fence;
 
     return kErrorNone;
 }
@@ -900,6 +993,13 @@ DisplayError SdmDisplay::Prepare(struct drm_output *output)
     GetLayerStackDump(&layer_stack_, dump_buffer, sizeof(dump_buffer));
 #endif
 
+    if (display_type_ == kVirtual) {
+        layer_stack_.output_buffer = &output_buffer_;
+        layer_stack_.cwb_config = &cwb_config_;
+        DLOGD("[%s] display(%d) output(%d) buffer_id(%p)",
+            __FUNCTION__, output->display_id, output->base.id, layer_stack_.output_buffer->buffer_id);
+    }
+
     error = display_intf_->Prepare(&layer_stack_);
     if (error != kErrorNone) {
         DLOGE("failed during Prepare error:%d\n",error);
@@ -1453,6 +1553,15 @@ DisplayError SdmNullDisplay::GetDisplayConfiguration(struct DisplayConfigInfo *d
 
   return kErrorNone;
 }
+
+DisplayError SdmNullDisplay::SetDisplayConfiguration(struct DisplayConfigInfo *display_config) {
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence) {
+  return kErrorNone;
+}
+
 DisplayError SdmNullDisplay::RegisterCb(int display_id, vblank_cb_t vbcb) {
   vblank_cb_   = vbcb;
 

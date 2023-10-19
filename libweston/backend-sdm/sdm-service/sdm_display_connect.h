@@ -171,6 +171,19 @@ int Commit(uint32_t display_id, struct drm_output *output);
 */
 bool GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config);
 
+/*! @brief Method to Set display property for a display_id requested.
+    @details Client shall use this method to display properties of requested
+    display id.
+
+    @param[in] display_id \link int \endlink
+    @param[in] display_config \link struct DisplayConfigInfo \endlink
+
+    @return \link DisplayError \endlink
+
+    @sa
+*/
+bool SetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config);
+
 /*! @brief Method to register callbacks: VBlank Handler function to be called on
     enabling VBlank (VSync), and hotplug handler function to be called on hotplug
     uevent. SDM shall trigger a call back through this interface function.
@@ -257,6 +270,10 @@ int GetDisplayInfos(void);
 char* GetConnectorName(uint32_t display_id);
 
 uint32_t GetConnectorId(uint32_t display_id);
+
+uint32_t GetConnectorType(uint32_t display_id);
+
+bool SetOutputBuffer(uint32_t display_id, void *gbm_bo);
 
 #ifdef __cplusplus
 }

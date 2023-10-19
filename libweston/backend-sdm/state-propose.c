@@ -129,11 +129,17 @@ drm_assign_planes(struct weston_output *output_base, void *repaint_data)
 		} else if (linux_dmabuf_buffer_get(es->buffer_ref.buffer->resource)) {
 		    is_skip = false;
 		} else if (gbm_buffer_get(es->buffer_ref.buffer->resource)) {
-                    is_skip = false;
+		    is_skip = false;
 		} else if (wl_shm_buffer_get(es->buffer_ref.buffer->resource)) {
 		    is_skip = true;
 		} else {
 		    is_skip = true;
+		}
+
+		// Wb should skip write shm buffer UI layer.
+		if (is_virtual_output(output->display_id) && is_skip) {
+			ev->surface->keep_buffer = false;
+			continue;
 		}
 
 		sdm_layer = create_sdm_layer(output, ev, &surface_overlap, false, is_skip);

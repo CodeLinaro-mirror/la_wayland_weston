@@ -84,6 +84,8 @@ class SdmDisplayInterface {
                                          shared_ptr<Fence> *release_fence) = 0;
     virtual DisplayError SetVSyncState(bool enable, struct drm_output *output) = 0;
     virtual DisplayError GetDisplayConfiguration(struct DisplayConfigInfo *display_config) = 0;
+    virtual DisplayError SetDisplayConfiguration(struct DisplayConfigInfo *display_config) = 0;
+    virtual DisplayError SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence) = 0;
     virtual DisplayError RegisterCb(int display_id, vblank_cb_t vbcb) = 0;
     virtual SdmDisplayIntfType GetDisplayIntfType() = 0;
     virtual DisplayError SetPanelBrightness(float brightness) = 0;
@@ -109,6 +111,8 @@ class SdmNullDisplay : public SdmDisplayInterface {
                                  shared_ptr<Fence> *release_fence);
     DisplayError SetVSyncState(bool enable, struct drm_output *output);
     DisplayError GetDisplayConfiguration(struct DisplayConfigInfo *display_config);
+    DisplayError SetDisplayConfiguration(struct DisplayConfigInfo *display_config);
+    DisplayError SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence);
     DisplayError RegisterCb(int display_id, vblank_cb_t vbcb);
     DisplayError SetPanelBrightness(float brightness);
     DisplayError GetPanelBrightness(float *brightness);
@@ -133,6 +137,8 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
                                  shared_ptr<Fence> *release_fence);
     DisplayError SetVSyncState(bool enable, struct drm_output *output);
     DisplayError GetDisplayConfiguration(struct DisplayConfigInfo *display_config);
+    DisplayError SetDisplayConfiguration(struct DisplayConfigInfo *display_config);
+    DisplayError SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence);
     DisplayError RegisterCb(int display_id, vblank_cb_t vbcb);
     DisplayError SetPanelBrightness(float brightness);
     DisplayError GetPanelBrightness(float *brightness);
@@ -222,6 +228,9 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     float min_luminance_ = 0.0;
     LayerStack prev_layer_stack_;
     bool esd_reset_panel_ = false;
+
+    LayerBuffer output_buffer_ = {};
+    CwbConfig cwb_config_ = {};
 };
 
 class SdmDisplayProxy {
@@ -252,6 +261,12 @@ class SdmDisplayProxy {
     }
     DisplayError GetDisplayConfiguration(struct DisplayConfigInfo *display_config) {
       return display_intf_->GetDisplayConfiguration(display_config);
+    }
+    DisplayError SetDisplayConfiguration(struct DisplayConfigInfo *display_config) {
+      return display_intf_->SetDisplayConfiguration(display_config);
+    }
+    DisplayError SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence) {
+      return display_intf_->SetOutputBuffer(buf, release_fence);
     }
     DisplayError RegisterCbs(int display_id, sdm_cbs_t *cbs) {
       // TODO: move vblank_cb up?
