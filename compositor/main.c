@@ -49,6 +49,7 @@
 #include <linux/input.h>
 #include <sys/time.h>
 #include <linux/limits.h>
+#include <syslog.h>
 #include <stdarg.h>
 
 #include "weston.h"
@@ -71,6 +72,7 @@
 #include <libweston/remoting-plugin.h>
 #include <libweston/pipewire-plugin.h>
 
+#undef  LOG_TAG
 #define LOG_TAG "weston"
 
 #define WINDOW_TITLE "Weston Compositor"
@@ -246,16 +248,13 @@ vlog_continue(const char *fmt, va_list argp)
 	return weston_log_scope_vprintf(log_scope, fmt, argp);
 }
 
-/* logcat_log redirects weston logs to adb logcat */
+/* redirects weston logs to syslog */
 static int
-logcat_log(const char *fmt, va_list argp)
+weston_syslog(const char *fmt, va_list argp)
 {
-	char buffer[1024] = {0};
-	int ret = vsnprintf(buffer, 1024, fmt, argp);
+	vsyslog(LOG_INFO, fmt, argp);
 
-	ALOGI("%s", buffer);
-
-	return ret;
+	return 0;
 }
 
 static const char *
@@ -3448,10 +3447,10 @@ wet_main(int argc, char *argv[], const struct weston_testsuite_data *test_data)
 	if (!weston_log_file_open(log))
 		return EXIT_FAILURE;
 
-	if (log == NULL || strstr(log, "logcat") == NULL) {
+	if (log == NULL || strstr(log, "syslog") == NULL) {
 		weston_log_set_handler(vlog, vlog_continue);
 	} else {
-		weston_log_set_handler(logcat_log, logcat_log);
+		weston_log_set_handler(weston_syslog, weston_syslog);
 	}
 
 	logger = weston_log_subscriber_create_log(weston_logfile);
