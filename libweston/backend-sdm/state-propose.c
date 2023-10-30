@@ -177,4 +177,5 @@ drm_assign_planes(struct weston_output *output_base, void *repaint_data)
 			sdm_layer->view->plane = NULL;
 		}
 	}
+	output->commit_pending = true;
 }

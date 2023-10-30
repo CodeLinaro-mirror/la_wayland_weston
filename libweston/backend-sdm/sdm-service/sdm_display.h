@@ -93,6 +93,7 @@ class SdmDisplayInterface {
     static int GetDrmMasterFd();
     struct drm_output *drm_output_;
     struct drm_output *prev_output_;
+    vblank_cb_t vblank_cb_;
 };
 
 class SdmNullDisplay : public SdmDisplayInterface {

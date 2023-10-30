@@ -80,8 +80,6 @@
 #define __CLASS__ "SdmDisplay"
 extern "C" void NotifyOnRefresh(struct drm_output *);
 
-vblank_cb_t vblank_cb_;
-
 namespace sdm {
 #define GET_GPU_TARGET_SLOT(max_layers) ((max_layers) - 1)
 /* Cursor is fixed in (gpu_target_index-1) slot in SDM */
@@ -156,6 +154,7 @@ DisplayError SdmDisplay::DestroyDisplay() {
 }
 
 DisplayError SdmDisplay::VSync(const DisplayEventVSync &vsync) {
+    DTRACE_SCOPED();
     if (vblank_cb_)
       vblank_cb_(display_id_, vsync.timestamp, drm_output_);
     else
