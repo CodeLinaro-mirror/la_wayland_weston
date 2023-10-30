@@ -30,7 +30,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <display_properties.h>
-#include <cutils/properties.h>
+#include <properties.h>
 
 extern "C" {
 #include <libweston/libweston.h>
@@ -258,7 +258,7 @@ void SdmDisplayDebugger::Verbose(const char *format, ...) {
 }
 
 int SdmDisplayDebugger::GetProperty(const char *property_name, int *value) {
-  char property[PROPERTY_VALUE_MAX];
+  char property[PROP_VALUE_MAX];
 
   if (property_get(property_name, property, NULL) > 0) {
     *value = atoi(property);
@@ -280,21 +280,6 @@ SdmDisplayDebugger::SdmDisplayDebugger() {
   DebugHandler::Set(SdmDisplayDebugger::Get());
   config_debug_level();
   config_trace_debug();
-}
-
-void SdmDisplayDebugger::BeginTrace(const char *class_name, const char *function_name,
-                                                  const char *custom_string) {
-  if (trace_debug_) {
-    char name[PATH_MAX] = {0};
-    snprintf(name, sizeof(name), "%s::%s::%s", class_name, function_name, custom_string);
-    atrace_begin(ATRACE_TAG, name);
-  }
-}
-
-void SdmDisplayDebugger::EndTrace() {
-  if (trace_debug_) {
-    atrace_end(ATRACE_TAG);
-  }
 }
 
 }  // namespace sdm

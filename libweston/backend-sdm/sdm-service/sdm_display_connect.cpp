@@ -27,7 +27,7 @@
 */
 
 #include <display_properties.h>
-#include <cutils/properties.h>
+#include <properties.h>
 
 #include "sdm-service/sdm_display.h"
 #include "sdm-service/sdm_display_connect.h"

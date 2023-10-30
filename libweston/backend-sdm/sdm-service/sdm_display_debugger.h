@@ -34,14 +34,11 @@
 #include <debug_handler.h>
 #include <stdio.h>
 #include <stdarg.h>
-#include <cutils/trace.h>
 
 #include <bitset>
 #include <cstdlib>
 #include <cassert>
 #include <stdint.h>
-
-#define ATRACE_TAG (ATRACE_TAG_ALWAYS)
 
 enum {
        NONE,
@@ -86,8 +83,8 @@ class SdmDisplayDebugger : public DebugHandler {
   virtual void Debug(const char *format, ...);
   virtual void Verbose(const char *format, ...);
   virtual void BeginTrace(const char *class_name, const char *function_name,
-                          const char *custom_string);
-  virtual void EndTrace();
+                          const char *custom_string) {}
+  virtual void EndTrace() {}
   virtual int GetProperty(const char *property_name, int *value);
   virtual int GetProperty(const char *property_name, char *value);
 

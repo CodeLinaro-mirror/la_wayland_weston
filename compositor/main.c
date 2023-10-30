@@ -49,7 +49,6 @@
 #include <linux/input.h>
 #include <sys/time.h>
 #include <linux/limits.h>
-#include <log/log.h>
 #include <stdarg.h>
 
 #include "weston.h"

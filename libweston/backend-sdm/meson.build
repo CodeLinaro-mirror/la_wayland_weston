@@ -36,17 +36,17 @@ deps_drm = [
 	dep_libdrm,
 	dep_libinput_backend,
 	dependency('libudev', version: '>= 136'),
+	dep_property,
+	dep_glib,
 ]
 
-if get_option('renderer-gl')
-	dep_gbm = dependency('gbm', required: false)
-	if not dep_gbm.found()
-		error('sdm-backend with GL renderer requires gbm which was not found. Or, you can use \'-Drenderer-gl=false\'.')
-	endif
-	deps_drm += dep_gbm
-	srcs_drm += 'sdm-gbm.c'
-	config_h.set('BUILD_DRM_GBM', '1')
+dep_gbm = dependency('gbm', required: false)
+if not dep_gbm.found()
+	error('sdm-backend with GL renderer requires gbm which was not found. Or, you can use \'-Drenderer-gl=false\'.')
 endif
+deps_drm += dep_gbm
+srcs_drm += 'sdm-gbm.c'
+config_h.set('BUILD_DRM_GBM', '1')
 
 if get_option('disable-power-key')
 	config_h.set('DISABLE_POWER_KEY', '1')

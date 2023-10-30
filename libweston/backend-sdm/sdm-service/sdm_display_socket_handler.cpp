@@ -27,7 +27,6 @@
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
-#include <cutils/sockets.h>
 #include "sdm-service/sdm_display_debugger.h"
 #include "sdm-service/sdm_display_socket_handler.h"
 
