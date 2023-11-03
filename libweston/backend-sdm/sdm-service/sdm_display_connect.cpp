@@ -474,11 +474,14 @@ void HandlePrimaryDisplayInfo() {
   }
 }
 
-void HandleNonPrimaryDisplayInfos() {
+void HandleExternalDisplayInfos() {
   HWDisplaysInfo::iterator iter = hw_displays_info_.begin();
 
   for (iter; iter != hw_displays_info_.end(); ++iter) {
     if (iter->second.is_primary)
+      continue;
+
+    if (iter->second.display_type == sdm::kVirtual)
       continue;
 
     if (!iter->second.is_connected)
@@ -501,7 +504,7 @@ int GetDisplayInfos(void) {
   /* primary display*/
   HandlePrimaryDisplayInfo();
   /* pluggable display*/
-  HandleNonPrimaryDisplayInfos();
+  HandleExternalDisplayInfos();
   return 0;
 }
 

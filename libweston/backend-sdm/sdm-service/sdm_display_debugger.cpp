@@ -195,7 +195,7 @@ static void Log(const char *prefix, const char *format, va_list list) {
 void SdmDisplayDebugger::config_debug_level(void) {
   FILE *fp = NULL;
   //file to configure debug level
-  fp = fopen("/data/misc/display/sdm_dbg_cfg.txt", "r");
+  fp = fopen("/var/cache/display/sdm_dbg_cfg.txt", "r");
   if (fp) {
       fscanf(fp, "%d", &verbose_level_);
       DebugAll(true /* enable */, verbose_level_);
