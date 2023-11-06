@@ -63,6 +63,7 @@ class SdmDisplayBufferAllocator : public BufferAllocator {
                       uint32_t stride[4], uint32_t offset[4],
                       uint32_t *num_planes);
   void GetGbmDeviceHandle(void **userdata);
+  int DumpBuffer(void* bo);
  private:
   bool IsFormatVideo(uint32_t fmt);
   bool IsVideoFormatLinear(uint32_t fmt, uint32_t ubwc_status);

@@ -35,7 +35,6 @@ deps_renderer_gl = [
 	dep_libweston_private,
 	dep_libdrm_headers,
 	dep_gbm,
-	dep_libcutils,
 	dep_vertex_clipping
 ]
 

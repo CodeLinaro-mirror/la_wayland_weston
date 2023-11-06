@@ -150,6 +150,16 @@ int SdmDisplayBufferAllocator::AllocateBuffer(BufferInfo *buffer_info) {
   return kErrorNone;
 }
 
+int SdmDisplayBufferAllocator::DumpBuffer(void* bo) {
+  int result = gbm_perform(GBM_PERFORM_DUMP_BO_CONTENT, reinterpret_cast<struct gbm_bo *>(bo));
+  if (result != 0) {
+    DLOGE("Failed to dump buffer");
+    return result;
+  }
+
+  return 0;
+}
+
 int SdmDisplayBufferAllocator::FreeBuffer(BufferInfo *buffer_info) {
   int err = kErrorNone;
   struct gbm_bo *bo = reinterpret_cast<struct gbm_bo *>(buffer_info->private_data);

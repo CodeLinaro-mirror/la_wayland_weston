@@ -188,8 +188,8 @@ void SdmDisplayDebugger::DebugQos(bool enable, int verbose_level) {
 }
 
 static void Log(const char *prefix, const char *format, va_list list) {
+  weston_log_continue("\n%s", prefix);
   weston_vlog(format, list);
-  weston_log_continue("%s", "\n");
 }
 
 void SdmDisplayDebugger::config_debug_level(void) {
