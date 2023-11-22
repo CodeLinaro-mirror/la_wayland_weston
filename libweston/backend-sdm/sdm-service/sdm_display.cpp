@@ -1521,6 +1521,128 @@ int SdmDisplay::ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
   return ret;
 }
 
+void SdmDisplay::SetIdleTimeoutMs(uint32_t timeout_ms, uint32_t inactive_ms) {
+  display_intf_->SetIdleTimeoutMs(timeout_ms, inactive_ms);
+}
+
+DisplayError SdmDisplay::SetDetailEnhancerConfig
+                                   (const DisplayDetailEnhancerData &de_data) {
+  DisplayError error = kErrorNotSupported;
+
+  if (display_intf_) {
+    error = display_intf_->SetDetailEnhancerData(de_data);
+  }
+  return error;
+}
+
+DisplayError SdmDisplay::SetHWDetailedEnhancerConfig(void *params) {
+  DisplayError err = kErrorNone;
+  DisplayDetailEnhancerData de_data;
+
+  PPDETuningCfgData *de_tuning_cfg_data = reinterpret_cast<PPDETuningCfgData*>(params);
+  if (de_tuning_cfg_data->cfg_pending) {
+    if (!de_tuning_cfg_data->cfg_en) {
+      de_data.enable = 0;
+      DLOGV_IF(kTagQDCM, "Disable DE config");
+    } else {
+      de_data.override_flags = kOverrideDEEnable;
+      de_data.enable = 1;
+#ifdef DISP_DE_LPF_BLEND
+      DLOGV_IF(kTagQDCM, "Enable DE: flags %u, sharp_factor %d, thr_quiet %d, thr_dieout %d, "
+        "thr_low %d, thr_high %d, clip %d, quality %d, content_type %d, de_blend %d, "
+        "de_lpf_h %d, de_lpf_m %d, de_lpf_l %d",
+        de_tuning_cfg_data->params.flags, de_tuning_cfg_data->params.sharp_factor,
+        de_tuning_cfg_data->params.thr_quiet, de_tuning_cfg_data->params.thr_dieout,
+        de_tuning_cfg_data->params.thr_low, de_tuning_cfg_data->params.thr_high,
+        de_tuning_cfg_data->params.clip, de_tuning_cfg_data->params.quality,
+        de_tuning_cfg_data->params.content_type, de_tuning_cfg_data->params.de_blend,
+        de_tuning_cfg_data->params.de_lpf_h, de_tuning_cfg_data->params.de_lpf_m,
+        de_tuning_cfg_data->params.de_lpf_l);
+#endif
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagSharpFactor) {
+        de_data.override_flags |= kOverrideDESharpen1;
+        de_data.sharp_factor = de_tuning_cfg_data->params.sharp_factor;
+      }
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagClip) {
+        de_data.override_flags |= kOverrideDEClip;
+        de_data.clip = de_tuning_cfg_data->params.clip;
+      }
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagThrQuiet) {
+        de_data.override_flags |= kOverrideDEThrQuiet;
+        de_data.thr_quiet = de_tuning_cfg_data->params.thr_quiet;
+      }
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagThrDieout) {
+        de_data.override_flags |= kOverrideDEThrDieout;
+        de_data.thr_dieout = de_tuning_cfg_data->params.thr_dieout;
+      }
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagThrLow) {
+        de_data.override_flags |= kOverrideDEThrLow;
+        de_data.thr_low = de_tuning_cfg_data->params.thr_low;
+      }
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagThrHigh) {
+        de_data.override_flags |= kOverrideDEThrHigh;
+        de_data.thr_high = de_tuning_cfg_data->params.thr_high;
+      }
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagContentQualLevel) {
+        switch (de_tuning_cfg_data->params.quality) {
+          case kDeContentQualLow:
+            de_data.quality_level = kContentQualityLow;
+            break;
+          case kDeContentQualMedium:
+            de_data.quality_level = kContentQualityMedium;
+            break;
+          case kDeContentQualHigh:
+            de_data.quality_level = kContentQualityHigh;
+            break;
+          case kDeContentQualUnknown:
+          default:
+            de_data.quality_level = kContentQualityUnknown;
+            break;
+        }
+      }
+
+      switch (de_tuning_cfg_data->params.content_type) {
+        case kDeContentTypeVideo:
+          de_data.content_type = kContentTypeVideo;
+          break;
+        case kDeContentTypeGraphics:
+          de_data.content_type = kContentTypeGraphics;
+          break;
+        case kDeContentTypeUnknown:
+        default:
+          de_data.content_type = kContentTypeUnknown;
+          break;
+      }
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagDeBlend) {
+        de_data.override_flags |= kOverrideDEBlend;
+        de_data.de_blend = de_tuning_cfg_data->params.de_blend;
+      }
+#ifdef DISP_DE_LPF_BLEND
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagDeLpfBlend) {
+        de_data.override_flags |= kOverrideDELpfBlend;
+        de_data.de_lpf_en = true;
+        de_data.de_lpf_h = de_tuning_cfg_data->params.de_lpf_h;
+        de_data.de_lpf_m = de_tuning_cfg_data->params.de_lpf_m;
+        de_data.de_lpf_l = de_tuning_cfg_data->params.de_lpf_l;
+      }
+#endif
+    }
+    err = SetDetailEnhancerConfig(de_data);
+    if (err) {
+      DLOGW("SetDetailEnhancerConfig failed. err = %d", err);
+    }
+    de_tuning_cfg_data->cfg_pending = false;
+  }
+  return err;
+}
+
 SdmNullDisplay::SdmNullDisplay(DisplayType type, CoreInterface *core_intf) {
 }
 
@@ -1561,6 +1683,9 @@ int SdmNullDisplay::ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
                                          PPDisplayAPIPayload *out_payload,
                                          PPPendingParams *pending_action) {
   return kErrorNone;
+}
+
+void SdmNullDisplay::SetIdleTimeoutMs(uint32_t timeout_ms, uint32_t inactive_ms) {
 }
 
 void SdmNullDisplay::RefreshWithCachedLayerstack() {
@@ -1627,6 +1752,14 @@ DisplayError SdmNullDisplay::RegisterCb(int display_id, vblank_cb_t vbcb) {
   return kErrorNone;
 }
 
+
+DisplayError SdmNullDisplay::SetDetailEnhancerConfig(const DisplayDetailEnhancerData &de_data) {
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::SetHWDetailedEnhancerConfig(void *params) {
+  return kErrorNone;
+}
 SdmDisplayProxy::SdmDisplayProxy(DisplayType type, CoreInterface *core_intf,
                                  SdmDisplayBufferAllocator *buffer_allocator)
   : disp_type_(type), core_intf_(core_intf),

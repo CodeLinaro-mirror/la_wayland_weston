@@ -19,6 +19,16 @@ namespace sdm {
 
 class QDCMSession : public qClient::BnQClient {
   public:
+  static const int kNumBuiltIn = 4;
+  static const int kNumPluggable = 4;
+  static const int kNumVirtual = 4;
+  // Add 1 primary display which can be either a builtin or pluggable.
+  // Async powermode update requires dummy hwc displays.
+  // Limit dummy displays to builtin/pluggable type for now.
+  static const int kNumRealDisplays = 1 + kNumBuiltIn + kNumPluggable + kNumVirtual;
+  static const int kNumDisplays = 1 + kNumBuiltIn + kNumPluggable + kNumVirtual +
+                                  1 + kNumBuiltIn + kNumPluggable;
+
   QDCMSession();
   int Init(BufferAllocator *buffer_allocator_);
   int Deinit();
@@ -33,9 +43,8 @@ class QDCMSession : public qClient::BnQClient {
                           const struct PPDisplayAPIPayload &req_payload,
                           struct PPDisplayAPIPayload *resp_payload,
                           struct PPPendingParams *pending_action);
-  int32_t RefreshScreen(const android::Parcel *input_parcel);
-  int32_t RefreshScreen(uint32_t display_id);
   SDMColorManager *color_mgr_ = nullptr;
+  SDMQDCMModeManager *qdcm_mode_mgr_ = nullptr;
 };
 
 }

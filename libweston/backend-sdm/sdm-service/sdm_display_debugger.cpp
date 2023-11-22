@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <display_properties.h>
 #include <cutils/properties.h>
+#include <utils/constants.h>
 
 extern "C" {
 #include <libweston/libweston.h>
@@ -280,6 +281,13 @@ SdmDisplayDebugger::SdmDisplayDebugger() {
   DebugHandler::Set(SdmDisplayDebugger::Get());
   config_debug_level();
   config_trace_debug();
+}
+
+int SdmDisplayDebugger::GetIdleTimeoutMs() {
+  int value = IDLE_TIMEOUT_DEFAULT_MS;
+  debug_handler_.GetProperty(IDLE_TIME_PROP, &value);
+
+  return value;
 }
 
 void SdmDisplayDebugger::BeginTrace(const char *class_name, const char *function_name,
