@@ -5,6 +5,7 @@
 
 #include <QService.h>
 #include <binder/Parcel.h>
+#include <binder/IPCThreadState.h>
 #include "sdm_display.h"
 #include "sdm_display_qdcm_session.h"
 
@@ -42,6 +43,12 @@ int QDCMSession::Init(BufferAllocator *buffer_allocator_) {
     DLOGW("Failed to load SDMColorManager.");
     return -EINVAL;
   }
+
+  // Start service
+  android::ProcessState::self()->setThreadPoolMaxThreadCount(4);
+  android::ProcessState::self()->startThreadPool();
+  android::ProcessState::self()->giveThreadPoolName();
+
   return 0;
 }
 
