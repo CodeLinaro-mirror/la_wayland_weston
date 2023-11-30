@@ -339,6 +339,7 @@ drm_output_render(struct drm_output *output, pixman_region32_t *damage)
 	}
 
 	output->next_fb = fb;
+	output->page_flip_pending = true;
 	pixman_region32_subtract(&c->primary_plane.damage,
 				 &c->primary_plane.damage, damage);
 }
@@ -485,6 +486,12 @@ drm_repaint_flush(struct weston_compositor *compositor, void *repaint_data)
 		if (!drm_output->next_fb)
 			continue;
 
+		if (!drm_output->page_flip_pending)
+			continue;
+
+		if (!drm_output->commit_pending)
+			continue;
+
 		ret = SetVSyncState(drm_output->display_id, true, drm_output);
 
 		if (ret != 0) {
@@ -504,6 +511,8 @@ drm_repaint_flush(struct weston_compositor *compositor, void *repaint_data)
 		}
 
 		drm_output->atomic_complete_pending = true;
+		drm_output->page_flip_pending = false;
+		drm_output->commit_pending = false;
 	}
 
 	b->repaint_data = NULL;
@@ -1329,6 +1338,9 @@ drm_backend_update_heads(struct drm_backend *b, struct udev_device *drm_device)
 		drm_head_destroy(head);
 	}
 
+	/* Repaint compositor to refresh all outputs */
+	weston_compositor_damage_all(b->compositor);
+
 err_connector:
 	free(display_ids);
 }
@@ -1661,7 +1673,7 @@ drm_backend_create(struct weston_compositor *compositor,
 	sdm_cbs_t sdm_cbs;
 	int ret, count;
 	bool is_gpu_available = true;
-	const int max_retries = 5;
+	const int max_retries = 10;
 
 	session_seat = getenv("XDG_SEAT");
 	if (session_seat)
@@ -1742,7 +1754,7 @@ drm_backend_create(struct weston_compositor *compositor,
 			drm_device = find_primary_gpu(b, seat_id);
 
 		if (drm_device == NULL)
-			sleep(1);	// Wait for 1 second before retrying
+			usleep(1000*100);	// Wait for 100ms before retrying
 		else
 			break;
 	}

@@ -168,6 +168,7 @@ if get_option('backend-sdm')
 	dep_libsdmutils = cc.find_library('sdmutils')
 	dep_libsdmdal = cc.find_library('sdmdal')
 	dep_libdrmutils = cc.find_library('drmutils')
+	dep_libqservice = cc.find_library('qservice')
 endif
 dep_libdrm_version = dep_libdrm.version()
 if dep_libdrm_version.version_compare('>=2.4.107')

@@ -27,6 +27,7 @@
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
+#include <utils/sys.h>
 #include "sdm-service/sdm_display_debugger.h"
 #include "sdm-service/sdm_display_buffer_allocator.h"
 

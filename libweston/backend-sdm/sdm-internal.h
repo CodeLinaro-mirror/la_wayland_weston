@@ -283,6 +283,7 @@ struct drm_output {
 	bool destroy_pending;
 	bool disable_pending;
 	bool dpms_off_pending;
+	bool commit_pending;
 
 	uint32_t gbm_cursor_handle[2];
 	struct drm_fb *gbm_cursor_fb[2];
@@ -369,9 +370,6 @@ drm_view_transform_supported(struct weston_view *ev, struct weston_output *outpu
 	 * chain. */
 	if (ev->transform.enabled &&
 	    ev->transform.matrix.type >= WESTON_MATRIX_TRANSFORM_ROTATE)
-		return false;
-
-	if (viewport->buffer.transform != output->transform)
 		return false;
 
 	return true;
