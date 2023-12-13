@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "sdm_display.h"
 #include "sdm-service/sdm_display_buffer_allocator.h"
 
 #define DISPLAY_API_INTERFACE_LIBRARY_NAME "libsdm-disp-vndapis.so"
@@ -39,6 +40,42 @@ typedef class DynLib DynLib;
 
 namespace sdm {
 
+class SDMQDCMModeManager {
+ public:
+  static const uint32_t kSocketCMDMaxLength = 4096;
+  enum ActiveFeatureID {
+    kCABLFeature,
+    kADFeature,
+    kSVIFeature,
+    kMaxNumActiveFeature,
+  };
+
+  struct ActiveFeatureCMD {
+    const char *cmd_on = NULL;
+    const char *cmd_off = NULL;
+    const char *cmd_query_status = NULL;
+    const char *running = NULL;
+    ActiveFeatureCMD(const char *arg1, const char *arg2, const char *arg3,
+                     const char *arg4) : cmd_on(arg1), cmd_off(arg2),
+                     cmd_query_status(arg3), running(arg4) {}
+  };
+
+  static const ActiveFeatureCMD kActiveFeatureCMD[kMaxNumActiveFeature];
+
+  static SDMQDCMModeManager *CreateQDCMModeMgr();
+  ~SDMQDCMModeManager();
+  int EnableQDCMMode(bool enable, SdmDisplayProxy *sdmdisplay);
+
+ protected:
+  int EnableActiveFeatures(bool enable);
+  int EnableActiveFeatures(bool enable, const ActiveFeatureCMD &cmds, bool *was_running);
+ private:
+  bool cabl_was_running_ = false;
+  int socket_fd_ = -1;
+  uint32_t entry_timeout_ = 0;
+  static const char *const kSocketName;
+};
+
 class SDMColorManager {
  public:
   static SDMColorManager *CreateColorManager(BufferAllocator *buffer_allocator);
@@ -48,6 +85,9 @@ class SDMColorManager {
                                        android::Parcel *out_parcel);
 
   explicit SDMColorManager(BufferAllocator *buffer_allocator);
+  int EnableQDCMMode(bool enable, SdmDisplayProxy *sdmdisplay);
+  int SetDetailedEnhancer(void *params, SdmDisplayProxy *sdmdisplay);
+  int SetHWDetailedEnhancerConfig(void *params, SdmDisplayProxy *sdmdisplay);
   ~SDMColorManager();
   void DestroyColorManager();
  private:
@@ -55,6 +95,7 @@ class SDMColorManager {
   void *color_apis_ = NULL;
   BufferAllocator *buffer_allocator_ = NULL;
   BufferInfo buffer_info = {};
+  SDMQDCMModeManager *qdcm_mode_mgr_ = NULL;
   Locker locker_;
 };
 } // namespace sdm

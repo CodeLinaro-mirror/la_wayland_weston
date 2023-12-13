@@ -95,6 +95,9 @@ class SdmDisplayInterface {
                                      PPDisplayAPIPayload *out_payload,
                                      PPPendingParams *pending_action) = 0;
     virtual void RefreshWithCachedLayerstack() = 0;
+    virtual DisplayError SetHWDetailedEnhancerConfig(void *params) = 0;
+    virtual DisplayError SetDetailEnhancerConfig(const DisplayDetailEnhancerData &de_data) = 0;
+    virtual void SetIdleTimeoutMs(uint32_t timeout_ms, uint32_t inactive_ms) = 0;
     static int GetDrmMasterFd();
     struct drm_output *drm_output_;
     struct drm_output *prev_output_;
@@ -126,6 +129,9 @@ class SdmNullDisplay : public SdmDisplayInterface {
     int ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
                              PPDisplayAPIPayload *out_payload,
                              PPPendingParams *pending_action);
+    void SetIdleTimeoutMs(uint32_t timeout_ms, uint32_t inactive_ms);
+    DisplayError SetHWDetailedEnhancerConfig(void *params);
+    DisplayError SetDetailEnhancerConfig(const DisplayDetailEnhancerData &de_data);
 };
 
 class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDebugger {
@@ -157,6 +163,9 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
                              PPDisplayAPIPayload *out_payload,
                              PPPendingParams *pending_action);
 
+    void SetIdleTimeoutMs(uint32_t timeout_ms, uint32_t inactive_ms);
+    DisplayError SetHWDetailedEnhancerConfig(void *params);
+    DisplayError SetDetailEnhancerConfig(const DisplayDetailEnhancerData &de_data);
     int OnMinHdcpEncryptionLevelChange(uint32_t min_enc_level);
 
  protected:
@@ -308,7 +317,21 @@ class SdmDisplayProxy {
       return display_intf_->ColorSVCRequestRoute(in_payload, out_payload, pending_action);
     }
 
+    void SetIdleTimeoutMs(uint32_t timeout_ms, uint32_t inactive_ms) {
+      display_intf_->SetIdleTimeoutMs(timeout_ms, inactive_ms);
+    }
 
+    int NotifyDisplayCalibrationMode(bool in_calibration) {
+      return 0;
+    }
+
+    DisplayError SetHWDetailedEnhancerConfig(void *params) {
+      return display_intf_->SetHWDetailedEnhancerConfig(params);
+    }
+
+    int32_t GetDisplayType() {
+      return disp_type_;
+    }
   private:
     // Uevent thread
     static void *UeventThread(void *context);
@@ -330,6 +353,7 @@ class SdmDisplayProxy {
 extern "C" {
 #endif
 SdmDisplayProxy *GetDisplayFromId(uint32_t display_id);
+SdmDisplayProxy *GetDisplayFromIndex(uint32_t index);
 #ifdef __cplusplus
 }
 #endif

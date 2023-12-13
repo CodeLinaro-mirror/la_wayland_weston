@@ -56,26 +56,12 @@ int32_t QDCMSession::Deinit() {
   return 0;
 }
 
-int QDCMSession::RefreshScreen(uint32_t display_id) {
-  SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
-  if (!dpy) {
-    DLOGE("Failed as Display (%d) not created yet.", display_id);
-    return kErrorNotSupported;
-  }
-  dpy->RefreshWithCachedLayerstack();
-  return 0;
-}
-
-int QDCMSession::RefreshScreen(const android::Parcel *input_parcel) {
-  return 0;
-}
-
 int32_t QDCMSession::QdcmCMDDispatch(uint32_t display_id,
                                      const PPDisplayAPIPayload &req_payload,
                                      struct PPDisplayAPIPayload *resp_payload,
                                      PPPendingParams *pending_action) {
   int ret = 0;
-  SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
+  SdmDisplayProxy *dpy = GetDisplayFromIndex(display_id);
   if (!dpy) {
     DLOGE("Failed as Display (%d) not created yet.", display_id);
     return kErrorNotSupported;
@@ -89,7 +75,7 @@ int32_t QDCMSession::QdcmCMDHandler(const android::Parcel *input_parcel,
                                     android::Parcel *output_parcel) {
   int ret = 0;
   float *brightness = NULL;
-  uint32_t display_id(0);
+  uint32_t display_id(0), numdisps = 0, id = 0;
   PPPendingParams pending_action;
   struct PPDisplayAPIPayload resp_payload, req_payload;
   uint8_t *disp_id = NULL;
@@ -116,6 +102,12 @@ int32_t QDCMSession::QdcmCMDHandler(const android::Parcel *input_parcel,
     return ret;
   }
 
+  SdmDisplayProxy *dpy = GetDisplayFromIndex(display_id);
+  if (!dpy) {
+    DLOGE("Failed as Display (%d) not created yet.", display_id);
+    return kErrorNotSupported;
+  }
+
   if (kNoAction != pending_action.action) {
     int32_t action = pending_action.action;
     int count = -1;
@@ -130,7 +122,75 @@ int32_t QDCMSession::QdcmCMDHandler(const android::Parcel *input_parcel,
       DLOGV_IF(kTagQDCM, "pending action = %d, display_id = %d", BITMAP(count), display_id);
       switch (BITMAP(count)) {
         case kInvalidating:
-          RefreshScreen(display_id);
+          dpy->RefreshWithCachedLayerstack();
+          break;
+        case kEnterQDCMMode:
+          ret = color_mgr_->EnableQDCMMode(true, dpy);
+          dpy->NotifyDisplayCalibrationMode(true);
+          break;
+        case kExitQDCMMode:
+          ret = color_mgr_->EnableQDCMMode(false, dpy);
+          dpy->NotifyDisplayCalibrationMode(false);
+          break;
+        case kSetPanelBrightness:
+          ret = -EINVAL;
+          brightness = reinterpret_cast<float *>(resp_payload.payload);
+          if (brightness == NULL) {
+            DLOGE("Brightness payload is Null");
+          } else {
+            ret = dpy->SetPanelBrightness(*brightness);
+          }
+          break;
+        case kEnableFrameCapture:
+          ret = 0;
+          break;
+        case kDisableFrameCapture:
+          ret = 0;
+          break;
+        case kConfigureDetailedEnhancer:
+          ret = color_mgr_->SetDetailedEnhancer(pending_action.params, dpy);
+          dpy->RefreshWithCachedLayerstack();
+          break;
+        case kModeSet:
+          ret = 0;//to do
+          break;
+        case kNoAction:
+          break;
+        case kMultiDispProc:
+          numdisps = GetDisplayCount();
+          for (id = 1; id < numdisps; id++) {
+            dpy = GetDisplayFromIndex(id);
+            if (dpy && (dpy->GetDisplayType() == kBuiltIn)) {
+              int result = 0;
+              resp_payload.DestroyPayload();
+              result = dpy->ColorSVCRequestRoute(req_payload, &resp_payload,
+                                                 &pending_action);
+              if (result) {
+                DLOGW("Failed to dispatch action to disp %d ret %d", id, result);
+                ret = result;
+              }
+            }
+          }
+          break;
+        case kMultiDispGetId:
+          numdisps = GetDisplayCount();
+          ret = resp_payload.CreatePayloadBytes(kNumDisplays, &disp_id);
+          if (ret) {
+            DLOGW("Unable to create response payload!");
+          } else {
+            for (int i = 0; i < kNumDisplays; i++) {
+              disp_id[i] = kNumDisplays;
+            }
+            for (id = 0; id < numdisps; id++) {
+              dpy = GetDisplayFromIndex(id);
+              if (dpy && (dpy->GetDisplayType() == kBuiltIn)) {
+                disp_id[id] = (uint8_t)id;
+              }
+            }
+          }
+          break;
+        case kSetModeFromClient:
+          ret = 0;// to do
           break;
         default:
           DLOGW("Invalid pending action = %d!", pending_action.action);
