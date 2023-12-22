@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 *
 */
@@ -26,7 +26,6 @@
 #include <utils/sys.h>
 #include <fcntl.h>
 #include <unistd.h>
-
 #include "sdm_display.h"
 #include "sdm-service/sdm_display_buffer_allocator.h"
 
@@ -34,12 +33,16 @@
 #define DISPLAY_API_FUNC_TABLES "display_color_apis_ftables"
 
 using std::fstream;
+using snapdragoncolor::ColorMode;
+using snapdragoncolor::ColorModeList;
+using snapdragoncolor::RenderIntent;
 
 typedef class BufferAllocator BufferAllocator;
 typedef class DynLib DynLib;
 
 namespace sdm {
 
+class SdmDisplayProxy;
 class SDMQDCMModeManager {
  public:
   static const uint32_t kSocketCMDMaxLength = 4096;
@@ -98,5 +101,54 @@ class SDMColorManager {
   SDMQDCMModeManager *qdcm_mode_mgr_ = NULL;
   Locker locker_;
 };
+
+class SDMColorMode {
+ public:
+  explicit SDMColorMode(DisplayInterface *display_intf) : display_intf_(display_intf) {};
+  virtual ~SDMColorMode() {}
+
+  virtual DisplayError Init();
+  virtual DisplayError DeInit();
+
+  virtual DisplayError SetColorModeWithRenderIntent(ColorMode color_mode);
+  virtual ColorMode SelectBestColorSpace(bool isHdrSupported, LayerStack *layerStack);
+ protected:
+  DisplayInterface *display_intf_ = NULL;
+ private:
+  void PopulateColorModes();
+  DisplayError ValidateColorMode(ColorMode color_mode);
+
+  typedef std::map<snapdragoncolor::RenderIntent, std::string> RenderIntentMap;
+  typedef std::map<GammaTransfer, RenderIntentMap> GammaTransferMap;
+  // <ColorPrimaries, GammaTransfer, RenderIntent> = ColorModeString
+  std::map<ColorPrimaries, GammaTransferMap> color_mode_map_ = {};
+
+  ColorMode current_color_mode_;
+};
+
+
+class SDMColorModeStc : public SDMColorMode {
+ public:
+  SDMColorModeStc(DisplayInterface *display_intf) : SDMColorMode(display_intf) {}
+  ~SDMColorModeStc() {}
+
+  DisplayError Init() override;
+  DisplayError DeInit() override;
+
+  DisplayError SetColorModeWithRenderIntent(ColorMode color_mode) override;
+  ColorMode SelectBestColorSpace(bool isHdrSupported, LayerStack *layerStack) override;
+ private:
+    void PopulateColorModes();
+    DisplayError ValidateColorMode(ColorMode color_mode);
+
+    typedef std::map<snapdragoncolor::RenderIntent, ColorMode> RenderIntentMap;
+    typedef std::map<GammaTransfer, RenderIntentMap> GammaTransferMap;
+    // <ColorPrimaries, GammaTransfer, RenderIntent> = ColorMode
+    std::map<ColorPrimaries, GammaTransferMap> color_mode_map_ = {};
+
+    ColorMode current_color_mode_ = {};
+    ColorModeList stc_mode_list_ = {};
+};
+
 } // namespace sdm
 #endif // SDM_DISPLAY_COLOR_MANAGER_H

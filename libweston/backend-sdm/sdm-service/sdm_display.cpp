@@ -48,7 +48,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -97,6 +97,7 @@ namespace sdm {
 
 #define MAX_PROP_STR_SIZE 64
 #define SDM_NULL_DISPLAY_RESOLUTON_PROP_NAME "weston.sdm.default.resolution"
+#define SDM_DISABLE_HDR_HANDLING "vendor.display.disable_hdr"
 
 SdmDisplay::SdmDisplay(DisplayType type, CoreInterface *core_intf,
                                          SdmDisplayBufferAllocator *buffer_allocator) {
@@ -132,6 +133,8 @@ const char * SdmDisplay::FourccToString(uint32_t fourcc)
 
 DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
     DisplayError error = kErrorNone;
+    char property[MAX_PROP_STR_SIZE] = {0};
+    struct DisplayHdrInfo display_hdr_info = {};
 
     error = core_intf_->CreateDisplay(display_type_, this, &display_intf_);
 
@@ -141,12 +144,35 @@ DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
         return error;
     }
 
+    SdmDisplayDebugger::Get()->GetProperty(SDM_DISABLE_HDR_HANDLING, property);
+    if (!(std::string(property)==std::string("1"))) {
+        disable_hdr_handling_ = 0;
+    }
+
+    GetHdrInfo(&display_hdr_info);
+    if (display_hdr_info.hdr_supported) {
+        DLOGI("Display device supports HDR functionality");
+    } else {
+        DLOGI("Display device doesn't support HDR functionality");
+    }
+
+    DLOGI("display_id = %d display_type_=%d", display_id, display_type_);
+    if (display_type_ == kBuiltIn) {
+        display_colormode_ = new SDMColorModeStc(display_intf_);
+    } else {
+        display_colormode_ = new SDMColorMode(display_intf_);
+    }
+
+    display_colormode_->Init();
     return kErrorNone;
 }
 
 DisplayError SdmDisplay::DestroyDisplay() {
     DisplayError error = kErrorNone;
 
+    display_colormode_->DeInit();
+    delete display_colormode_;
+    display_colormode_ = NULL;
     error = core_intf_->DestroyDisplay(display_intf_);
     display_intf_ = NULL;
 
@@ -510,7 +536,6 @@ DisplayError SdmDisplay::PopulateLayerGeometryOnToLayerStack(struct drm_output *
     layer_buffer = &layer_buffer_;
 
     /* 1. Fill buffer information */
-    *layer_buffer = sdm::LayerBuffer();
     layer_buffer->format = GetSDMFormat(layer_geometry->format, layer_geometry->flags);
     layer_buffer->width = layer_geometry->width;
     layer_buffer->height = layer_geometry->height;
@@ -529,12 +554,19 @@ DisplayError SdmDisplay::PopulateLayerGeometryOnToLayerStack(struct drm_output *
     layer_buffer->flags.video = layer_geometry->flags.video_present;
     layer_buffer->flags.hdr = layer_geometry->flags.hdr_present;
 
-    if (layer_buffer->flags.hdr) {
-      layer_buffer->color_metadata = layer_geometry->color_metadata;
+    layer_buffer->color_metadata = layer_geometry->color_metadata;
 
-       DLOGI("color_metadata: ColorPrimaries: %d", layer_buffer->color_metadata.colorPrimaries);
-       DLOGI("color_metadata: Transfer: %d", layer_buffer->color_metadata.transfer);
+    if (layer_buffer->color_metadata.colorPrimaries == 0 &&
+        layer_buffer->color_metadata.transfer == 0) {
+        DLOGD("Invalid color_metadata, reset to default");
+        layer_buffer->color_metadata.colorPrimaries = ColorPrimaries_BT709_5;
+        layer_buffer->color_metadata.transfer = Transfer_sRGB;
     }
+
+    DLOGD("color_metadata: ColorPrimaries: %d",
+            layer_buffer->color_metadata.colorPrimaries);
+    DLOGD("color_metadata: Transfer: %d is_skip:%d",
+            layer_buffer->color_metadata.transfer, is_skip);
 
     layer_buffer->flags.macro_tile = false;
     layer_buffer->flags.interlace = false;
@@ -801,6 +833,15 @@ int SdmDisplay::PrepareNormalLayerGeometry(struct drm_output *output,
             layer->ion_fd = sdm_layer->fb->ion_fd;
             layer->flags.secure_present = secure_status;
             layer->flags.has_ubwc_buf = ubwc_status;
+
+            bool hdr_layer = layer->color_metadata.colorPrimaries == ColorPrimaries_BT2020 &&
+                             (layer->color_metadata.transfer == Transfer_SMPTE_ST2084 ||
+                             layer->color_metadata.transfer == Transfer_HLG);
+
+            // Set to true if incoming layer has HDR support and Display supports HDR functionality
+            if (!disable_hdr_handling_) {
+                layer->flags.hdr_present = hdr_layer;
+            }
         }
     }
 
@@ -919,6 +960,15 @@ DisplayError SdmDisplay::PrePrepare(struct drm_output *output)
     error = PrePrepareLayerStack(output);
     if (error ) {
         DLOGE("function failed!\n", error);
+    }
+
+    if (hdr_supported_ && !disable_hdr_handling_) {
+        ColorMode best_color_mode =
+                display_colormode_->SelectBestColorSpace(hdr_supported_, &layer_stack_);
+        error = display_colormode_->SetColorModeWithRenderIntent(best_color_mode);
+        if (error != kErrorNone) {
+            DLOGE("Setting color mode failed.");
+        }
     }
 
     return error;
@@ -1643,6 +1693,40 @@ DisplayError SdmDisplay::SetHWDetailedEnhancerConfig(void *params) {
   return err;
 }
 
+DisplayError SdmDisplay::GetHdrInfo(struct DisplayHdrInfo *display_hdr_info) {
+  DisplayError error = kErrorNone;
+
+  DisplayConfigFixedInfo fixed_info = {};
+  error = display_intf_->GetConfig(&fixed_info);
+
+  if (error != kErrorNone) {
+      DLOGE("Failed to get fixed info. Error = %d", error);
+      return error;
+  }
+
+  hdr_supported_ = fixed_info.hdr_supported;
+
+  if (!fixed_info.hdr_supported) {
+      DLOGI("HDR is not supported");
+      return error;
+  }
+
+  static const float kLuminanceFactor = 10000.0;
+  // luminance is expressed in the unit of 0.0001 cd/m2, convert it to 1cd/m2.
+  max_luminance_ = FLOAT(fixed_info.max_luminance)/kLuminanceFactor;
+  max_average_luminance_ = FLOAT(fixed_info.average_luminance)/kLuminanceFactor;
+  min_luminance_ = FLOAT(fixed_info.min_luminance)/kLuminanceFactor;
+
+  display_hdr_info->hdr_supported = fixed_info.hdr_supported;
+  display_hdr_info->hdr_eotf = fixed_info.hdr_eotf;
+  display_hdr_info->hdr_metadata_type_one = fixed_info.hdr_metadata_type_one;
+  display_hdr_info->max_luminance = fixed_info.max_luminance;
+  display_hdr_info->average_luminance = fixed_info.average_luminance;
+  display_hdr_info->min_luminance = fixed_info.min_luminance;
+
+  return error;
+}
+
 SdmNullDisplay::SdmNullDisplay(DisplayType type, CoreInterface *core_intf) {
 }
 
@@ -1686,6 +1770,10 @@ int SdmNullDisplay::ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
 }
 
 void SdmNullDisplay::SetIdleTimeoutMs(uint32_t timeout_ms, uint32_t inactive_ms) {
+}
+
+DisplayError SdmNullDisplay::GetHdrInfo(struct DisplayHdrInfo *display_hdr_info) {
+  return kErrorNone;
 }
 
 void SdmNullDisplay::RefreshWithCachedLayerstack() {

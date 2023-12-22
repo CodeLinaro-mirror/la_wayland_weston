@@ -22,7 +22,7 @@
 * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 *
 */
@@ -50,6 +50,7 @@
 #include "sdm-service/sdm_display_buffer_allocator.h"
 #include "sdm-service/sdm_display_buffer_sync_handler.h"
 #include "sdm-service/sdm_display_socket_handler.h"
+#include "sdm-service/sdm_display_color_manager.h"
 #include "sdm-internal.h"
 #include "drm_master.h"
 
@@ -72,6 +73,7 @@ typedef std::map<uint32_t, HWDisplayInfo> SdmDisplaysInfo;
 
 // map<display_id, sdm_display>
 typedef std::map<uint32_t, SdmDisplayProxy *> CreatedDisplaysInfo;
+typedef class SDMColorMode SDMColorMode;
 
 class SdmDisplayInterface {
   public:
@@ -98,6 +100,7 @@ class SdmDisplayInterface {
     virtual DisplayError SetHWDetailedEnhancerConfig(void *params) = 0;
     virtual DisplayError SetDetailEnhancerConfig(const DisplayDetailEnhancerData &de_data) = 0;
     virtual void SetIdleTimeoutMs(uint32_t timeout_ms, uint32_t inactive_ms) = 0;
+    virtual DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info) = 0;
     static int GetDrmMasterFd();
     struct drm_output *drm_output_;
     struct drm_output *prev_output_;
@@ -132,6 +135,7 @@ class SdmNullDisplay : public SdmDisplayInterface {
     void SetIdleTimeoutMs(uint32_t timeout_ms, uint32_t inactive_ms);
     DisplayError SetHWDetailedEnhancerConfig(void *params);
     DisplayError SetDetailEnhancerConfig(const DisplayDetailEnhancerData &de_data);
+    DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info);
 };
 
 class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDebugger {
@@ -167,6 +171,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     DisplayError SetHWDetailedEnhancerConfig(void *params);
     DisplayError SetDetailEnhancerConfig(const DisplayDetailEnhancerData &de_data);
     int OnMinHdcpEncryptionLevelChange(uint32_t min_enc_level);
+    DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info);
 
  protected:
     virtual DisplayError VSync(const DisplayEventVSync &vsync);
@@ -255,6 +260,9 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
 
     LayerBuffer output_buffer_ = {};
     CwbConfig cwb_config_ = {};
+    SDMColorMode *display_colormode_ = NULL;
+    int disable_hdr_handling_ = 1;
+    bool hdr_supported_ = false;
 };
 
 class SdmDisplayProxy {
@@ -331,6 +339,10 @@ class SdmDisplayProxy {
 
     int32_t GetDisplayType() {
       return disp_type_;
+    }
+
+    DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info) {
+      return display_intf_->GetHdrInfo(display_hdr_info);
     }
   private:
     // Uevent thread
