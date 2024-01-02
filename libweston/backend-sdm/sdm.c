@@ -879,6 +879,13 @@ drm_output_enable(struct weston_output *base)
 
 	drm_output_print_modes(output);
 
+	// weston treats 255 as max brightness setting initial brightness to ~50%
+	int ret = drm_set_backlight(base, 127);
+	if (ret != 0) {
+		weston_log("Failed to Init backlight\n");
+		return -1;
+	}
+
 	return 0;
 }
 
