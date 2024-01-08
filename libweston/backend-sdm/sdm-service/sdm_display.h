@@ -101,6 +101,8 @@ class SdmDisplayInterface {
     virtual DisplayError SetDetailEnhancerConfig(const DisplayDetailEnhancerData &de_data) = 0;
     virtual void SetIdleTimeoutMs(uint32_t timeout_ms, uint32_t inactive_ms) = 0;
     virtual DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info) = 0;
+    virtual DisplayError RestoreColorTransform() = 0;
+    virtual DisplayError SetColorModeFromClientApi(int32_t color_mode_id) = 0;
     static int GetDrmMasterFd();
     struct drm_output *drm_output_;
     struct drm_output *prev_output_;
@@ -136,6 +138,8 @@ class SdmNullDisplay : public SdmDisplayInterface {
     DisplayError SetHWDetailedEnhancerConfig(void *params);
     DisplayError SetDetailEnhancerConfig(const DisplayDetailEnhancerData &de_data);
     DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info);
+    DisplayError RestoreColorTransform();
+    DisplayError SetColorModeFromClientApi(int32_t color_mode_id);
 };
 
 class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDebugger {
@@ -172,6 +176,8 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     DisplayError SetDetailEnhancerConfig(const DisplayDetailEnhancerData &de_data);
     int OnMinHdcpEncryptionLevelChange(uint32_t min_enc_level);
     DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info);
+    DisplayError RestoreColorTransform();
+    DisplayError SetColorModeFromClientApi(int32_t color_mode_id);
 
  protected:
     virtual DisplayError VSync(const DisplayEventVSync &vsync);
@@ -343,6 +349,14 @@ class SdmDisplayProxy {
 
     DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info) {
       return display_intf_->GetHdrInfo(display_hdr_info);
+    }
+
+    DisplayError RestoreColorTransform() {
+      return display_intf_->RestoreColorTransform();
+    }
+
+    DisplayError SetColorModeFromClientApi(int32_t color_mode_id) {
+      return display_intf_->SetColorModeFromClientApi(color_mode_id);
     }
   private:
     // Uevent thread

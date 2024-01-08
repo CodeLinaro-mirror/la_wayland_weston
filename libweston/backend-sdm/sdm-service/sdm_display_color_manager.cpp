@@ -442,6 +442,101 @@ ColorMode SDMColorMode::SelectBestColorSpace(bool isHdrSupported, LayerStack *la
   return isHdrSupported ? best_hdr_color_mode : best_color_mode;
 }
 
+DisplayError SDMColorMode::RestoreColorTransform() {
+  DisplayError error = display_intf_->SetColorTransform(kColorTransformMatrixCount, color_matrix_);
+  if (error != kErrorNone) {
+    DLOGE("Failed to set Color Transform");
+    return kErrorParameters;
+  }
+
+  return kErrorNone;
+}
+
+DisplayError SDMColorMode::SetPreferredColorModeInternal(const std::string &mode_string,
+                                                         bool from_client, ColorMode *color_mode,
+                                                         DynamicRangeType *dynamic_range) {
+  DisplayError error = kErrorNone;
+  ColorMode mode = {};
+  DynamicRangeType range = kSdrType;
+
+  if (from_client) {
+    // get blend space and dynamic range of the mode
+    AttrVal attr;
+    std::string color_gamut_string, dynamic_range_string;
+    error = display_intf_->GetColorModeAttr(mode_string, &attr);
+    if (error) {
+      DLOGE("Failed to get mode attributes for mode %s", mode_string.c_str());
+      return kErrorParameters;
+    }
+
+    if (!attr.empty()) {
+      for (auto &it : attr) {
+        if (it.first.find(kColorGamutAttribute) != std::string::npos) {
+          color_gamut_string = it.second;
+        } else if (it.first.find(kDynamicRangeAttribute) != std::string::npos) {
+          dynamic_range_string = it.second;
+        }
+      }
+    }
+
+    if (color_gamut_string.empty() || dynamic_range_string.empty()) {
+      DLOGE("Invalid attributes for mode %s: color_gamut = %s, dynamic_range = %s",
+            mode_string.c_str(), color_gamut_string.c_str(), dynamic_range_string.c_str());
+      return kErrorParameters;
+    }
+
+    if (color_gamut_string == kDcip3) {
+      mode.gamut = ColorPrimaries_DCIP3;
+      mode.gamma = Transfer_sRGB;
+    } else if (color_gamut_string == kSrgb) {
+      mode.gamut = ColorPrimaries_BT709_5;
+      mode.gamma = Transfer_sRGB;
+    }
+
+    mode.intent = snapdragoncolor::kColorimetric;
+
+    if (dynamic_range_string == kHdr) {
+      range = kHdrType;
+    }
+
+    if (color_mode) {
+      *color_mode = mode;
+    }
+    if (dynamic_range) {
+      *dynamic_range = range;
+    }
+  }
+
+  // apply the mode from client if it matches
+  // the current blend space and dynamic range,
+  // skip the check for the mode from SF.
+  if ((!from_client) || ((current_color_mode_.gamut == mode.gamut) &&
+     (curr_dynamic_range_ == range))) {
+    DLOGI("Applying mode: %s", mode_string.c_str());
+    error = display_intf_->SetColorMode(mode_string);
+    if (error != kErrorNone) {
+      DLOGE("Failed to apply mode: %s", mode_string.c_str());
+      return kErrorParameters;
+    }
+  }
+
+  return kErrorNone;
+}
+
+DisplayError SDMColorMode::SetColorModeFromClientApi(std::string mode_string) {
+  ColorMode mode = {};
+  DynamicRangeType range = kSdrType;
+
+  auto error = SetPreferredColorModeInternal(mode_string, true, &mode, &range);
+  if (error == kErrorNone) {
+    preferred_mode_[mode.gamut][mode.gamma][range] = mode_string;
+    DLOGV_IF(kTagClient, "Put mode %s(mode %d, range %d) into preferred_mode",
+             mode_string.c_str(), mode, range);
+  }
+
+  return error;
+}
+
 DisplayError SDMColorModeStc::Init() {
   DisplayError error = display_intf_->GetStcColorModes(&stc_mode_list_);
   if (error != kErrorNone) {

@@ -1727,6 +1727,34 @@ DisplayError SdmDisplay::GetHdrInfo(struct DisplayHdrInfo *display_hdr_info) {
   return error;
 }
 
+
+DisplayError SdmDisplay::RestoreColorTransform() {
+  DisplayError status = display_colormode_->RestoreColorTransform();
+  if (status != kErrorNone) {
+    DLOGE("failed to RestoreColorTransform");
+  }
+
+  return status;
+}
+
+DisplayError SdmDisplay::SetColorModeFromClientApi(int32_t color_mode_id) {
+  DisplayError error = kErrorNone;
+  std::string mode_string;
+
+  error = display_intf_->GetColorModeName(color_mode_id, &mode_string);
+  if (error) {
+    DLOGE("Failed to get mode name for mode %d", color_mode_id);
+    return kErrorParameters;
+  }
+
+  DisplayError status = display_colormode_->SetColorModeFromClientApi(mode_string);
+  if (status != kErrorNone) {
+    DLOGE("Failed to set mode = %d", color_mode_id);
+    return status;
+  }
+
+  return status;
+}
 SdmNullDisplay::SdmNullDisplay(DisplayType type, CoreInterface *core_intf) {
 }
 
@@ -1773,6 +1801,14 @@ void SdmNullDisplay::SetIdleTimeoutMs(uint32_t timeout_ms, uint32_t inactive_ms)
 }
 
 DisplayError SdmNullDisplay::GetHdrInfo(struct DisplayHdrInfo *display_hdr_info) {
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::RestoreColorTransform() {
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::SetColorModeFromClientApi(int32_t color_mode_id) {
   return kErrorNone;
 }
 

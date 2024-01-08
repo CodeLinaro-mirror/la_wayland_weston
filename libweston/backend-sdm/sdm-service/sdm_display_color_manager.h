@@ -112,18 +112,32 @@ class SDMColorMode {
 
   virtual DisplayError SetColorModeWithRenderIntent(ColorMode color_mode);
   virtual ColorMode SelectBestColorSpace(bool isHdrSupported, LayerStack *layerStack);
+  virtual DisplayError RestoreColorTransform();
+  DisplayError SetColorModeFromClientApi(std::string mode_string);
  protected:
+  static const uint32_t kColorTransformMatrixCount = 16;
+  DynamicRangeType curr_dynamic_range_ = kSdrType;
   DisplayInterface *display_intf_ = NULL;
+  double color_matrix_[kColorTransformMatrixCount] = { 1.0, 0.0, 0.0, 0.0, \
+                                                       0.0, 1.0, 0.0, 0.0, \
+                                                       0.0, 0.0, 1.0, 0.0, \
+                                                       0.0, 0.0, 0.0, 1.0 };
  private:
   void PopulateColorModes();
   DisplayError ValidateColorMode(ColorMode color_mode);
+  DisplayError SetPreferredColorModeInternal(const std::string &mode_string,
+                                             bool from_client,
+                                             ColorMode *color_mode,
+                                             DynamicRangeType *dynamic_range);
 
   typedef std::map<snapdragoncolor::RenderIntent, std::string> RenderIntentMap;
   typedef std::map<GammaTransfer, RenderIntentMap> GammaTransferMap;
   // <ColorPrimaries, GammaTransfer, RenderIntent> = ColorModeString
   std::map<ColorPrimaries, GammaTransferMap> color_mode_map_ = {};
-
   ColorMode current_color_mode_;
+  typedef std::map<DynamicRangeType, std::string> DynamicRangeMap;
+  typedef std::map<GammaTransfer, DynamicRangeMap> GammaTransferRangeMap;
+  std::map<ColorPrimaries, GammaTransferRangeMap> preferred_mode_ = {};
 };
 
 

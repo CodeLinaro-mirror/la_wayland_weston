@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -125,12 +125,16 @@ int32_t QDCMSession::QdcmCMDHandler(const android::Parcel *input_parcel,
           dpy->RefreshWithCachedLayerstack();
           break;
         case kEnterQDCMMode:
-          ret = color_mgr_->EnableQDCMMode(true, dpy);
-          dpy->NotifyDisplayCalibrationMode(true);
+          ret = 0;
           break;
         case kExitQDCMMode:
-          ret = color_mgr_->EnableQDCMMode(false, dpy);
-          dpy->NotifyDisplayCalibrationMode(false);
+          ret = 0;
+          break;
+        case kApplySolidFill:
+          ret = 0;
+          break;
+        case kDisableSolidFill:
+          ret = 0;
           break;
         case kSetPanelBrightness:
           ret = -EINVAL;
@@ -152,7 +156,8 @@ int32_t QDCMSession::QdcmCMDHandler(const android::Parcel *input_parcel,
           dpy->RefreshWithCachedLayerstack();
           break;
         case kModeSet:
-          ret = 0;//to do
+          ret = dpy->RestoreColorTransform();
+          dpy->RefreshWithCachedLayerstack();
           break;
         case kNoAction:
           break;
@@ -190,7 +195,18 @@ int32_t QDCMSession::QdcmCMDHandler(const android::Parcel *input_parcel,
           }
           break;
         case kSetModeFromClient:
-          ret = 0;// to do
+          {
+            mode_id = reinterpret_cast<int32_t *>(resp_payload.payload);
+            if (mode_id) {
+              ret = dpy->SetColorModeFromClientApi(*mode_id);
+            } else {
+              DLOGE("mode_id is Null");
+              ret = -EINVAL;
+            }
+          }
+          if (!ret) {
+            dpy->RefreshWithCachedLayerstack();
+          }
           break;
         default:
           DLOGW("Invalid pending action = %d!", pending_action.action);
