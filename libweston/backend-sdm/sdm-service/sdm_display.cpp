@@ -48,7 +48,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -1735,7 +1735,7 @@ void *SdmDisplayProxy::UeventThreadHandler() {
   prctl(PR_SET_NAME, uevent_thread_name_, 0, 0, 0);
   setpriority(PRIO_PROCESS, 0, HAL_PRIORITY_URGENT_DISPLAY);
   if (!uevent_init()) {
-    DLOGE("Failed to init uevent");
+    DLOGW("Failed to init uevent");
     pthread_exit(0);
     return NULL;
   }
