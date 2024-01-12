@@ -1742,7 +1742,7 @@ void *SdmDisplayProxy::UeventThreadHandler() {
   prctl(PR_SET_NAME, uevent_thread_name_, 0, 0, 0);
   setpriority(PRIO_PROCESS, 0, HAL_PRIORITY_URGENT_DISPLAY);
   if (!uevent_init()) {
-    DLOGE("Failed to init uevent");
+    DLOGW("Failed to init uevent");
     pthread_exit(0);
     return NULL;
   }
