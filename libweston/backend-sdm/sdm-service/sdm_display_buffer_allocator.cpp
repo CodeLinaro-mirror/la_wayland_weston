@@ -337,21 +337,22 @@ bool SdmDisplayBufferAllocator::IsVideoFormatLinear(uint32_t fmt, uint32_t ubwc_
 
 bool SdmDisplayBufferAllocator::IsVideoFormatUBWC(uint32_t fmt, uint32_t ubwc_status)
 {
-   bool is_videofmt_ubwc = false;
+  bool is_videofmt_ubwc = false;
 
-   if (ubwc_status) {
-     switch (fmt) {
-      case GBM_FORMAT_NV12:
+  if (ubwc_status && fmt == GBM_FORMAT_NV12) {
+    is_videofmt_ubwc = true;
+  } else {
+    switch (fmt) {
       case GBM_FORMAT_YCbCr_420_TP10_UBWC:
+      case GBM_FORMAT_YCbCr_420_SP_VENUS_UBWC:
       case GBM_FORMAT_YCbCr_420_P010_UBWC:
         is_videofmt_ubwc = true;
         break;
       default:
         DLOGW("Unsupported format 0x%x\n", fmt);
-        is_videofmt_ubwc = false;
         break;
-     }
-   }
+    }
+  }
 
   return is_videofmt_ubwc;
 }
