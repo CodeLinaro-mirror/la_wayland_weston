@@ -48,7 +48,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -97,6 +97,7 @@ namespace sdm {
 
 #define MAX_PROP_STR_SIZE 64
 #define SDM_NULL_DISPLAY_RESOLUTON_PROP_NAME "weston.sdm.default.resolution"
+#define SDM_DISABLE_HDR_HANDLING "vendor.display.disable_hdr"
 
 SdmDisplay::SdmDisplay(DisplayType type, CoreInterface *core_intf,
                                          SdmDisplayBufferAllocator *buffer_allocator) {
@@ -132,6 +133,8 @@ const char * SdmDisplay::FourccToString(uint32_t fourcc)
 
 DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
     DisplayError error = kErrorNone;
+    char property[MAX_PROP_STR_SIZE] = {0};
+    struct DisplayHdrInfo display_hdr_info = {};
 
     error = core_intf_->CreateDisplay(display_type_, this, &display_intf_);
 
@@ -141,12 +144,35 @@ DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
         return error;
     }
 
+    SdmDisplayDebugger::Get()->GetProperty(SDM_DISABLE_HDR_HANDLING, property);
+    if (!(std::string(property)==std::string("1"))) {
+        disable_hdr_handling_ = 0;
+    }
+
+    GetHdrInfo(&display_hdr_info);
+    if (display_hdr_info.hdr_supported) {
+        DLOGI("Display device supports HDR functionality");
+    } else {
+        DLOGI("Display device doesn't support HDR functionality");
+    }
+
+    DLOGI("display_id = %d display_type_=%d", display_id, display_type_);
+    if (display_type_ == kBuiltIn) {
+        display_colormode_ = new SDMColorModeStc(display_intf_);
+    } else {
+        display_colormode_ = new SDMColorMode(display_intf_);
+    }
+
+    display_colormode_->Init();
     return kErrorNone;
 }
 
 DisplayError SdmDisplay::DestroyDisplay() {
     DisplayError error = kErrorNone;
 
+    display_colormode_->DeInit();
+    delete display_colormode_;
+    display_colormode_ = NULL;
     error = core_intf_->DestroyDisplay(display_intf_);
     display_intf_ = NULL;
 
@@ -510,7 +536,6 @@ DisplayError SdmDisplay::PopulateLayerGeometryOnToLayerStack(struct drm_output *
     layer_buffer = &layer_buffer_;
 
     /* 1. Fill buffer information */
-    *layer_buffer = sdm::LayerBuffer();
     layer_buffer->format = GetSDMFormat(layer_geometry->format, layer_geometry->flags);
     layer_buffer->width = layer_geometry->width;
     layer_buffer->height = layer_geometry->height;
@@ -529,12 +554,19 @@ DisplayError SdmDisplay::PopulateLayerGeometryOnToLayerStack(struct drm_output *
     layer_buffer->flags.video = layer_geometry->flags.video_present;
     layer_buffer->flags.hdr = layer_geometry->flags.hdr_present;
 
-    if (layer_buffer->flags.hdr) {
-      layer_buffer->color_metadata = layer_geometry->color_metadata;
+    layer_buffer->color_metadata = layer_geometry->color_metadata;
 
-       DLOGI("color_metadata: ColorPrimaries: %d", layer_buffer->color_metadata.colorPrimaries);
-       DLOGI("color_metadata: Transfer: %d", layer_buffer->color_metadata.transfer);
+    if (layer_buffer->color_metadata.colorPrimaries == 0 &&
+        layer_buffer->color_metadata.transfer == 0) {
+        DLOGD("Invalid color_metadata, reset to default");
+        layer_buffer->color_metadata.colorPrimaries = ColorPrimaries_BT709_5;
+        layer_buffer->color_metadata.transfer = Transfer_sRGB;
     }
+
+    DLOGD("color_metadata: ColorPrimaries: %d",
+            layer_buffer->color_metadata.colorPrimaries);
+    DLOGD("color_metadata: Transfer: %d is_skip:%d",
+            layer_buffer->color_metadata.transfer, is_skip);
 
     layer_buffer->flags.macro_tile = false;
     layer_buffer->flags.interlace = false;
@@ -801,6 +833,15 @@ int SdmDisplay::PrepareNormalLayerGeometry(struct drm_output *output,
             layer->ion_fd = sdm_layer->fb->ion_fd;
             layer->flags.secure_present = secure_status;
             layer->flags.has_ubwc_buf = ubwc_status;
+
+            bool hdr_layer = layer->color_metadata.colorPrimaries == ColorPrimaries_BT2020 &&
+                             (layer->color_metadata.transfer == Transfer_SMPTE_ST2084 ||
+                             layer->color_metadata.transfer == Transfer_HLG);
+
+            // Set to true if incoming layer has HDR support and Display supports HDR functionality
+            if (!disable_hdr_handling_) {
+                layer->flags.hdr_present = hdr_layer;
+            }
         }
     }
 
@@ -919,6 +960,15 @@ DisplayError SdmDisplay::PrePrepare(struct drm_output *output)
     error = PrePrepareLayerStack(output);
     if (error ) {
         DLOGE("function failed!\n", error);
+    }
+
+    if (hdr_supported_ && !disable_hdr_handling_) {
+        ColorMode best_color_mode =
+                display_colormode_->SelectBestColorSpace(hdr_supported_, &layer_stack_);
+        error = display_colormode_->SetColorModeWithRenderIntent(best_color_mode);
+        if (error != kErrorNone) {
+            DLOGE("Setting color mode failed.");
+        }
     }
 
     return error;
@@ -1213,6 +1263,9 @@ LayerBufferFormat SdmDisplay::GetSDMFormat(uint32_t src_fmt, struct LayerGeometr
         case SDM_BUFFER_FORMAT_P010:
             format = sdm::kFormatYCbCr420P010;
             break;
+        case SDM_BUFFER_FORMAT_P010_VENUS:
+            format = sdm::kFormatYCbCr420P010Venus;
+            break;
         default:
             DLOGE("Unsupported format %d\n", src_fmt);
             return sdm::kFormatInvalid;
@@ -1249,6 +1302,7 @@ bool SdmDisplay::GetVideoPresenceByFormatFromGbm(uint32_t fmt)
        case GBM_FORMAT_NV12:
        case GBM_FORMAT_YCbCr_420_TP10_UBWC:
        case GBM_FORMAT_YCbCr_420_P010_UBWC:
+       case GBM_FORMAT_YCbCr_420_P010_VENUS:
        case GBM_FORMAT_P010:
             is_video_present = true;
             break;
@@ -1315,6 +1369,9 @@ uint32_t SdmDisplay::GetMappedFormatFromGbm(uint32_t fmt)
         break;
     case GBM_FORMAT_P010:
         ret = SDM_BUFFER_FORMAT_P010;
+        break;
+    case GBM_FORMAT_YCbCr_420_P010_VENUS:
+        ret = SDM_BUFFER_FORMAT_P010_VENUS;
         break;
     default:
          DLOGE("Unsupported GBM format %s\n", FourccToString(fmt));
@@ -1521,6 +1578,190 @@ int SdmDisplay::ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
   return ret;
 }
 
+void SdmDisplay::SetIdleTimeoutMs(uint32_t timeout_ms, uint32_t inactive_ms) {
+  display_intf_->SetIdleTimeoutMs(timeout_ms, inactive_ms);
+}
+
+DisplayError SdmDisplay::SetDetailEnhancerConfig
+                                   (const DisplayDetailEnhancerData &de_data) {
+  DisplayError error = kErrorNotSupported;
+
+  if (display_intf_) {
+    error = display_intf_->SetDetailEnhancerData(de_data);
+  }
+  return error;
+}
+
+DisplayError SdmDisplay::SetHWDetailedEnhancerConfig(void *params) {
+  DisplayError err = kErrorNone;
+  DisplayDetailEnhancerData de_data;
+
+  PPDETuningCfgData *de_tuning_cfg_data = reinterpret_cast<PPDETuningCfgData*>(params);
+  if (de_tuning_cfg_data->cfg_pending) {
+    if (!de_tuning_cfg_data->cfg_en) {
+      de_data.enable = 0;
+      DLOGV_IF(kTagQDCM, "Disable DE config");
+    } else {
+      de_data.override_flags = kOverrideDEEnable;
+      de_data.enable = 1;
+#ifdef DISP_DE_LPF_BLEND
+      DLOGV_IF(kTagQDCM, "Enable DE: flags %u, sharp_factor %d, thr_quiet %d, thr_dieout %d, "
+        "thr_low %d, thr_high %d, clip %d, quality %d, content_type %d, de_blend %d, "
+        "de_lpf_h %d, de_lpf_m %d, de_lpf_l %d",
+        de_tuning_cfg_data->params.flags, de_tuning_cfg_data->params.sharp_factor,
+        de_tuning_cfg_data->params.thr_quiet, de_tuning_cfg_data->params.thr_dieout,
+        de_tuning_cfg_data->params.thr_low, de_tuning_cfg_data->params.thr_high,
+        de_tuning_cfg_data->params.clip, de_tuning_cfg_data->params.quality,
+        de_tuning_cfg_data->params.content_type, de_tuning_cfg_data->params.de_blend,
+        de_tuning_cfg_data->params.de_lpf_h, de_tuning_cfg_data->params.de_lpf_m,
+        de_tuning_cfg_data->params.de_lpf_l);
+#endif
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagSharpFactor) {
+        de_data.override_flags |= kOverrideDESharpen1;
+        de_data.sharp_factor = de_tuning_cfg_data->params.sharp_factor;
+      }
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagClip) {
+        de_data.override_flags |= kOverrideDEClip;
+        de_data.clip = de_tuning_cfg_data->params.clip;
+      }
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagThrQuiet) {
+        de_data.override_flags |= kOverrideDEThrQuiet;
+        de_data.thr_quiet = de_tuning_cfg_data->params.thr_quiet;
+      }
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagThrDieout) {
+        de_data.override_flags |= kOverrideDEThrDieout;
+        de_data.thr_dieout = de_tuning_cfg_data->params.thr_dieout;
+      }
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagThrLow) {
+        de_data.override_flags |= kOverrideDEThrLow;
+        de_data.thr_low = de_tuning_cfg_data->params.thr_low;
+      }
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagThrHigh) {
+        de_data.override_flags |= kOverrideDEThrHigh;
+        de_data.thr_high = de_tuning_cfg_data->params.thr_high;
+      }
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagContentQualLevel) {
+        switch (de_tuning_cfg_data->params.quality) {
+          case kDeContentQualLow:
+            de_data.quality_level = kContentQualityLow;
+            break;
+          case kDeContentQualMedium:
+            de_data.quality_level = kContentQualityMedium;
+            break;
+          case kDeContentQualHigh:
+            de_data.quality_level = kContentQualityHigh;
+            break;
+          case kDeContentQualUnknown:
+          default:
+            de_data.quality_level = kContentQualityUnknown;
+            break;
+        }
+      }
+
+      switch (de_tuning_cfg_data->params.content_type) {
+        case kDeContentTypeVideo:
+          de_data.content_type = kContentTypeVideo;
+          break;
+        case kDeContentTypeGraphics:
+          de_data.content_type = kContentTypeGraphics;
+          break;
+        case kDeContentTypeUnknown:
+        default:
+          de_data.content_type = kContentTypeUnknown;
+          break;
+      }
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagDeBlend) {
+        de_data.override_flags |= kOverrideDEBlend;
+        de_data.de_blend = de_tuning_cfg_data->params.de_blend;
+      }
+#ifdef DISP_DE_LPF_BLEND
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagDeLpfBlend) {
+        de_data.override_flags |= kOverrideDELpfBlend;
+        de_data.de_lpf_en = true;
+        de_data.de_lpf_h = de_tuning_cfg_data->params.de_lpf_h;
+        de_data.de_lpf_m = de_tuning_cfg_data->params.de_lpf_m;
+        de_data.de_lpf_l = de_tuning_cfg_data->params.de_lpf_l;
+      }
+#endif
+    }
+    err = SetDetailEnhancerConfig(de_data);
+    if (err) {
+      DLOGW("SetDetailEnhancerConfig failed. err = %d", err);
+    }
+    de_tuning_cfg_data->cfg_pending = false;
+  }
+  return err;
+}
+
+DisplayError SdmDisplay::GetHdrInfo(struct DisplayHdrInfo *display_hdr_info) {
+  DisplayError error = kErrorNone;
+
+  DisplayConfigFixedInfo fixed_info = {};
+  error = display_intf_->GetConfig(&fixed_info);
+
+  if (error != kErrorNone) {
+      DLOGE("Failed to get fixed info. Error = %d", error);
+      return error;
+  }
+
+  hdr_supported_ = fixed_info.hdr_supported;
+
+  if (!fixed_info.hdr_supported) {
+      DLOGI("HDR is not supported");
+      return error;
+  }
+
+  static const float kLuminanceFactor = 10000.0;
+  // luminance is expressed in the unit of 0.0001 cd/m2, convert it to 1cd/m2.
+  max_luminance_ = FLOAT(fixed_info.max_luminance)/kLuminanceFactor;
+  max_average_luminance_ = FLOAT(fixed_info.average_luminance)/kLuminanceFactor;
+  min_luminance_ = FLOAT(fixed_info.min_luminance)/kLuminanceFactor;
+
+  display_hdr_info->hdr_supported = fixed_info.hdr_supported;
+  display_hdr_info->hdr_eotf = fixed_info.hdr_eotf;
+  display_hdr_info->hdr_metadata_type_one = fixed_info.hdr_metadata_type_one;
+  display_hdr_info->max_luminance = fixed_info.max_luminance;
+  display_hdr_info->average_luminance = fixed_info.average_luminance;
+  display_hdr_info->min_luminance = fixed_info.min_luminance;
+
+  return error;
+}
+
+
+DisplayError SdmDisplay::RestoreColorTransform() {
+  DisplayError status = display_colormode_->RestoreColorTransform();
+  if (status != kErrorNone) {
+    DLOGE("failed to RestoreColorTransform");
+  }
+
+  return status;
+}
+
+DisplayError SdmDisplay::SetColorModeFromClientApi(int32_t color_mode_id) {
+  DisplayError error = kErrorNone;
+  std::string mode_string;
+
+  error = display_intf_->GetColorModeName(color_mode_id, &mode_string);
+  if (error) {
+    DLOGE("Failed to get mode name for mode %d", color_mode_id);
+    return kErrorParameters;
+  }
+
+  DisplayError status = display_colormode_->SetColorModeFromClientApi(mode_string);
+  if (status != kErrorNone) {
+    DLOGE("Failed to set mode = %d", color_mode_id);
+    return status;
+  }
+
+  return status;
+}
 SdmNullDisplay::SdmNullDisplay(DisplayType type, CoreInterface *core_intf) {
 }
 
@@ -1560,6 +1801,21 @@ DisplayError SdmNullDisplay::GetPanelBrightness(float *brightness) {
 int SdmNullDisplay::ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
                                          PPDisplayAPIPayload *out_payload,
                                          PPPendingParams *pending_action) {
+  return kErrorNone;
+}
+
+void SdmNullDisplay::SetIdleTimeoutMs(uint32_t timeout_ms, uint32_t inactive_ms) {
+}
+
+DisplayError SdmNullDisplay::GetHdrInfo(struct DisplayHdrInfo *display_hdr_info) {
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::RestoreColorTransform() {
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::SetColorModeFromClientApi(int32_t color_mode_id) {
   return kErrorNone;
 }
 
@@ -1627,6 +1883,14 @@ DisplayError SdmNullDisplay::RegisterCb(int display_id, vblank_cb_t vbcb) {
   return kErrorNone;
 }
 
+
+DisplayError SdmNullDisplay::SetDetailEnhancerConfig(const DisplayDetailEnhancerData &de_data) {
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::SetHWDetailedEnhancerConfig(void *params) {
+  return kErrorNone;
+}
 SdmDisplayProxy::SdmDisplayProxy(DisplayType type, CoreInterface *core_intf,
                                  SdmDisplayBufferAllocator *buffer_allocator)
   : disp_type_(type), core_intf_(core_intf),

@@ -71,6 +71,23 @@ SdmDisplayProxy *GetDisplayFromId(uint32_t display_id) {
     return it->second;
 }
 
+SdmDisplayProxy *GetDisplayFromIndex(uint32_t index) {
+    auto it = displays_.begin();
+    uint32_t i = 0;
+    for (it; it != displays_.end(); ++it) {
+        if (i != index) {
+            i++;
+            continue;
+        }
+
+        DLOGI("Get index[%u] display_id = %d.", index, it->first);
+        return it->second;
+    }
+
+    DLOGE("No display available with index: %d.", index);
+    return NULL;
+}
+
 bool IsDisplayCreated(uint32_t display_id) {
     return displays_.find(display_id) != displays_.end();
 }

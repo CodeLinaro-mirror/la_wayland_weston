@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 *
 */
@@ -26,18 +26,58 @@
 #include <utils/sys.h>
 #include <fcntl.h>
 #include <unistd.h>
-
+#include "sdm_display.h"
 #include "sdm-service/sdm_display_buffer_allocator.h"
 
 #define DISPLAY_API_INTERFACE_LIBRARY_NAME "libsdm-disp-vndapis.so"
 #define DISPLAY_API_FUNC_TABLES "display_color_apis_ftables"
 
 using std::fstream;
+using snapdragoncolor::ColorMode;
+using snapdragoncolor::ColorModeList;
+using snapdragoncolor::RenderIntent;
 
 typedef class BufferAllocator BufferAllocator;
 typedef class DynLib DynLib;
 
 namespace sdm {
+
+class SdmDisplayProxy;
+class SDMQDCMModeManager {
+ public:
+  static const uint32_t kSocketCMDMaxLength = 4096;
+  enum ActiveFeatureID {
+    kCABLFeature,
+    kADFeature,
+    kSVIFeature,
+    kMaxNumActiveFeature,
+  };
+
+  struct ActiveFeatureCMD {
+    const char *cmd_on = NULL;
+    const char *cmd_off = NULL;
+    const char *cmd_query_status = NULL;
+    const char *running = NULL;
+    ActiveFeatureCMD(const char *arg1, const char *arg2, const char *arg3,
+                     const char *arg4) : cmd_on(arg1), cmd_off(arg2),
+                     cmd_query_status(arg3), running(arg4) {}
+  };
+
+  static const ActiveFeatureCMD kActiveFeatureCMD[kMaxNumActiveFeature];
+
+  static SDMQDCMModeManager *CreateQDCMModeMgr();
+  ~SDMQDCMModeManager();
+  int EnableQDCMMode(bool enable, SdmDisplayProxy *sdmdisplay);
+
+ protected:
+  int EnableActiveFeatures(bool enable);
+  int EnableActiveFeatures(bool enable, const ActiveFeatureCMD &cmds, bool *was_running);
+ private:
+  bool cabl_was_running_ = false;
+  int socket_fd_ = -1;
+  uint32_t entry_timeout_ = 0;
+  static const char *const kSocketName;
+};
 
 class SDMColorManager {
  public:
@@ -48,6 +88,9 @@ class SDMColorManager {
                                        android::Parcel *out_parcel);
 
   explicit SDMColorManager(BufferAllocator *buffer_allocator);
+  int EnableQDCMMode(bool enable, SdmDisplayProxy *sdmdisplay);
+  int SetDetailedEnhancer(void *params, SdmDisplayProxy *sdmdisplay);
+  int SetHWDetailedEnhancerConfig(void *params, SdmDisplayProxy *sdmdisplay);
   ~SDMColorManager();
   void DestroyColorManager();
  private:
@@ -55,7 +98,71 @@ class SDMColorManager {
   void *color_apis_ = NULL;
   BufferAllocator *buffer_allocator_ = NULL;
   BufferInfo buffer_info = {};
+  SDMQDCMModeManager *qdcm_mode_mgr_ = NULL;
   Locker locker_;
 };
+
+class SDMColorMode {
+ public:
+  explicit SDMColorMode(DisplayInterface *display_intf) : display_intf_(display_intf) {};
+  virtual ~SDMColorMode() {}
+
+  virtual DisplayError Init();
+  virtual DisplayError DeInit();
+
+  virtual DisplayError SetColorModeWithRenderIntent(ColorMode color_mode);
+  virtual ColorMode SelectBestColorSpace(bool isHdrSupported, LayerStack *layerStack);
+  virtual DisplayError RestoreColorTransform();
+  DisplayError SetColorModeFromClientApi(std::string mode_string);
+ protected:
+  static const uint32_t kColorTransformMatrixCount = 16;
+  DynamicRangeType curr_dynamic_range_ = kSdrType;
+  DisplayInterface *display_intf_ = NULL;
+  double color_matrix_[kColorTransformMatrixCount] = { 1.0, 0.0, 0.0, 0.0, \
+                                                       0.0, 1.0, 0.0, 0.0, \
+                                                       0.0, 0.0, 1.0, 0.0, \
+                                                       0.0, 0.0, 0.0, 1.0 };
+ private:
+  void PopulateColorModes();
+  DisplayError ValidateColorMode(ColorMode color_mode);
+  DisplayError SetPreferredColorModeInternal(const std::string &mode_string,
+                                             bool from_client,
+                                             ColorMode *color_mode,
+                                             DynamicRangeType *dynamic_range);
+
+  typedef std::map<snapdragoncolor::RenderIntent, std::string> RenderIntentMap;
+  typedef std::map<GammaTransfer, RenderIntentMap> GammaTransferMap;
+  // <ColorPrimaries, GammaTransfer, RenderIntent> = ColorModeString
+  std::map<ColorPrimaries, GammaTransferMap> color_mode_map_ = {};
+  ColorMode current_color_mode_;
+  typedef std::map<DynamicRangeType, std::string> DynamicRangeMap;
+  typedef std::map<GammaTransfer, DynamicRangeMap> GammaTransferRangeMap;
+  std::map<ColorPrimaries, GammaTransferRangeMap> preferred_mode_ = {};
+};
+
+
+class SDMColorModeStc : public SDMColorMode {
+ public:
+  SDMColorModeStc(DisplayInterface *display_intf) : SDMColorMode(display_intf) {}
+  ~SDMColorModeStc() {}
+
+  DisplayError Init() override;
+  DisplayError DeInit() override;
+
+  DisplayError SetColorModeWithRenderIntent(ColorMode color_mode) override;
+  ColorMode SelectBestColorSpace(bool isHdrSupported, LayerStack *layerStack) override;
+ private:
+    void PopulateColorModes();
+    DisplayError ValidateColorMode(ColorMode color_mode);
+
+    typedef std::map<snapdragoncolor::RenderIntent, ColorMode> RenderIntentMap;
+    typedef std::map<GammaTransfer, RenderIntentMap> GammaTransferMap;
+    // <ColorPrimaries, GammaTransfer, RenderIntent> = ColorMode
+    std::map<ColorPrimaries, GammaTransferMap> color_mode_map_ = {};
+
+    ColorMode current_color_mode_ = {};
+    ColorModeList stc_mode_list_ = {};
+};
+
 } // namespace sdm
 #endif // SDM_DISPLAY_COLOR_MANAGER_H
