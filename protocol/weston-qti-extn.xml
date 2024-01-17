@@ -57,10 +57,19 @@
       </description>
     </request>
 
+    <request name="set_output_state">
+      <description summary="set output state by output name">
+        This will turn on/off the selected display.
+      </description>
+      <arg name="output_name" type="string" summary="output name"/>
+      <arg name="power_state" type="uint" summary="power state value"/>
+    </request>
+
     <request name="set_brightness">
       <description summary="set display brightness">
         This will set the display brightness.
       </description>
+      <arg name="output_name" type="string" summary="output name"/>
       <arg name="brightness_value" type="uint" summary="sets the brightness value"/>
     </request>
 
