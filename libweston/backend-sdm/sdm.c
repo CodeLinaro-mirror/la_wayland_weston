@@ -450,6 +450,17 @@ drm_repaint_begin(struct weston_compositor *compositor)
 {
 	struct drm_backend *b = to_drm_backend(compositor);
 	struct drm_pending_state *ret = NULL;
+	struct weston_output *output = NULL;
+
+	wl_list_for_each(output, &compositor->output_list, link) {
+		struct drm_output *drm_output = to_drm_output(output);
+
+		/* if disable_planes is set then assign_planes() wasn't
+		 * called, reset flag to commit this frame
+		 */
+		if (output->disable_planes)
+			drm_output->commit_pending = true;
+	}
 
 	b->repaint_data = NULL;
 
