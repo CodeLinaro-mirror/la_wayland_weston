@@ -1135,6 +1135,7 @@ DisplayError SdmDisplay::Commit(struct drm_output *output)
 {
     DTRACE_SCOPED();
     DisplayError ret = kErrorNone;
+    DisplayState state = kStateOff;
 
     if (esd_reset_panel_) {
       return kErrorNotSupported;
@@ -1145,18 +1146,24 @@ DisplayError SdmDisplay::Commit(struct drm_output *output)
     Layer *GpuTargetlayer;
 
     if (!output->next_fb) {
-	DLOGE("Scanout state fb not found for output=%d", output->base.id);
-	return kErrorUndefined;
+      DLOGE("Scanout state fb not found for output=%d", output->base.id);
+      return kErrorUndefined;
     }
 
     GpuTargetlayer = layer_stack_.layers.at(GPUTarget_index);
     GpuTargetlayer->input_buffer.planes[0].fd = output->next_fb->ion_fd;
 
-    DLOGI("commiting ion fd = %d, layer count=%d", output->next_fb->ion_fd, layer_count);
+    display_intf_->GetDisplayState(&state);
+    DLOGI("state=%d commiting ion fd = %d, layer count=%d",
+                  state, output->next_fb->ion_fd, layer_count);
 
     PreCommit();
     prev_output_ = output;
     ret = display_intf_->Commit(&layer_stack_);
+
+    if (output->first_cycle && ret == kErrorNone && state == kStateOn) {
+      output->first_cycle = false;
+    }
 
     PostCommit();
 

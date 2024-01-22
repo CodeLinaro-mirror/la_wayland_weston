@@ -28,7 +28,7 @@
  * SOFTWARE.
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  *
  */
@@ -139,6 +139,9 @@ on_vblank(int fd, uint32_t mask, void *data)
 		usec = output->last_vblank.usec;
 		sec = output->last_vblank.sec;
 		drm_output_update_complete(output, flags, sec, usec);
+		if (output->first_cycle) {
+			weston_output_damage(output);
+		}
 	}
 	return 0;
 }
@@ -1162,6 +1165,7 @@ drm_output_create(struct weston_compositor *compositor, const char *name)
 
 	output->destroy_pending = false;
 	output->disable_pending = false;
+	output->first_cycle = true;
 
 	weston_compositor_add_pending_output(&output->base, b->compositor);
 
