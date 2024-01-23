@@ -102,6 +102,7 @@ namespace sdm {
 #define SDM_NULL_DISPLAY_RESOLUTON_PROP_NAME "weston.sdm.default.resolution"
 #define SDM_DISABLE_HDR_HANDLING "vendor.display.disable_hdr"
 
+std::atomic<uint64_t> SdmDisplay::next_id_(1);
 SdmDisplay::SdmDisplay(DisplayType type, CoreInterface *core_intf,
                                          SdmDisplayBufferAllocator *buffer_allocator) {
     display_type_ = type;
@@ -594,6 +595,12 @@ DisplayError SdmDisplay::AllocLayerStackMemory(struct drm_output *output) {
     return kErrorNone;
 }
 
+void SdmDisplay::InitializeLayerIds() {
+    for (auto &layer: layer_stack_.layers) {
+         layer->layer_id = next_id_++;
+    }
+}
+
 static void SetRect(sdm::LayerRect *dst, struct Rect *src)
 {
     dst->left = src->left;
@@ -932,6 +939,7 @@ DisplayError SdmDisplay::PrePrepareLayerStack(struct drm_output *output) {
 
     FreeLayerStack();
     AllocLayerStackMemory(output);
+    InitializeLayerIds();
 
     DLOGI("gpu_target_index = %d\n", gpu_target_index);
 
