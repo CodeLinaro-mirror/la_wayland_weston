@@ -23,7 +23,7 @@
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
 *
-* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
@@ -238,8 +238,15 @@ int SdmDisplayBufferAllocator::SetBufferInfo(LayerBufferFormat format, uint32_t 
                                         *flags = GBM_BO_USAGE_UBWC_ALIGNED_QTI |
                                                  GBM_BO_USAGE_HW_RENDERING_QTI;
                                         break;
-  case kFormatYCbCr420TP10Ubwc:         *target = GBM_FORMAT_YCbCr_420_TP10_UBWC;  break;
-  case kFormatYCbCr420P010Ubwc:         *target = GBM_FORMAT_YCbCr_420_P010_UBWC;  break;
+  case kFormatYCbCr420TP10Ubwc:         *target = GBM_FORMAT_YCbCr_420_TP10_UBWC;
+                                        *flags = GBM_BO_USAGE_UBWC_ALIGNED_QTI |
+                                                 GBM_BO_USAGE_HW_RENDERING_QTI;
+                                        break;
+  case kFormatYCbCr420P010Ubwc:         *target = GBM_FORMAT_YCbCr_420_P010_UBWC;
+                                        *flags = GBM_BO_USAGE_UBWC_ALIGNED_QTI |
+                                                 GBM_BO_USAGE_HW_RENDERING_QTI;
+                                        break;
+  case kFormatYCbCr420P010Venus:        *target = GBM_FORMAT_YCbCr_420_P010_VENUS;  break;
   case kFormatYCbCr420P010:             *target = GBM_FORMAT_P010;  break;
   default:
     DLOGE("Unsupported format = 0x%x", format);
@@ -296,6 +303,7 @@ bool SdmDisplayBufferAllocator::IsFormatVideo(uint32_t fmt)
       case GBM_FORMAT_NV12:
       case GBM_FORMAT_YCbCr_420_TP10_UBWC:
       case GBM_FORMAT_P010:
+      case GBM_FORMAT_YCbCr_420_P010_VENUS:
            is_video_present = true;
            break;
       default:
@@ -314,6 +322,7 @@ bool SdmDisplayBufferAllocator::IsVideoFormatLinear(uint32_t fmt, uint32_t ubwc_
      switch (fmt) {
       case GBM_FORMAT_NV12:
       case GBM_FORMAT_P010:
+      case GBM_FORMAT_YCbCr_420_P010_VENUS:
         is_videofmt_linear = true;
         break;
       default:
@@ -328,20 +337,22 @@ bool SdmDisplayBufferAllocator::IsVideoFormatLinear(uint32_t fmt, uint32_t ubwc_
 
 bool SdmDisplayBufferAllocator::IsVideoFormatUBWC(uint32_t fmt, uint32_t ubwc_status)
 {
-   bool is_videofmt_ubwc = false;
+  bool is_videofmt_ubwc = false;
 
-   if (ubwc_status) {
-     switch (fmt) {
-      case GBM_FORMAT_NV12:
+  if (ubwc_status && fmt == GBM_FORMAT_NV12) {
+    is_videofmt_ubwc = true;
+  } else {
+    switch (fmt) {
       case GBM_FORMAT_YCbCr_420_TP10_UBWC:
+      case GBM_FORMAT_YCbCr_420_SP_VENUS_UBWC:
+      case GBM_FORMAT_YCbCr_420_P010_UBWC:
         is_videofmt_ubwc = true;
         break;
       default:
         DLOGW("Unsupported format 0x%x\n", fmt);
-        is_videofmt_ubwc = false;
         break;
-     }
-   }
+    }
+  }
 
   return is_videofmt_ubwc;
 }
@@ -391,10 +402,17 @@ int SdmDisplayBufferAllocator::GetBufferLayout(const AllocatedBufferInfo &buf_in
       *num_planes++;
       gbm_bo_destroy(bo);
       return kErrorNone;
+    } else {
+      /*
+        TODO: A more elegant solution would be to create a GBM API call to
+              get number of non-meta planes.
+              Additionally, need to check YUV formats using a GBM API so as to keep
+              the implementation generic. Currently, this is a local function call limited
+              to 3 YUV formats, and every time a new format needs to be introduced,
+              implementation of IsFormatVideo needs to be updated.
+      */
+      *num_planes = 2;  // For video formats
     }
-
-    if (format == GBM_FORMAT_NV12)
-      *num_planes = 2; // for NV12 format
 
     gbm_perform(GBM_PERFORM_GET_PLANE_INFO, bo, &buf_layout);
     gbm_perform(GBM_PERFORM_GET_UBWC_STATUS, bo, &ubwc_status);

@@ -23,7 +23,7 @@
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
 *
-* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
@@ -69,6 +69,7 @@ enum {
        SDM_BUFFER_FORMAT_YCbCr_420_TP10_UBWC,
        SDM_BUFFER_FORMAT_YCbCr_420_P010_UBWC,
        SDM_BUFFER_FORMAT_P010,
+       SDM_BUFFER_FORMAT_P010_VENUS,
        SDM_BUFFER_FORMAT_YCbCr_420_SP_VENUS,
        SDM_BUFFER_FORMAT_YCbCr_420_SP_VENUS_UBWC,
        SDM_BUFFER_FORMAT_YCbCr_422_SP,
