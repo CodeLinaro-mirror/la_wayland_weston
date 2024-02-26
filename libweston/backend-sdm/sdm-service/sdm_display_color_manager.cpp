@@ -399,10 +399,11 @@ DisplayError SDMColorMode::SetColorModeWithRenderIntent(ColorMode color_mode) {
 ColorMode SDMColorMode::SelectBestColorSpace(bool isHdrSupported, LayerStack *layerStack) {
   snapdragoncolor::ColorMode best_color_mode = {};
   snapdragoncolor::ColorMode best_hdr_color_mode = {};
+  snapdragoncolor::ColorMode final_color_mode = {};
 
   best_color_mode.gamut = best_hdr_color_mode.gamut = ColorPrimaries_BT709_5;
   best_color_mode.gamma = best_hdr_color_mode.gamma = Transfer_sRGB;
-  best_color_mode.intent = best_hdr_color_mode.intent = snapdragoncolor::kColorimetric;
+  best_color_mode.intent = best_hdr_color_mode.intent = snapdragoncolor::kNative;
   LayerStack *layer_stack = layerStack;
   for (uint32_t i = 0; i < layer_stack->layers.size(); i++) {
     struct Layer *layer = nullptr;
@@ -417,7 +418,7 @@ ColorMode SDMColorMode::SelectBestColorSpace(bool isHdrSupported, LayerStack *la
     snapdragoncolor::ColorMode color_mode = {};
     color_mode.gamut = buffer.color_metadata.colorPrimaries;
     color_mode.gamma = buffer.color_metadata.transfer;
-    color_mode.intent = snapdragoncolor::kColorimetric;
+    color_mode.intent = snapdragoncolor::kNative;
 
     switch (color_mode.gamut) {
       case ColorPrimaries_DCIP3:
@@ -439,7 +440,13 @@ ColorMode SDMColorMode::SelectBestColorSpace(bool isHdrSupported, LayerStack *la
         break;
     }
   }
-  return isHdrSupported ? best_hdr_color_mode : best_color_mode;
+
+  final_color_mode = (isHdrSupported ? best_hdr_color_mode : best_color_mode);
+  if (ValidateColorMode(final_color_mode) != kErrorNone) {
+    final_color_mode.intent = snapdragoncolor::kColorimetric;
+  }
+
+  return final_color_mode;
 }
 
 DisplayError SDMColorMode::RestoreColorTransform() {
