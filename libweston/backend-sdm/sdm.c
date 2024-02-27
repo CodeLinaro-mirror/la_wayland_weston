@@ -497,6 +497,11 @@ drm_repaint_flush(struct weston_compositor *compositor, void *repaint_data)
 	wl_list_for_each(output, &compositor->output_list, link) {
 		struct drm_output *drm_output = to_drm_output(output);
 
+		if (drm_output->dpms != WESTON_DPMS_ON) {
+			drm_output->atomic_complete_pending = true;
+			continue;
+		}
+
 		if (!drm_output->next_fb)
 			continue;
 
