@@ -615,6 +615,7 @@ DisplayError SdmDisplay::PopulateLayerGeometryOnToLayerStack(struct drm_output *
     layer->flags.solid_fill = false;
     layer->flags.cursor = false;
     layer->flags.single_buffer = false;
+    layer->layer_id = index;
 
     return error;
 }
