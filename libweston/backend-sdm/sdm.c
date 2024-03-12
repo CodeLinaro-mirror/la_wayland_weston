@@ -663,6 +663,9 @@ drm_set_dpms(struct weston_output *output_base, enum dpms_enum level)
 	if (level == WESTON_DPMS_ON) {
 		if (output->dpms_off_pending)
 			output->dpms_off_pending = false;
+
+		if (output_base->repaint_status == REPAINT_AWAITING_COMPLETION)
+			virtual_vblank(output_base);
 		weston_output_schedule_repaint(output_base);
 		return;
 	}
