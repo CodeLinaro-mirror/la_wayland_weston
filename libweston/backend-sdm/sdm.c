@@ -28,7 +28,7 @@
  * SOFTWARE.
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  *
  */
@@ -139,6 +139,9 @@ on_vblank(int fd, uint32_t mask, void *data)
 		usec = output->last_vblank.usec;
 		sec = output->last_vblank.sec;
 		drm_output_update_complete(output, flags, sec, usec);
+		if (output->first_cycle) {
+			weston_output_damage(output);
+		}
 	}
 	return 0;
 }
@@ -450,6 +453,17 @@ drm_repaint_begin(struct weston_compositor *compositor)
 {
 	struct drm_backend *b = to_drm_backend(compositor);
 	struct drm_pending_state *ret = NULL;
+	struct weston_output *output = NULL;
+
+	wl_list_for_each(output, &compositor->output_list, link) {
+		struct drm_output *drm_output = to_drm_output(output);
+
+		/* if disable_planes is set then assign_planes() wasn't
+		 * called, reset flag to commit this frame
+		 */
+		if (output->disable_planes)
+			drm_output->commit_pending = true;
+	}
 
 	b->repaint_data = NULL;
 
@@ -482,6 +496,11 @@ drm_repaint_flush(struct weston_compositor *compositor, void *repaint_data)
 
 	wl_list_for_each(output, &compositor->output_list, link) {
 		struct drm_output *drm_output = to_drm_output(output);
+
+		if (drm_output->dpms != WESTON_DPMS_ON) {
+			drm_output->atomic_complete_pending = true;
+			continue;
+		}
 
 		if (!drm_output->next_fb)
 			continue;
@@ -644,6 +663,9 @@ drm_set_dpms(struct weston_output *output_base, enum dpms_enum level)
 	if (level == WESTON_DPMS_ON) {
 		if (output->dpms_off_pending)
 			output->dpms_off_pending = false;
+
+		if (output_base->repaint_status == REPAINT_AWAITING_COMPLETION)
+			virtual_vblank(output_base);
 		weston_output_schedule_repaint(output_base);
 		return;
 	}
@@ -1162,6 +1184,7 @@ drm_output_create(struct weston_compositor *compositor, const char *name)
 
 	output->destroy_pending = false;
 	output->disable_pending = false;
+	output->first_cycle = true;
 
 	weston_compositor_add_pending_output(&output->base, b->compositor);
 
