@@ -126,7 +126,9 @@ on_vblank(int fd, uint32_t mask, void *data)
 	uint32_t flags = WP_PRESENTATION_FEEDBACK_KIND_VSYNC |
 			 WP_PRESENTATION_FEEDBACK_KIND_HW_COMPLETION |
 			 WP_PRESENTATION_FEEDBACK_KIND_HW_CLOCK;
-
+	if (!output->atomic_complete_pending) {
+		SetVSyncState(output->display_id, false, output);
+	}
 	if (output->atomic_complete_pending) {
 		drm_output_update_msc(output, output->last_vblank.frame);
 		output->atomic_complete_pending = false;
@@ -137,9 +139,6 @@ on_vblank(int fd, uint32_t mask, void *data)
 		sec = output->last_vblank.sec;
 		drm_output_update_complete(output, flags, sec, usec);
 	}
-
-	// turn off vsync at end of frame completion
-	SetVSyncState(output->display_id, false, output);
 	return 0;
 }
 
