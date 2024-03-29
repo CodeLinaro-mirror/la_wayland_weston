@@ -258,6 +258,8 @@ char* GetConnectorName(uint32_t display_id);
 
 uint32_t GetConnectorId(uint32_t display_id);
 
+void ClearSDMLayers(struct drm_output *output);
+
 #ifdef __cplusplus
 }
 #endif

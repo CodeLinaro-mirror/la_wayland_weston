@@ -559,6 +559,22 @@ int GetDisplayType(uint32_t display_id) {
   return (it->second.display_type);
 }
 
+void ClearSDMLayers(struct drm_output *output) {
+  struct sdm_layer *sdm_layer, *tmp_layer;
+  wl_list_for_each_safe(sdm_layer, tmp_layer, &output->prev_sdm_layer_list, link) {
+    shared_ptr<Fence> release_fence = Fence::Create(INT(sdm_layer->release_fence_fd), "release");
+    if (!Fence::Wait(release_fence)) {
+      destroy_sdm_layer(sdm_layer);
+    }
+  }
+
+  wl_list_init(&output->prev_sdm_layer_list);
+  wl_list_for_each_safe(sdm_layer, tmp_layer, &output->sdm_layer_list, link) {
+    wl_list_insert(output->prev_sdm_layer_list.prev, &sdm_layer->link);
+  }
+
+  wl_list_init(&output->sdm_layer_list);
+}
 
 }// namespace sdm
 #ifdef __cplusplus
