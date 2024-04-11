@@ -48,7 +48,10 @@ void power_on(struct wl_client *client, struct wl_resource *resource);
 void power_off(struct wl_client *client, struct wl_resource *resource);
 
 void set_brightness(struct wl_client *client, struct wl_resource *resource,
-                    uint32_t brightness_value);
+                    const char* output_name, uint32_t brightness_value);
+
+void set_output_state(struct wl_client *client, struct wl_resource *resource,
+                      const char* output_name, uint32_t state);
 
 /** Advertise weston_qti_extn_setup support
  *

@@ -38,6 +38,7 @@
 #include "weston-qti-extn-client-protocol.h"
 
 #define MAX_DIGITS 5
+#define MAX_STRING 128
 
 struct display {
   struct wl_display *display;
@@ -92,6 +93,7 @@ long int get_integer_input() {
 }
 
 int main(int argc, char **argv) {
+  char output_name[MAX_STRING];
   display.display = wl_display_connect(NULL);
   if (display.display == NULL) {
     fprintf(stderr, "Can't connect to display\n");
@@ -119,8 +121,9 @@ int main(int argc, char **argv) {
   printf("Enter the test case no : \n \
             1. Power On \n \
             2. Power Off \n \
-            3. set brightness \n \
-            4. Exit \n");
+            3. set output state \n \
+            4. set brightness \n \
+            5. Exit \n");
   printf("enter your choice : ");
   long int choice = get_integer_input();
   int loop = 1;
@@ -133,11 +136,39 @@ int main(int argc, char **argv) {
         weston_qti_extn_power_off(display.qti_extn);
       break;
       case 3:
-        printf("Enter brightness value : ");
-        uint32_t value = (uint32_t) get_integer_input();
-        weston_qti_extn_set_brightness(display.qti_extn, value);
+        printf("enter your output name : ");
+        fgets(output_name, MAX_STRING, stdin);
+        fflush(stdin);
+        output_name[strlen(output_name) - 1] = '\0';
+        printf("Enter output state: \n \
+                0. power off\n \
+                1. power on \n ");
+        printf("enter your value : ");
+        uint32_t state = (uint32_t) get_integer_input();
+        if (state != 0 && state != 1) {
+          printf("Invalid input. Please try again.\n");
+          break;
+        }
+        weston_qti_extn_set_output_state(display.qti_extn,
+                                        (const char *)output_name, state);
+        printf("set output(%s) state to %u\n", output_name, state);
       break;
       case 4:
+        printf("enter your output name : ");
+        fgets(output_name, MAX_STRING, stdin);
+        fflush(stdin);
+        output_name[strlen(output_name) - 1] = '\0';
+        printf("Enter brightness value [0~255] : ");
+        uint32_t value = (uint32_t) get_integer_input();
+        if (value > 255) {
+          printf("Invalid input. Please try again.\n");
+          break;
+        }
+        weston_qti_extn_set_brightness(display.qti_extn,
+                                      (const char *)output_name, value);
+        printf("set output(%s) brightness to %u\n", output_name, value);
+      break;
+      case 5:
         loop = 0;
       break;
       default :
@@ -153,8 +184,9 @@ int main(int argc, char **argv) {
     printf("Enter the test case no : \n \
               1. Power On \n \
               2. Power Off \n \
-              3. set brightness \n \
-              4. Exit \n");
+              3. set output state \n \
+              4. set brightness \n \
+              5. Exit \n");
     printf("enter your choice : ");
     choice = get_integer_input();
   }
