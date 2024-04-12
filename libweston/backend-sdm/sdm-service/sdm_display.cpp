@@ -975,7 +975,8 @@ DisplayError SdmDisplay::PrePrepare(struct drm_output *output)
 
     if (hdr_supported_ && !disable_hdr_handling_) {
         ColorMode best_color_mode =
-                display_colormode_->SelectBestColorSpace(hdr_supported_, &layer_stack_);
+            display_colormode_->SelectBestColorSpace(
+                layer_stack_.flags.hdr_present, &layer_stack_);
         error = display_colormode_->SetColorModeWithRenderIntent(best_color_mode);
         if (error != kErrorNone) {
             DLOGE("Setting color mode failed.");
