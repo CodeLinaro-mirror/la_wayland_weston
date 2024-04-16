@@ -79,6 +79,7 @@
 
 #define __CLASS__ "SdmDisplay"
 extern "C" void NotifyOnRefresh(struct drm_output *);
+extern "C" void NotifyOnQdcmRefresh(struct drm_output *);
 
 namespace sdm {
 #define GET_GPU_TARGET_SLOT(max_layers) ((max_layers) - 1)
@@ -233,6 +234,13 @@ DisplayError SdmDisplay::SetDisplayState(DisplayState state, bool teardown,
 
 DisplayError SdmDisplay::HistogramEvent(int /* fd */, uint32_t /* blob_fd */) {
   return kErrorNone;
+}
+
+void SdmDisplay::RefreshCallback()
+{
+    if (drm_output_) {
+      NotifyOnQdcmRefresh(drm_output_);
+    }
 }
 
 void SdmDisplay::RefreshWithCachedLayerstack()
@@ -967,7 +975,8 @@ DisplayError SdmDisplay::PrePrepare(struct drm_output *output)
 
     if (hdr_supported_ && !disable_hdr_handling_) {
         ColorMode best_color_mode =
-                display_colormode_->SelectBestColorSpace(hdr_supported_, &layer_stack_);
+            display_colormode_->SelectBestColorSpace(
+                layer_stack_.flags.hdr_present, &layer_stack_);
         error = display_colormode_->SetColorModeWithRenderIntent(best_color_mode);
         if (error != kErrorNone) {
             DLOGE("Setting color mode failed.");
@@ -1830,6 +1839,9 @@ DisplayError SdmNullDisplay::SetColorModeFromClientApi(int32_t color_mode_id) {
 }
 
 void SdmNullDisplay::RefreshWithCachedLayerstack() {
+}
+
+void SdmNullDisplay::RefreshCallback() {
 }
 
 DisplayError SdmNullDisplay::SetVSyncState(bool enable, struct drm_output *output) {

@@ -1966,6 +1966,10 @@ void NotifyOnRefresh(struct drm_output *drm_output) {
   drm_output->atomic_complete_pending = true;
 }
 
+void NotifyOnQdcmRefresh(struct drm_output *output) {
+	weston_output_damage(output);
+}
+
 void
 drm_backend_update_virtual(struct drm_backend *b)
 {

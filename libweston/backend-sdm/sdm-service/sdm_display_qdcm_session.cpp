@@ -122,7 +122,7 @@ int32_t QDCMSession::QdcmCMDHandler(const android::Parcel *input_parcel,
       DLOGV_IF(kTagQDCM, "pending action = %d, display_id = %d", BITMAP(count), display_id);
       switch (BITMAP(count)) {
         case kInvalidating:
-          dpy->RefreshWithCachedLayerstack();
+          dpy->RefreshCallback();
           break;
         case kEnterQDCMMode:
           ret = 0;
@@ -153,11 +153,11 @@ int32_t QDCMSession::QdcmCMDHandler(const android::Parcel *input_parcel,
           break;
         case kConfigureDetailedEnhancer:
           ret = color_mgr_->SetDetailedEnhancer(pending_action.params, dpy);
-          dpy->RefreshWithCachedLayerstack();
+          dpy->RefreshCallback();
           break;
         case kModeSet:
           ret = dpy->RestoreColorTransform();
-          dpy->RefreshWithCachedLayerstack();
+          dpy->RefreshCallback();
           break;
         case kNoAction:
           break;
@@ -205,7 +205,7 @@ int32_t QDCMSession::QdcmCMDHandler(const android::Parcel *input_parcel,
             }
           }
           if (!ret) {
-            dpy->RefreshWithCachedLayerstack();
+            dpy->RefreshCallback();
           }
           break;
         default:
