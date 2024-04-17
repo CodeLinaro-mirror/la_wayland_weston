@@ -22,7 +22,7 @@
 * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
@@ -364,6 +364,16 @@ int get_drm_master_fd(void) {
     #endif
 
     return fd;
+}
+
+
+void set_drm_master_fd(int fd) {
+
+    SdmDisplayInterface::SetDrmMasterFd(fd);
+
+    #if SDM_DISPLAY_DEBUG
+    DLOGD("master fd is: %d \n", fd);
+    #endif
 }
 
 int SetDisplayState(uint32_t display_id, int power_mode) {

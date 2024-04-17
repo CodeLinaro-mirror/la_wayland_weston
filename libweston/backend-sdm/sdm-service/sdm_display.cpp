@@ -761,6 +761,11 @@ int SdmDisplayInterface::GetDrmMasterFd() {
     return fd;
 }
 
+
+void SdmDisplayInterface::SetDrmMasterFd(int fd) {
+    DRMMaster::SetHandle(fd);
+}
+
 int SdmDisplay::PrepareNormalLayerGeometry(struct drm_output *output,
                          struct LayerGeometry **glayer,
                          struct sdm_layer *sdm_layer) {
