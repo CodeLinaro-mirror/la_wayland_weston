@@ -22,7 +22,7 @@
 * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 *
 */
@@ -249,6 +249,17 @@ int GetPanelBrightness(int display_id, float *brightness);
     @sa
 */
 int get_drm_master_fd(void);
+
+
+/*! @brief Method for setting master fd.
+
+    @details client to set master fd.
+
+    @return \link int \endlink
+
+    @sa
+*/
+void set_drm_master_fd(int fd);
 
 uint32_t GetDisplayCount(void);
 

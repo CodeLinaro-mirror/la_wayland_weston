@@ -1472,7 +1472,7 @@ drm_device_is_kms(struct drm_backend *b, struct udev_device *device)
 	b->drm.devnum = devnum;
 
 	drmModeFreeResources(res);
-
+	set_drm_master_fd(fd);
 	return true;
 
 out_res:
