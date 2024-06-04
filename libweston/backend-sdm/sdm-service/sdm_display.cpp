@@ -1119,10 +1119,22 @@ DisplayError SdmDisplay::PreCommit()
     return kErrorNone;
 }
 
+shared_ptr<Fence> SdmDisplay::GetReleaseFence()
+{
+    return current_release_fence_;
+}
 
 DisplayError SdmDisplay::PostCommit()
 {
     DisplayError error = kErrorNone;
+
+    for (int i = 0; i < layer_stack_.layers.size(); i++) {
+      if (!layer_stack_.layers[i]->input_buffer.release_fence) {
+        continue;
+      }
+      current_release_fence_ = Fence::Merge(current_release_fence_,
+                layer_stack_.layers[i]->input_buffer.release_fence);
+    }
 
     //Wait for retire fence fds
     if (prev_layer_stack_.retire_fence) {

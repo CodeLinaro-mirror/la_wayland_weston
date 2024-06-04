@@ -104,6 +104,7 @@ class SdmDisplayInterface {
     virtual DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info) = 0;
     virtual DisplayError RestoreColorTransform() = 0;
     virtual DisplayError SetColorModeFromClientApi(int32_t color_mode_id) = 0;
+    virtual shared_ptr<Fence> GetReleaseFence() = 0;
     static int GetDrmMasterFd();
     struct drm_output *drm_output_;
     struct drm_output *prev_output_;
@@ -142,6 +143,7 @@ class SdmNullDisplay : public SdmDisplayInterface {
     DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info);
     DisplayError RestoreColorTransform();
     DisplayError SetColorModeFromClientApi(int32_t color_mode_id);
+    shared_ptr<Fence> GetReleaseFence() {return nullptr;};
 };
 
 class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDebugger {
@@ -180,6 +182,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info);
     DisplayError RestoreColorTransform();
     DisplayError SetColorModeFromClientApi(int32_t color_mode_id);
+    shared_ptr<Fence> GetReleaseFence();
 
  protected:
     virtual DisplayError VSync(const DisplayEventVSync &vsync);
@@ -259,6 +262,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     HWDisplayInterfaceInfo hw_disp_info_;
     bool shutdown_pending_ = false;
     LayerStack layer_stack_;
+    shared_ptr<Fence> current_release_fence_ = nullptr;
     int  display_id_ = -1;
     uint32_t fps_ = 0;
     float max_luminance_ = 0.0;
@@ -365,11 +369,20 @@ class SdmDisplayProxy {
     DisplayError SetColorModeFromClientApi(int32_t color_mode_id) {
       return display_intf_->SetColorModeFromClientApi(color_mode_id);
     }
+
+    void RetrieveReleaseFence() {
+      previous_release_fence_ = display_intf_->GetReleaseFence();
+    }
+
+    shared_ptr<Fence> GetPreviousReleaseFence() {
+      return previous_release_fence_;
+    }
+
   private:
     // Uevent thread
     static void *UeventThread(void *context);
     void *UeventThreadHandler();
-
+    shared_ptr<Fence> previous_release_fence_ = nullptr;
     SdmDisplayInterface *display_intf_;
     DisplayType disp_type_;
     CoreInterface *core_intf_;

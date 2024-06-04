@@ -260,6 +260,7 @@ struct sdm_layer {
 	struct drm_fb *fb;
 	uint32_t composition_type; /* type: enum SDM_COMPOSITION_XXXXX */
 	pixman_region32_t overlap;
+	int acquire_fence_fd;
 };
 
 struct drm_head {
@@ -323,6 +324,7 @@ struct drm_output {
 
 	int view_count; //counts number of sdm layers created
 	struct wl_list sdm_layer_list;  /* sdm_layer::link      */
+	struct wl_list prev_sdm_layer_list;  /* prev_sdm_layer::link  */
 	enum dpms_enum dpms; //tracks dpms level of output
 	int display_id;
 	int retire_fence_fd;

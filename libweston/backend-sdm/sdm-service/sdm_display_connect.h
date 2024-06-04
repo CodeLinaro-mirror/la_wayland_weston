@@ -22,7 +22,7 @@
 * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 *
 */
@@ -274,6 +274,8 @@ uint32_t GetConnectorId(uint32_t display_id);
 uint32_t GetConnectorType(uint32_t display_id);
 
 bool SetOutputBuffer(uint32_t display_id, void *gbm_bo);
+
+void ClearSDMLayers(struct drm_output *output);
 
 #ifdef __cplusplus
 }
