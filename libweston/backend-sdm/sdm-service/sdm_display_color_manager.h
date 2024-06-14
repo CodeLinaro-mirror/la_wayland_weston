@@ -154,14 +154,18 @@ class SDMColorModeStc : public SDMColorMode {
  private:
     void PopulateColorModes();
     DisplayError ValidateColorMode(ColorMode color_mode);
+    DynamicRangeType GetDynamicMode(ColorMode color_mode);
 
-    typedef std::map<snapdragoncolor::RenderIntent, ColorMode> RenderIntentMap;
+    typedef std::map<DynamicRangeType, ColorMode> DynamicRangeMap;
+    typedef std::map<snapdragoncolor::RenderIntent, DynamicRangeMap> RenderIntentMap;
     typedef std::map<GammaTransfer, RenderIntentMap> GammaTransferMap;
     // <ColorPrimaries, GammaTransfer, RenderIntent> = ColorMode
     std::map<ColorPrimaries, GammaTransferMap> color_mode_map_ = {};
 
     ColorMode current_color_mode_ = {};
     ColorModeList stc_mode_list_ = {};
+    bool is_primary_display_ = true;
+    int color_mode_debug_ = false;
 };
 
 } // namespace sdm

@@ -97,6 +97,7 @@ class SdmDisplayInterface {
                                      PPDisplayAPIPayload *out_payload,
                                      PPPendingParams *pending_action) = 0;
     virtual void RefreshWithCachedLayerstack() = 0;
+    virtual void RefreshCallback() = 0;
     virtual DisplayError SetHWDetailedEnhancerConfig(void *params) = 0;
     virtual DisplayError SetDetailEnhancerConfig(const DisplayDetailEnhancerData &de_data) = 0;
     virtual void SetIdleTimeoutMs(uint32_t timeout_ms, uint32_t inactive_ms) = 0;
@@ -131,6 +132,7 @@ class SdmNullDisplay : public SdmDisplayInterface {
     DisplayError SetPanelBrightness(float brightness);
     DisplayError GetPanelBrightness(float *brightness);
     void RefreshWithCachedLayerstack();
+    void RefreshCallback();
     int ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
                              PPDisplayAPIPayload *out_payload,
                              PPPendingParams *pending_action);
@@ -246,6 +248,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     bool IsTransparentGbmFormat(uint32_t format);
     void HandlePanelDead();
     void RefreshWithCachedLayerstack();
+    void RefreshCallback();
     CoreInterface *core_intf_ = NULL;
     SdmDisplayBufferAllocator *buffer_allocator_;
     SdmDisplaySocketHandler socket_handler_;
@@ -323,6 +326,10 @@ class SdmDisplayProxy {
 
     void RefreshWithCachedLayerstack() {
       display_intf_->RefreshWithCachedLayerstack();
+    }
+
+    void RefreshCallback() {
+      display_intf_->RefreshCallback();
     }
 
     int ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,

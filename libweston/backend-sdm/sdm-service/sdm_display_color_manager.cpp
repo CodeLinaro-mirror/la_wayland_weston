@@ -15,8 +15,16 @@
 #include "sdm_display_color_manager.h"
 #include "sdm_display_buffer_allocator.h"
 #include "sdm_display.h"
+#include "sdm_display_debugger.h"
+
+#include <map>
+#include <string>
+#include <vector>
+#include <algorithm>
 
 #define __CLASS__ "SDMColorManager"
+
+#define DISPLAY_CM_DEBUG_PROP "vendor.display.colormode.debug"
 
 using snapdragoncolor::ColorMode;
 using snapdragoncolor::ColorModeList;
@@ -390,7 +398,7 @@ DisplayError SDMColorMode::SetColorModeWithRenderIntent(ColorMode color_mode) {
     }
 
     current_color_mode_ = color_mode;
-    DLOGV("Successfully applied primary = %d transfer = %d intent = %d name = %s",
+    DLOGI("Successfully applied primary = %d transfer = %d intent = %d name = %s",
            color_mode.gamut, color_mode.gamma,
             color_mode.intent, mode_string.c_str());
     return kErrorNone;
@@ -552,6 +560,12 @@ DisplayError SDMColorModeStc::Init() {
   } else {
       DLOGI("Stc mode count %zu", stc_mode_list_.list.size());
   }
+
+  is_primary_display_ = display_intf_->IsPrimaryDisplay();
+  SdmDisplayDebugger::Get()->GetProperty(DISPLAY_CM_DEBUG_PROP, &color_mode_debug_);
+
+  DLOGI("is_primary_display_ = %d debug mode = %d", is_primary_display_, color_mode_debug_);
+
   PopulateColorModes();
   return kErrorNone;
 }
@@ -563,6 +577,16 @@ DisplayError SDMColorModeStc::DeInit() {
   return kErrorNone;
 }
 
+DynamicRangeType SDMColorModeStc::GetDynamicMode(ColorMode color_mode) {
+  DynamicRangeType dynamic_range = kSdrType;
+
+  if (std::find(color_mode.hw_assets.begin(), color_mode.hw_assets.end(),
+      snapdragoncolor::kPbHdrBlob) != color_mode.hw_assets.end()) {
+      dynamic_range = kHdrType;
+  }
+
+  return dynamic_range;
+}
 
 void SDMColorModeStc::PopulateColorModes() {
   if (stc_mode_list_.list.size() == 0) {
@@ -571,7 +595,7 @@ void SDMColorModeStc::PopulateColorModes() {
     default_mode.gamma = Transfer_sRGB;
     default_mode.intent = snapdragoncolor::kColorimetric;
     color_mode_map_[ColorPrimaries_BT709_5][Transfer_sRGB]
-      [snapdragoncolor::kColorimetric] = default_mode;
+      [snapdragoncolor::kColorimetric][kSdrType] = default_mode;
     return;
   }
 
@@ -580,9 +604,11 @@ void SDMColorModeStc::PopulateColorModes() {
     ColorPrimaries gamut = static_cast<ColorPrimaries>(stc_mode.gamut);
     GammaTransfer gamma = static_cast<GammaTransfer>(stc_mode.gamma);
     RenderIntent intent = static_cast<RenderIntent>(stc_mode.intent);
-    color_mode_map_[gamut][gamma][intent] = stc_mode;
-    DLOGI("SDMColorModeStc::PopulateColorModes color mode[%d]: gamut %d gamma %d intent %d",
-            i,stc_mode.gamut, stc_mode.gamma, stc_mode.intent);
+    DynamicRangeType dynamic = GetDynamicMode(stc_mode);
+
+    color_mode_map_[gamut][gamma][intent][dynamic] = stc_mode;
+    DLOGI("SDMColorModeStc::PopulateColorModes color mode[%d]: gamut %d gamma %d intent %d dyn %d",
+            i,stc_mode.gamut, stc_mode.gamma, stc_mode.intent, dynamic);
   }
 }
 
@@ -590,6 +616,7 @@ DisplayError SDMColorModeStc::ValidateColorMode(ColorMode color_mode) {
     ColorPrimaries primary = color_mode.gamut;
     GammaTransfer transfer = color_mode.gamma;
     RenderIntent intent = color_mode.intent;
+    DynamicRangeType dynamic = GetDynamicMode(color_mode);
 
     if (primary < ColorPrimaries_BT709_5 || primary >= ColorPrimaries_Max) {
         DLOGE("Invalid color primary: %d", primary);
@@ -613,14 +640,25 @@ DisplayError SDMColorModeStc::ValidateColorMode(ColorMode color_mode) {
         return kErrorNotSupported;
     }
 
+    if (color_mode_map_[primary][transfer][intent].find(dynamic) ==
+                                        color_mode_map_[primary][transfer][intent].end()) {
+        DLOGE("Could not find dynamic_type %d in primary %d, transfer %d, dynamic %d",
+            intent, primary, transfer, dynamic);
+        return kErrorNotSupported;
+    }
+
     return kErrorNone;
 }
 
 
 DisplayError SDMColorModeStc::SetColorModeWithRenderIntent(ColorMode color_mode) {
+    DynamicRangeType dynamic_cur = GetDynamicMode(current_color_mode_);
+    DynamicRangeType dynamic_new = GetDynamicMode(color_mode);
+
     if (current_color_mode_.gamut == color_mode.gamut &&
         current_color_mode_.gamma == color_mode.gamma &&
-        current_color_mode_.intent == color_mode.intent) {
+        current_color_mode_.intent == color_mode.intent &&
+        dynamic_cur == dynamic_new) {
         return kErrorNone;
     }
 
@@ -630,29 +668,63 @@ DisplayError SDMColorModeStc::SetColorModeWithRenderIntent(ColorMode color_mode)
     }
 
     snapdragoncolor::ColorMode stc_mode = \
-                color_mode_map_[color_mode.gamut][color_mode.gamma][color_mode.intent];
+                color_mode_map_[color_mode.gamut][color_mode.gamma][color_mode.intent][dynamic_new];
     error = display_intf_->SetStcColorMode(stc_mode);
     if (error != kErrorNone) {
-        DLOGE("Failed to apply Stc color mode: gamut %d gamma %d intent %d err %d",
-            stc_mode.gamut, stc_mode.gamma, stc_mode.intent, error);
+        DLOGE("Failed to apply Stc color mode: gamut %d gamma %d intent %d dyn %d err %d",
+            stc_mode.gamut, stc_mode.gamma, stc_mode.intent, dynamic_new, error);
         return kErrorNotSupported;
     }
 
     current_color_mode_ = color_mode;
-    DLOGI("Successfully applied mode gamut = %d, gamma = %d, intent = %d",
-           color_mode.gamut, color_mode.gamma, color_mode.intent);
+    DLOGI("Successfully applied mode gamut = %d, gamma = %d, intent = %d dyn = %d",
+           color_mode.gamut, color_mode.gamma, color_mode.intent, dynamic_new);
     return kErrorNone;
 }
 
-ColorMode SDMColorModeStc::SelectBestColorSpace(bool isHdrSupported, LayerStack *layerStack) {
-  snapdragoncolor::ColorMode best_color_mode =
-      color_mode_map_[ColorPrimaries_BT709_5][Transfer_sRGB][snapdragoncolor::kColorimetric];
 
-  // for DSI, if panel support P3 then always works in P3 area.
-  if (color_mode_map_.find(ColorPrimaries_DCIP3) != color_mode_map_.end()) {
+ColorMode SDMColorModeStc::SelectBestColorSpace(bool isHdrMode, LayerStack *layerStack) {
+  snapdragoncolor::ColorMode best_color_mode =
+      color_mode_map_[ColorPrimaries_BT709_5]
+      [Transfer_sRGB][snapdragoncolor::kColorimetric][kSdrType];
+  int primaries = ColorPrimaries_BT709_5;
+  int transfer = Transfer_sRGB;
+  int intent = snapdragoncolor::kColorimetric;
+  int dynamic = kSdrType;
+
+  if (color_mode_debug_) {
+    if (is_primary_display_) {
+      SdmDisplayDebugger::Get()->GetProperty("vendor.display.primaries", &primaries);
+      SdmDisplayDebugger::Get()->GetProperty("vendor.display.transfer", &transfer);
+      SdmDisplayDebugger::Get()->GetProperty("vendor.display.intent", &intent);
+      SdmDisplayDebugger::Get()->GetProperty("vendor.display.dynamic", &dynamic);
+      DLOGI("Change primary display color mode");
+    } else {
+      SdmDisplayDebugger::Get()->GetProperty("vendor.display.second.primaries", &primaries);
+      SdmDisplayDebugger::Get()->GetProperty("vendor.display.second.transfer", &transfer);
+      SdmDisplayDebugger::Get()->GetProperty("vendor.display.second.intent", &intent);
+      SdmDisplayDebugger::Get()->GetProperty("vendor.display.second.dynamic", &dynamic);
+      DLOGI("Change secondary display color mode");
+    }
+
+    DLOGI("Use color mode property primaries %d transfer %d intent %d dynamic %d",
+                                              primaries, transfer, intent, dynamic);
+    best_color_mode = color_mode_map_[static_cast<ColorPrimaries>(primaries)]
+                                     [static_cast<GammaTransfer>(transfer)]
+                                     [static_cast<snapdragoncolor::RenderIntent>(intent)]
+                                     [static_cast<sdm::DynamicRangeType>(dynamic)];
+  } else {
+    // for DSI, if panel support P3 then always works in P3 area.
+    if (color_mode_map_.find(ColorPrimaries_DCIP3) != color_mode_map_.end()) {
+      if (isHdrMode) dynamic = kHdrType;
       best_color_mode = color_mode_map_[ColorPrimaries_DCIP3][Transfer_sRGB]
-                                       [snapdragoncolor::kColorimetric];
+                                    [snapdragoncolor::kColorimetric]
+                                    [static_cast<sdm::DynamicRangeType>(dynamic)];
+    }
   }
+
+  DLOGI("Select gamut = %d, gamma = %d, intent = %d dyn = %d",
+      best_color_mode.gamut, best_color_mode.gamma, best_color_mode.intent, dynamic);
 
   return best_color_mode;
 }
