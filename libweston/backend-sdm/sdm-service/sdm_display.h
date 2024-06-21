@@ -51,6 +51,7 @@
 #include "sdm-service/sdm_display_buffer_sync_handler.h"
 #include "sdm-service/sdm_display_socket_handler.h"
 #include "sdm-service/sdm_display_color_manager.h"
+#include "sdm-service/sdm_display_tonemapper.h"
 #include "sdm-internal.h"
 #include "drm_master.h"
 
@@ -170,6 +171,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     DisplayError RegisterCb(int display_id, vblank_cb_t vbcb);
     DisplayError SetPanelBrightness(float brightness);
     DisplayError GetPanelBrightness(float *brightness);
+    DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info);
 
     int ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
                              PPDisplayAPIPayload *out_payload,
@@ -179,7 +181,6 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     DisplayError SetHWDetailedEnhancerConfig(void *params);
     DisplayError SetDetailEnhancerConfig(const DisplayDetailEnhancerData &de_data);
     int OnMinHdcpEncryptionLevelChange(uint32_t min_enc_level);
-    DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info);
     DisplayError RestoreColorTransform();
     DisplayError SetColorModeFromClientApi(int32_t color_mode_id);
     shared_ptr<Fence> GetReleaseFence();
@@ -274,8 +275,10 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     LayerBuffer output_buffer_ = {};
     CwbConfig cwb_config_ = {};
     SDMColorMode *display_colormode_ = NULL;
-    int disable_hdr_handling_ = 1;
     bool hdr_supported_ = false;
+    int disable_hdr_handling_ = 0;
+    int disable_tone_mapper_ = 1;        /* To disable tone mapping functionality. */
+    SdmDisplayToneMapper *tone_mapper_ = NULL;
 };
 
 class SdmDisplayProxy {

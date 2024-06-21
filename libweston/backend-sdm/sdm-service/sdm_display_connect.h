@@ -184,6 +184,19 @@ bool GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *disp
 */
 bool SetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config);
 
+/*! @brief Method to obtain display's HDR information parameters for requested display_id.
+    @details Client shall use this method to obtain display's HDR capability parameters
+    for requested display_id.
+
+    @param[in] display_id \link int \endlink
+    @param[in] display_config \link struct DisplayHdrInfo \endlink
+
+    @return \link DisplayError \endlink
+
+    @sa
+*/
+bool GetDisplayHdrInfo(uint32_t display_id, struct DisplayHdrInfo *display_hdr_info);
+
 /*! @brief Method to register callbacks: VBlank Handler function to be called on
     enabling VBlank (VSync), and hotplug handler function to be called on hotplug
     uevent. SDM shall trigger a call back through this interface function.

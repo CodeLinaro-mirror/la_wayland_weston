@@ -37,17 +37,16 @@ ToneMapSession::~ToneMapSession() {
 }
 
 DisplayError ToneMapSession::AllocateIntermediateBuffers(const Layer *layer) {
-  DisplayError error = kErrorNone;
   for (uint8_t i = 0; i < kNumIntermediateBuffers; i++) {
     BufferInfo &buffer_info = buffer_info_[i];
     buffer_info.buffer_config.width = layer->request.width;
     buffer_info.buffer_config.height = layer->request.height;
     buffer_info.buffer_config.format = layer->request.format;
     buffer_info.buffer_config.secure = layer->request.flags.secure;
-    error = buffer_allocator_->AllocateBuffer(&buffer_info);
-    if (error != kErrorNone) {
+    int error = static_cast<DisplayError>(buffer_allocator_->AllocateBuffer(&buffer_info));
+    if (error != 0) {
       FreeIntermediateBuffers();
-      return error;
+      return kErrorUndefined;
     }
   }
 
@@ -56,27 +55,23 @@ DisplayError ToneMapSession::AllocateIntermediateBuffers(const Layer *layer) {
 
 void ToneMapSession::FreeIntermediateBuffers() {
   for (uint8_t i = 0; i < kNumIntermediateBuffers; i++) {
-    // Free the valid fence
-    if (release_fence_fd_[i] >= 0) {
-      CloseFd(&release_fence_fd_[i]);
-    }
     BufferInfo &buffer_info = buffer_info_[i];
-    buffer_allocator_->FreeBuffer(&buffer_info);
+    if (buffer_info.private_data) {
+      buffer_allocator_->FreeBuffer(&buffer_info);
+    }
   }
 }
 
 void ToneMapSession::UpdateBuffer(int acquire_fence, LayerBuffer *buffer) {
   // Acquire fence will be closed by HDMI Display.
   // Fence returned by GPU will be closed in PostCommit.
-  buffer->acquire_fence_fd = acquire_fence;
+  buffer->acquire_fence = Fence::Create(acquire_fence, "tonemap acquire_fence");
   buffer->size = buffer_info_[current_buffer_index_].alloc_buffer_info.size;
   buffer->planes[0].fd = buffer_info_[current_buffer_index_].alloc_buffer_info.fd;
 }
 
-void ToneMapSession::SetReleaseFence(int fd) {
-  CloseFd(&release_fence_fd_[current_buffer_index_]);
-  // Used to give to GPU tonemapper along with input layer fd
-  release_fence_fd_[current_buffer_index_] = dup(fd);
+void ToneMapSession::SetReleaseFence(const shared_ptr<Fence> &fd) {
+  release_fence_[current_buffer_index_] = fd;
 }
 
 void ToneMapSession::SetToneMapConfig(Layer *layer) {
@@ -102,7 +97,7 @@ bool ToneMapSession::IsSameToneMapConfig(Layer *layer) {
           (layer->request.height == UINT32(buffer.unaligned_height)));
 }
 
-int SdmDisplayToneMapper::HandleToneMap(LayerStack *layer_stack) {
+DisplayError SdmDisplayToneMapper::HandleToneMap(LayerStack *layer_stack) {
   uint32_t gpu_count = 0;
   DisplayError error = kErrorNone;
   for (uint32_t i = 0; i < layer_stack->layers.size(); i++) {
@@ -126,7 +121,7 @@ int SdmDisplayToneMapper::HandleToneMap(LayerStack *layer_stack) {
               fb_tone_map_session->UpdateBuffer(-1 /* acquire_fence */, &layer->input_buffer);
               fb_tone_map_session->layer_index_ = INT(i);
               fb_tone_map_session->acquired_ = true;
-              return 0;
+              return error;
             }
           }
           temp1 = layer;
@@ -144,7 +139,7 @@ int SdmDisplayToneMapper::HandleToneMap(LayerStack *layer_stack) {
 
       if (error != kErrorNone) {
         Terminate();
-        return -1;
+        return error;
       }
 
       ToneMapSession *session = tone_map_sessions_.at(session_index);
@@ -152,7 +147,7 @@ int SdmDisplayToneMapper::HandleToneMap(LayerStack *layer_stack) {
       session->layer_index_ = INT(i);
     }
   }
-  return 0;
+  return error;
 }
 
 void SdmDisplayToneMapper::ToneMap(Layer* layer, ToneMapSession *session) {
@@ -199,10 +194,11 @@ void SdmDisplayToneMapper::ToneMap(Layer* layer, ToneMapSession *session) {
 #ifdef HAS_HDR_SUPPORT
   fence_fd = session->gpu_tone_mapper_->blit(dst_hnd, src_hnd, merged_fd, layer->userdata,
                                              layer->userdata2);
-#endif
+
   DumpToneMapOutput(session, &fence_fd);
 
   session->UpdateBuffer(fence_fd, &layer->input_buffer);
+#endif
 }
 
 void SdmDisplayToneMapper::PostCommit(LayerStack *layer_stack) {
@@ -214,8 +210,8 @@ void SdmDisplayToneMapper::PostCommit(LayerStack *layer_stack) {
       Layer *layer = layer_stack->layers.at(UINT32(session->layer_index_));
       // Close the fd returned by GPU ToneMapper and set release fence.
       LayerBuffer &layer_buffer = layer->input_buffer;
-      CloseFd(&layer_buffer.acquire_fence_fd);
-      session->SetReleaseFence(layer_buffer.release_fence_fd);
+      // CloseFd(&layer_buffer.acquire_fence_fd);
+      session->SetReleaseFence(layer_buffer.release_fence);
       session->acquired_ = false;
       it++;
     } else {

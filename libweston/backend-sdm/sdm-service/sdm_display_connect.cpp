@@ -397,10 +397,18 @@ bool SetOutputBuffer(uint32_t display_id, void *gbm_bo)
 
 bool GetDisplayHdrInfo(uint32_t display_id, struct DisplayHdrInfo *display_hdr_info)
 {
+    DisplayError error = kErrorNone;
     SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
     if (!dpy) {
         DLOGE("Failed as Display (%d) not created yet.", display_id);
-        return kErrorNotSupported;
+        return FAIL;
+    }
+
+    error = dpy->GetHdrInfo(display_hdr_info);
+
+    if (error != kErrorNone) {
+        DLOGE("function failed with error = %d", error);
+        return FAIL;
     }
 
     #if SDM_DISPLAY_DEBUG

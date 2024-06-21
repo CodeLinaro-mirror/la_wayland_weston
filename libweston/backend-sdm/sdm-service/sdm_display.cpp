@@ -99,6 +99,7 @@ namespace sdm {
 #define MAX_PROP_STR_SIZE 64
 #define SDM_NULL_DISPLAY_RESOLUTON_PROP_NAME "weston.sdm.default.resolution"
 #define SDM_DISABLE_HDR_HANDLING "vendor.display.disable_hdr"
+#define SDM_DISABLE_HDR_TM "vendor.display.disable_hdr_tm"
 
 SdmDisplay::SdmDisplay(DisplayType type, CoreInterface *core_intf,
                                          SdmDisplayBufferAllocator *buffer_allocator) {
@@ -146,8 +147,8 @@ DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
     }
 
     SdmDisplayDebugger::Get()->GetProperty(SDM_DISABLE_HDR_HANDLING, property);
-    if (!(std::string(property)==std::string("1"))) {
-        disable_hdr_handling_ = 0;
+    if (std::string(property)==std::string("1")) {
+        disable_hdr_handling_ = 1;
     }
 
     GetHdrInfo(&display_hdr_info);
@@ -155,6 +156,26 @@ DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
         DLOGI("Display device supports HDR functionality");
     } else {
         DLOGI("Display device doesn't support HDR functionality");
+    }
+
+    if (disable_hdr_handling_) {
+        DLOGI("HDR Handling disabled");
+    } else {
+        SdmDisplayDebugger::Get()->GetProperty(SDM_DISABLE_HDR_TM, property);
+        if (std::string(property)==std::string("0")) {
+            disable_tone_mapper_ = 0;
+        }
+        #ifndef HAS_HDR_SUPPORT
+            disable_tone_mapper_ = 1;
+        #endif
+        if (!disable_tone_mapper_) {
+            DLOGI("Tone Mapper Enabled");
+            tone_mapper_ = new SdmDisplayToneMapper(buffer_allocator_);
+
+            if (!tone_mapper_) {
+                DLOGE("Failed to create tone_mapper instance");
+            }
+        }
     }
 
     DLOGI("display_id = %d display_type_=%d", display_id, display_type_);
@@ -176,6 +197,11 @@ DisplayError SdmDisplay::DestroyDisplay() {
     display_colormode_ = NULL;
     error = core_intf_->DestroyDisplay(display_intf_);
     display_intf_ = NULL;
+
+    if (tone_mapper_) {
+        delete tone_mapper_;
+        tone_mapper_ = nullptr;
+    }
 
     return error;
 }
@@ -940,6 +966,18 @@ DisplayError SdmDisplay::PrePrepareLayerStack(struct drm_output *output) {
             // Pass the wl_resource handle from sdm layer to layer stack
             // to use it for egl image creation in tone mapping
             layerBufferFlags = layer_stack_.layers.at(index)->input_buffer.flags;
+            if (layerBufferFlags.video && layerBufferFlags.hdr) {
+                layer_stack_.layers.at(index)->userdata =
+                        sdm_layer->view->surface->buffer_ref.buffer->resource;
+            }
+
+            //Acquire fence fd is not received for frame buffer target layer as gl-renderer is not
+            //sending it. Hence not adding acquire fence for frame buffer target
+            layer_stack_.layers.at(index)->input_buffer.acquire_fence =
+                               Fence::Create(dup(sdm_layer->acquire_fence_fd), "App_Layer_Fence");
+            DLOGD_IF(kTagNone, "Acquire fence fd: %s for layer index %d",
+                 Fence::GetStr(layer_stack_.layers.at(index)->input_buffer.acquire_fence).c_str(),
+                 index);
 
             index++;
             if (sdm_layer->is_skip)
@@ -1116,7 +1154,26 @@ DisplayError SdmDisplay::Prepare(struct drm_output *output)
 
 DisplayError SdmDisplay::PreCommit()
 {
-    return kErrorNone;
+    DisplayError error = kErrorNone;
+    if (layer_stack_.flags.hdr_present) {
+        int status = -1;
+        if (tone_mapper_) {
+            error = tone_mapper_->HandleToneMap(&layer_stack_);
+            if (error != kErrorNone) {
+                DLOGE("Error handling HDR in ToneMapper, status code = %d", status);
+            }
+        } else {
+            DLOGD("HandleToneMap failed due to invalid tone_mapper_ instance");
+        }
+    } else {
+        if (tone_mapper_) {
+            tone_mapper_->Terminate();
+        }
+        else
+            DLOGD("ToneMap Terminate failed due to invalid tone_mapper_ instance");
+    }
+
+    return error;
 }
 
 shared_ptr<Fence> SdmDisplay::GetReleaseFence()
@@ -1127,6 +1184,10 @@ shared_ptr<Fence> SdmDisplay::GetReleaseFence()
 DisplayError SdmDisplay::PostCommit()
 {
     DisplayError error = kErrorNone;
+
+    if (tone_mapper_ && tone_mapper_->IsActive()) {
+        tone_mapper_->PostCommit(&layer_stack_);
+    }
 
     for (int i = 0; i < layer_stack_.layers.size(); i++) {
       if (!layer_stack_.layers[i]->input_buffer.release_fence) {
@@ -1181,7 +1242,12 @@ DisplayError SdmDisplay::Commit(struct drm_output *output)
     DLOGI("state=%d commiting ion fd = %d, layer count=%d",
                   state, output->next_fb->ion_fd, layer_count);
 
-    PreCommit();
+    ret = PreCommit();
+    if (ret != kErrorNone) {
+        DLOGE("PreCommit failed!");
+        ret = kErrorNone;
+    }
+
     prev_output_ = output;
     ret = display_intf_->Commit(&layer_stack_);
 

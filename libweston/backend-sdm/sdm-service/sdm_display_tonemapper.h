@@ -39,7 +39,7 @@ class ToneMapSession {
   DisplayError AllocateIntermediateBuffers(const Layer *layer);
   void FreeIntermediateBuffers();
   void UpdateBuffer(int acquire_fence, LayerBuffer *buffer);
-  void SetReleaseFence(int fd);
+  void SetReleaseFence(const shared_ptr<Fence> &fd);
   void SetToneMapConfig(Layer *layer);
   bool IsSameToneMapConfig(Layer *layer);
 
@@ -53,7 +53,7 @@ class ToneMapSession {
   ToneMapConfig tone_map_config_ = {};
   uint8_t current_buffer_index_ = 0;
   std::vector<BufferInfo> buffer_info_ = {};
-  int release_fence_fd_[kNumIntermediateBuffers] = {-1, -1};
+  shared_ptr<Fence> release_fence_[kNumIntermediateBuffers] = {nullptr, nullptr};
   bool acquired_ = false;
   int layer_index_ = -1;
 };
@@ -64,7 +64,7 @@ class SdmDisplayToneMapper {
                                 : buffer_allocator_(allocator) {}
   ~SdmDisplayToneMapper() {}
 
-  int HandleToneMap(LayerStack *layer_stack);
+  DisplayError HandleToneMap(LayerStack *layer_stack);
   bool IsActive() { return !tone_map_sessions_.empty(); }
   void PostCommit(LayerStack *layer_stack);
   void SetFrameDumpConfig(uint32_t count);
