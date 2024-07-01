@@ -23,7 +23,7 @@
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
 *
-* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
@@ -60,7 +60,7 @@ using display::DebugHandler;
 class SdmDisplayDebugger : public DebugHandler {
  public:
   SdmDisplayDebugger();
-  static inline DebugHandler* Get() { return &debug_handler_; }
+  static inline SdmDisplayDebugger* Get() { return &debug_handler_; }
   static const char *DumpDir() { return "/data/misc/display"; }
   void config_debug_level(void);
   void config_trace_debug(void);
@@ -90,6 +90,8 @@ class SdmDisplayDebugger : public DebugHandler {
   virtual void EndTrace();
   virtual int GetProperty(const char *property_name, int *value);
   virtual int GetProperty(const char *property_name, char *value);
+
+  int SetProperty(const char *property_name, const char *value);
 
  private:
   static SdmDisplayDebugger debug_handler_;
