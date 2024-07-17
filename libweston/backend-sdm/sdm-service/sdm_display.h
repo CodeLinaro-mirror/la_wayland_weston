@@ -51,6 +51,7 @@
 #include "sdm-service/sdm_display_buffer_sync_handler.h"
 #include "sdm-service/sdm_display_socket_handler.h"
 #include "sdm-service/sdm_display_color_manager.h"
+#include "sdm-service/sdm_display_tonemapper.h"
 #include "sdm-internal.h"
 #include "drm_master.h"
 
@@ -104,6 +105,7 @@ class SdmDisplayInterface {
     virtual DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info) = 0;
     virtual DisplayError RestoreColorTransform() = 0;
     virtual DisplayError SetColorModeFromClientApi(int32_t color_mode_id) = 0;
+    virtual shared_ptr<Fence> GetReleaseFence() = 0;
     static int GetDrmMasterFd();
     struct drm_output *drm_output_;
     struct drm_output *prev_output_;
@@ -142,6 +144,7 @@ class SdmNullDisplay : public SdmDisplayInterface {
     DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info);
     DisplayError RestoreColorTransform();
     DisplayError SetColorModeFromClientApi(int32_t color_mode_id);
+    shared_ptr<Fence> GetReleaseFence() {return nullptr;};
 };
 
 class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDebugger {
@@ -168,6 +171,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     DisplayError RegisterCb(int display_id, vblank_cb_t vbcb);
     DisplayError SetPanelBrightness(float brightness);
     DisplayError GetPanelBrightness(float *brightness);
+    DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info);
 
     int ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
                              PPDisplayAPIPayload *out_payload,
@@ -177,9 +181,9 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     DisplayError SetHWDetailedEnhancerConfig(void *params);
     DisplayError SetDetailEnhancerConfig(const DisplayDetailEnhancerData &de_data);
     int OnMinHdcpEncryptionLevelChange(uint32_t min_enc_level);
-    DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info);
     DisplayError RestoreColorTransform();
     DisplayError SetColorModeFromClientApi(int32_t color_mode_id);
+    shared_ptr<Fence> GetReleaseFence();
 
  protected:
     virtual DisplayError VSync(const DisplayEventVSync &vsync);
@@ -259,6 +263,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     HWDisplayInterfaceInfo hw_disp_info_;
     bool shutdown_pending_ = false;
     LayerStack layer_stack_;
+    shared_ptr<Fence> current_release_fence_ = nullptr;
     int  display_id_ = -1;
     uint32_t fps_ = 0;
     float max_luminance_ = 0.0;
@@ -270,8 +275,10 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     LayerBuffer output_buffer_ = {};
     CwbConfig cwb_config_ = {};
     SDMColorMode *display_colormode_ = NULL;
-    int disable_hdr_handling_ = 1;
     bool hdr_supported_ = false;
+    int disable_hdr_handling_ = 0;
+    int disable_tone_mapper_ = 1;        /* To disable tone mapping functionality. */
+    SdmDisplayToneMapper *tone_mapper_ = NULL;
 };
 
 class SdmDisplayProxy {
@@ -365,11 +372,20 @@ class SdmDisplayProxy {
     DisplayError SetColorModeFromClientApi(int32_t color_mode_id) {
       return display_intf_->SetColorModeFromClientApi(color_mode_id);
     }
+
+    void RetrieveReleaseFence() {
+      previous_release_fence_ = display_intf_->GetReleaseFence();
+    }
+
+    shared_ptr<Fence> GetPreviousReleaseFence() {
+      return previous_release_fence_;
+    }
+
   private:
     // Uevent thread
     static void *UeventThread(void *context);
     void *UeventThreadHandler();
-
+    shared_ptr<Fence> previous_release_fence_ = nullptr;
     SdmDisplayInterface *display_intf_;
     DisplayType disp_type_;
     CoreInterface *core_intf_;

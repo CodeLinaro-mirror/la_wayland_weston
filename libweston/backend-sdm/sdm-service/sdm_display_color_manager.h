@@ -164,6 +164,8 @@ class SDMColorModeStc : public SDMColorMode {
 
     ColorMode current_color_mode_ = {};
     ColorModeList stc_mode_list_ = {};
+    bool is_primary_display_ = true;
+    int color_mode_debug_ = false;
 };
 
 } // namespace sdm

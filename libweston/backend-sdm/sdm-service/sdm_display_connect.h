@@ -22,7 +22,7 @@
 * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 *
 */
@@ -184,6 +184,19 @@ bool GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *disp
 */
 bool SetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config);
 
+/*! @brief Method to obtain display's HDR information parameters for requested display_id.
+    @details Client shall use this method to obtain display's HDR capability parameters
+    for requested display_id.
+
+    @param[in] display_id \link int \endlink
+    @param[in] display_config \link struct DisplayHdrInfo \endlink
+
+    @return \link DisplayError \endlink
+
+    @sa
+*/
+bool GetDisplayHdrInfo(uint32_t display_id, struct DisplayHdrInfo *display_hdr_info);
+
 /*! @brief Method to register callbacks: VBlank Handler function to be called on
     enabling VBlank (VSync), and hotplug handler function to be called on hotplug
     uevent. SDM shall trigger a call back through this interface function.
@@ -274,6 +287,8 @@ uint32_t GetConnectorId(uint32_t display_id);
 uint32_t GetConnectorType(uint32_t display_id);
 
 bool SetOutputBuffer(uint32_t display_id, void *gbm_bo);
+
+void ClearSDMLayers(struct drm_output *output);
 
 #ifdef __cplusplus
 }

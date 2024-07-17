@@ -24,6 +24,8 @@
 
 #define __CLASS__ "SDMColorManager"
 
+#define DISPLAY_CM_DEBUG_PROP "vendor.display.colormode.debug"
+
 using snapdragoncolor::ColorMode;
 using snapdragoncolor::ColorModeList;
 using snapdragoncolor::RenderIntent;
@@ -558,6 +560,12 @@ DisplayError SDMColorModeStc::Init() {
   } else {
       DLOGI("Stc mode count %zu", stc_mode_list_.list.size());
   }
+
+  is_primary_display_ = display_intf_->IsPrimaryDisplay();
+  SdmDisplayDebugger::Get()->GetProperty(DISPLAY_CM_DEBUG_PROP, &color_mode_debug_);
+
+  DLOGI("is_primary_display_ = %d debug mode = %d", is_primary_display_, color_mode_debug_);
+
   PopulateColorModes();
   return kErrorNone;
 }
@@ -679,14 +687,40 @@ ColorMode SDMColorModeStc::SelectBestColorSpace(bool isHdrMode, LayerStack *laye
   snapdragoncolor::ColorMode best_color_mode =
       color_mode_map_[ColorPrimaries_BT709_5]
       [Transfer_sRGB][snapdragoncolor::kColorimetric][kSdrType];
-  int primaries, transfer, intent;
-  DynamicRangeType dynamic = kSdrType;
+  int primaries = ColorPrimaries_BT709_5;
+  int transfer = Transfer_sRGB;
+  int intent = snapdragoncolor::kColorimetric;
+  int dynamic = kSdrType;
 
-  // for DSI, if panel support P3 then always works in P3 area.
-  if (color_mode_map_.find(ColorPrimaries_DCIP3) != color_mode_map_.end()) {
-    if (isHdrMode) dynamic = kHdrType;
-    best_color_mode = color_mode_map_[ColorPrimaries_DCIP3][Transfer_sRGB]
-                                  [snapdragoncolor::kColorimetric][dynamic];
+  if (color_mode_debug_) {
+    if (is_primary_display_) {
+      SdmDisplayDebugger::Get()->GetProperty("vendor.display.primaries", &primaries);
+      SdmDisplayDebugger::Get()->GetProperty("vendor.display.transfer", &transfer);
+      SdmDisplayDebugger::Get()->GetProperty("vendor.display.intent", &intent);
+      SdmDisplayDebugger::Get()->GetProperty("vendor.display.dynamic", &dynamic);
+      DLOGI("Change primary display color mode");
+    } else {
+      SdmDisplayDebugger::Get()->GetProperty("vendor.display.second.primaries", &primaries);
+      SdmDisplayDebugger::Get()->GetProperty("vendor.display.second.transfer", &transfer);
+      SdmDisplayDebugger::Get()->GetProperty("vendor.display.second.intent", &intent);
+      SdmDisplayDebugger::Get()->GetProperty("vendor.display.second.dynamic", &dynamic);
+      DLOGI("Change secondary display color mode");
+    }
+
+    DLOGI("Use color mode property primaries %d transfer %d intent %d dynamic %d",
+                                              primaries, transfer, intent, dynamic);
+    best_color_mode = color_mode_map_[static_cast<ColorPrimaries>(primaries)]
+                                     [static_cast<GammaTransfer>(transfer)]
+                                     [static_cast<snapdragoncolor::RenderIntent>(intent)]
+                                     [static_cast<sdm::DynamicRangeType>(dynamic)];
+  } else {
+    // for DSI, if panel support P3 then always works in P3 area.
+    if (color_mode_map_.find(ColorPrimaries_DCIP3) != color_mode_map_.end()) {
+      if (isHdrMode) dynamic = kHdrType;
+      best_color_mode = color_mode_map_[ColorPrimaries_DCIP3][Transfer_sRGB]
+                                    [snapdragoncolor::kColorimetric]
+                                    [static_cast<sdm::DynamicRangeType>(dynamic)];
+    }
   }
 
   DLOGI("Select gamut = %d, gamma = %d, intent = %d dyn = %d",

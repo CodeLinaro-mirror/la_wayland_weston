@@ -66,10 +66,10 @@ create_sdm_layer(struct drm_output *output, struct weston_view *ev,
 	}
 
 	layer->view = ev;
+	layer->acquire_fence_fd = ev->surface->acquire_fence_fd;
 	layer->is_cursor = is_cursor;
 	layer->is_skip = is_skip;
-	if (!is_skip)
-		layer->fb = drm_fb_get_from_view(output, ev);
+	layer->fb = drm_fb_get_from_view(output, ev);
 
 	pixman_region32_init(&layer->overlap);
 	pixman_region32_copy(&layer->overlap, overlap);
@@ -88,7 +88,6 @@ drm_assign_planes(struct weston_output *output_base, void *repaint_data)
 	struct sdm_layer *sdm_layer, *next_sdm_layer;
 	bool is_skip = false;
 	struct weston_surface *es;
-
 	pixman_region32_t overlap, surface_overlap;
 
 	pixman_region32_init(&overlap);
