@@ -268,11 +268,7 @@ drm_output_update_complete(struct drm_output *output, uint32_t flags,
 	drm_fb_unref(output->next_fb);
 	output->next_fb = NULL;
 
-	wl_list_for_each_safe(sdm_layer, tmp_layer, &output->sdm_layer_list, link) {
-		destroy_sdm_layer(sdm_layer);
-	}
-
-	wl_list_init(&output->sdm_layer_list);
+	ClearSDMLayers(output);
 
 	if (output->dpms != WESTON_DPMS_ON) {
 		if (output->destroy_pending) {
@@ -1175,6 +1171,7 @@ drm_output_create(struct weston_compositor *compositor, const char *name)
 	weston_output_init(&output->base, compositor, name);
 
 	wl_list_init(&output->sdm_layer_list);
+	wl_list_init(&output->prev_sdm_layer_list);
 
 	output->base.enable = drm_output_enable;
 	output->base.destroy = drm_output_destroy;

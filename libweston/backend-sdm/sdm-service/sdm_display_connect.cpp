@@ -22,7 +22,7 @@
 * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
-* Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
@@ -397,10 +397,18 @@ bool SetOutputBuffer(uint32_t display_id, void *gbm_bo)
 
 bool GetDisplayHdrInfo(uint32_t display_id, struct DisplayHdrInfo *display_hdr_info)
 {
+    DisplayError error = kErrorNone;
     SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
     if (!dpy) {
         DLOGE("Failed as Display (%d) not created yet.", display_id);
-        return kErrorNotSupported;
+        return FAIL;
+    }
+
+    error = dpy->GetHdrInfo(display_hdr_info);
+
+    if (error != kErrorNone) {
+        DLOGE("function failed with error = %d", error);
+        return FAIL;
     }
 
     #if SDM_DISPLAY_DEBUG
@@ -628,6 +636,31 @@ static HWDisplayInfo GetSdmDisplayInfo(int display_id) {
   auto iter = sdm_displays_info_.find(display_id);
 
   return iter->second;
+}
+
+void ClearSDMLayers(struct drm_output *output) {
+  struct sdm_layer *sdm_layer, *tmp_layer;
+  SdmDisplayProxy *dpy = GetDisplayFromId(output->display_id);
+
+  if (!wl_list_empty(&output->prev_sdm_layer_list)) {
+    int ret = -1;
+    shared_ptr<Fence> release_fence = dpy->GetPreviousReleaseFence();
+    ret = Fence::Wait(release_fence);
+    if (ret != kErrorNone) {
+      DLOGE("release fence wait timeout! ret=%d\n", ret);
+    }
+    wl_list_for_each_safe(sdm_layer, tmp_layer, &output->prev_sdm_layer_list, link) {
+        destroy_sdm_layer(sdm_layer);
+    }
+  }
+
+  wl_list_init(&output->prev_sdm_layer_list);
+  wl_list_for_each_safe(sdm_layer, tmp_layer, &output->sdm_layer_list, link) {
+    wl_list_insert(&output->prev_sdm_layer_list, &sdm_layer->link);
+    dpy->RetrieveReleaseFence();
+  }
+
+  wl_list_init(&output->sdm_layer_list);
 }
 
 }// namespace sdm

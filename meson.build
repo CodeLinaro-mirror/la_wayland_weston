@@ -169,6 +169,10 @@ if get_option('backend-sdm')
 	dep_libsdmdal = cc.find_library('sdmdal')
 	dep_libdrmutils = cc.find_library('drmutils')
 	dep_libqservice = cc.find_library('qservice')
+	dep_libgputonemapper = cc.find_library('libgpu_tonemapper', required: false)
+	if dep_libgputonemapper.found()
+		config_h.set('HAS_HDR_SUPPORT', '1')
+	endif
 endif
 dep_libdrm_version = dep_libdrm.version()
 if dep_libdrm_version.version_compare('>=2.4.107')
