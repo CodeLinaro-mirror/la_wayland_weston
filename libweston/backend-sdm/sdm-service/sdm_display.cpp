@@ -71,6 +71,9 @@
 #include <pthread.h>
 #include <sys/prctl.h>
 #include <sys/resource.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sstream>
 
 #include "sdm-service/sdm_display.h"
 #include "sdm-service/uevent.h"
@@ -100,6 +103,7 @@ namespace sdm {
 #define SDM_NULL_DISPLAY_RESOLUTON_PROP_NAME "weston.sdm.default.resolution"
 #define SDM_DISABLE_HDR_HANDLING "vendor.display.disable_hdr"
 #define SDM_DISABLE_HDR_TM "vendor.display.disable_hdr_tm"
+#define SDM_DUMP_CONFIG "vendor.display.dump_config"
 
 SdmDisplay::SdmDisplay(DisplayType type, CoreInterface *core_intf,
                                          SdmDisplayBufferAllocator *buffer_allocator) {
@@ -186,12 +190,17 @@ DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
     }
 
     display_colormode_->Init();
+
+    frame_dumper_ = new SdmFrameDumper(display_id, GetDisplayString(), buffer_allocator_);
+
     return kErrorNone;
 }
 
 DisplayError SdmDisplay::DestroyDisplay() {
     DisplayError error = kErrorNone;
 
+    delete frame_dumper_;
+    frame_dumper_ = nullptr;
     display_colormode_->DeInit();
     delete display_colormode_;
     display_colormode_ = NULL;
@@ -355,7 +364,7 @@ DisplayError SdmDisplay::SetVSyncState(bool VSyncState, struct drm_output *outpu
 
     if (!output) {
         DLOGE("No output to set VSync");
-	return kErrorNone;
+        return kErrorNone;
     }
 
     drm_output_ = output;
@@ -434,6 +443,65 @@ DisplayError SdmDisplay::SetDisplayConfiguration(struct DisplayConfigInfo *displ
     return kErrorNone;
 }
 
+void SdmDisplay::ParseAndSetDumpConfig() {
+    std::stringstream ss;
+    std::string token,dump_config;
+    char property[MAX_PROP_STR_SIZE] = "";
+    int index = 0;
+    uint32_t display_id, frame_count;
+    int32_t output_format;
+    std::vector<int> configs;
+    DisplayError error = kErrorNone;
+
+    SdmDisplayDebugger::Get()->GetProperty(SDM_DUMP_CONFIG, property);
+    dump_config = property;
+
+    if (!dump_config.size()) {
+        return;
+    } else {
+        DLOGD("Dump config = %s\n", property);
+        ss.str(dump_config);
+    }
+
+    while (std::getline(ss, token, ',')) {
+        configs.push_back(std::stoi(token));
+    }
+
+    display_id = configs[index++];
+    //Check if it is specifc CWB display ID
+    if (display_id != display_id_)
+        return;
+
+    SdmDisplayDebugger::Get()->SetProperty(SDM_DUMP_CONFIG, nullptr);
+
+    error = frame_dumper_->CreateDumpDir();
+    if (error != kErrorNone) {
+        DLOGE("Failed to create dump dir");
+        return;
+    }
+
+    frame_count = configs[index++];
+    output_format = configs[index++];
+    CwbConfig cwb_config = {};
+    cwb_config.tap_point = static_cast<CwbTapPoint>(configs[index++]);
+
+    //Optional CWB config
+    cwb_config.pu_as_cwb_roi = static_cast<bool>(configs[index++]);
+    LayerRect &cwb_roi = cwb_config.cwb_roi;
+    if (configs.size() != index)
+        cwb_roi.left = static_cast<float>(configs[index++]);
+    if (configs.size() != index)
+        cwb_roi.top = static_cast<float>(configs[index++]);
+    if (configs.size() != index)
+        cwb_roi.right = static_cast<float>(configs[index++]);
+    if (configs.size() != index)
+        cwb_roi.bottom = static_cast<float>(configs[index++]);
+    error = SetFrameDumpConfig(frame_count, cwb_config, output_format);
+    if (error != kErrorNone) {
+        DLOGE("Failed to set frame dump config");
+    }
+}
+
 DisplayError SdmDisplay::SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence) {
     struct gbm_bo *bo = NULL;
     int data_fd = -1;
@@ -441,7 +509,7 @@ DisplayError SdmDisplay::SetOutputBuffer(void *buf, shared_ptr<Fence> &release_f
     uint32_t alignedWidth = 0;
     uint32_t alignedHeight = 0;
     uint32_t secure_status = 0;
-    void *color_meta = reinterpret_cast<void *> (&output_buffer_.color_metadata);
+    void *color_meta = reinterpret_cast<void *>(&output_buffer_.color_metadata);
     int gbm_format = GBM_FORMAT_XBGR8888;
     int sdm_format = SDM_BUFFER_FORMAT_INVALID;
     struct LayerGeometryFlags ubwc_flags;
@@ -474,7 +542,7 @@ DisplayError SdmDisplay::SetOutputBuffer(void *buf, shared_ptr<Fence> &release_f
     // output_buffer_ update. for present/validate or other.
     output_buffer_.flags.secure = secure_status;
     output_buffer_.flags.video = GetVideoPresenceByFormatFromGbm(gbm_format);
-    output_buffer_.format = GetSDMFormat(sdm_format, ubwc_flags);
+    output_buffer_.format = GetSDMFormat(sdm_format, ubwc_flags.has_ubwc_buf);
     output_buffer_.buffer_id = reinterpret_cast<uint64_t>(bo);
     output_buffer_.handle_id = bo->ion_fd;
 
@@ -490,6 +558,152 @@ DisplayError SdmDisplay::SetOutputBuffer(void *buf, shared_ptr<Fence> &release_f
     output_buffer_.acquire_fence = release_fence;
 
     return kErrorNone;
+}
+
+DisplayError SdmDisplay::SetReadbackBuffer(void *gbm_buf, shared_ptr<Fence> acquire_fence,
+                                           CwbConfig cwb_config) {
+    DisplayError error = kErrorNone;
+
+    error = SetOutputBuffer(gbm_buf, acquire_fence);
+    if(error != kErrorNone) {
+        DLOGE("Failed to set output buffer ");
+        return error;
+    }
+
+    error = display_intf_->CaptureCwb(output_buffer_, cwb_config);
+    if (error != kErrorNone) {
+        DLOGE("Failed to captureCwb");
+        return error;
+    }
+
+    //CWB config debug block
+    {
+        CwbConfig config = cwb_config;
+        LayerRect &roi = config.cwb_roi;
+        LayerRect &full_rect = config.cwb_full_rect;
+        CwbTapPoint &tap_point = config.tap_point;
+        DLOGV_IF(kTagCwb,"CWB config from client: tap_point %d, CWB ROI Rect(%f %f %f %f), "
+                 "PU_as_CWB_ROI %d, Cwb full rect : (%f %f %f %f)", tap_point,
+                 roi.left, roi.top, roi.right, roi.bottom, config.pu_as_cwb_roi,
+                 full_rect.left, full_rect.top, full_rect.right, full_rect.bottom);
+
+        DLOGV_IF(kTagCwb,"Successfully configured the output buffer");
+    }
+
+    return error;
+}
+
+DisplayError SdmDisplay::SetFrameDumpConfig(uint32_t count, CwbConfig &cwb_config,
+                                            int32_t format) {
+    const CwbTapPoint &point = cwb_config_.tap_point;
+    BufferConfig &base_buffer_config = output_buffer_info_.buffer_config;
+    DisplayError error = kErrorNone;
+
+    if (point < CwbTapPoint::kLmTapPoint || point > CwbTapPoint::kDemuraTapPoint) {
+        DLOGE("Invalid CWB tap point config");
+        return kErrorParameters;
+    }
+
+    error = display_intf_->GetCwbBufferResolution(&cwb_config, &base_buffer_config.width,
+                                                  &base_buffer_config.height);
+    if (error != kErrorNone) {
+        DLOGE("Buffer Resolution setting failed.");
+        return error;
+    }
+
+    base_buffer_config.format = GetSDMFormat(format, 0);
+    const char *format_string = GetFormatString(base_buffer_config.format);
+    base_buffer_config.buffer_count = 1;
+
+    if (base_buffer_config.format == kFormatInvalid) {
+        DLOGE("Format %d is not supported by SDM", format);
+        return kErrorParameters;
+    }
+
+    if (!display_intf_->IsWriteBackSupportedFormat(base_buffer_config.format)) {
+        DLOGE("WB doesn't support color format : %s .", format_string);
+        return kErrorParameters;
+    }
+
+    DLOGV_IF(kTagCwb,"CWB output buffer resolution: width:%d height:%d tap point:%s \
+             format: %s", base_buffer_config.width, base_buffer_config.height,
+             UINT32(point) ? (UINT32(point) == 1) ? "DSPP" : "DEMURA" : "LM",
+             format_string);
+
+    //Frame dumper allocate buffer from and freed by dump thread
+    error = frame_dumper_->CreateReadbackBuffer(output_buffer_info_, &output_buffer_base_);
+    if (error != kErrorNone) {
+        DLOGE("Readback-Buffer creating failed");
+        return error;
+    }
+
+    error = SetReadbackBuffer(output_buffer_info_.private_data, nullptr, cwb_config);
+    if (error != kErrorNone) {
+        DLOGE("Readback-Buffer setting failed");
+        frame_dumper_->FreeReadbackBuffer(output_buffer_info_);
+        output_buffer_info_ = {};
+        return error;
+    }
+
+    dump_frame_count_ = count;
+    cwb_config_ = cwb_config;
+
+    return kErrorNone;
+}
+
+void SdmDisplay::HandleFrameDump() {
+    DisplayError error = kErrorNone;
+
+    if (!dump_frame_count_)
+        return;
+
+    shared_ptr<SdmFrameDumper::DumpOutputData> thread_data;
+    thread_data = std::make_shared<SdmFrameDumper::DumpOutputData>();
+
+    thread_data->buffer_info = output_buffer_info_;
+    thread_data->base = output_buffer_base_;
+    thread_data->retire_fence = layer_stack_.retire_fence;
+    thread_data->frame_index = dump_frame_index_;
+    thread_data->fd = output_buffer_.planes[0].fd;
+
+    frame_dumper_->CreateDumpThread(thread_data);
+
+    bool stop_frame_dump = false;
+    if (0 == (dump_frame_count_ - 1)) {
+        stop_frame_dump = true;
+    } else {
+        error = frame_dumper_->CreateReadbackBuffer(output_buffer_info_, &output_buffer_base_);
+        if (error != kErrorNone) {
+            stop_frame_dump = true;
+            DLOGE("Readback-Buffer creating failed");
+        } else {
+            error = SetReadbackBuffer(output_buffer_info_.private_data, nullptr, cwb_config_);
+            if (error != kErrorNone) {
+                DLOGE("Readback-Buffer setting failed");
+                frame_dumper_->FreeReadbackBuffer(output_buffer_info_);
+                stop_frame_dump = true;
+            }
+        }
+
+        if (stop_frame_dump)
+            DLOGE("Unexpectedly stopped dumping of remaining %d frames for frame index[%d] onward!",
+                  dump_frame_count_, dump_frame_index_);
+
+        dump_frame_count_--;
+        dump_frame_index_++;
+    }
+
+    if (stop_frame_dump) {
+        output_buffer_info_ = {};
+        output_buffer_base_ = nullptr;
+        dump_frame_count_ = 0;
+        dump_frame_index_ = 0;
+    }
+}
+
+void SdmDisplay::HandleFrameOutput() {
+    /*TODO:CWB client request handle*/
+    HandleFrameDump();
 }
 
 DisplayError SdmDisplay::RegisterCb(int display_id, vblank_cb_t vbcb) {
@@ -570,7 +784,7 @@ DisplayError SdmDisplay::PopulateLayerGeometryOnToLayerStack(struct drm_output *
     layer_buffer = &layer_buffer_;
 
     /* 1. Fill buffer information */
-    layer_buffer->format = GetSDMFormat(layer_geometry->format, layer_geometry->flags);
+    layer_buffer->format = GetSDMFormat(layer_geometry->format, layer_geometry->flags.has_ubwc_buf);
     layer_buffer->width = layer_geometry->width;
     layer_buffer->height = layer_geometry->height;
     layer_buffer->unaligned_width = layer_geometry->unaligned_width;
@@ -938,7 +1152,7 @@ DisplayError SdmDisplay::PrePrepareLayerStack(struct drm_output *output) {
     LayerBufferFlags layerBufferFlags;
 
     if (shutdown_pending_) {
-	return kErrorShutDown;
+        return kErrorShutDown;
     }
 
     FreeLayerStack();
@@ -1136,6 +1350,8 @@ DisplayError SdmDisplay::Prepare(struct drm_output *output)
             __FUNCTION__, output->display_id, output->base.id, layer_stack_.output_buffer->buffer_id);
     }
 
+    ParseAndSetDumpConfig();
+
     error = display_intf_->Prepare(&layer_stack_);
     if (error != kErrorNone) {
         DLOGE("failed during Prepare error:%d\n",error);
@@ -1184,6 +1400,8 @@ shared_ptr<Fence> SdmDisplay::GetReleaseFence()
 DisplayError SdmDisplay::PostCommit()
 {
     DisplayError error = kErrorNone;
+
+    HandleFrameOutput();
 
     if (tone_mapper_ && tone_mapper_->IsActive()) {
         tone_mapper_->PostCommit(&layer_stack_);
@@ -1262,11 +1480,11 @@ DisplayError SdmDisplay::Commit(struct drm_output *output)
 }
 
 /* Adding following  support functions */
-LayerBufferFormat SdmDisplay::GetSDMFormat(uint32_t src_fmt, struct LayerGeometryFlags flags)
+LayerBufferFormat SdmDisplay::GetSDMFormat(uint32_t src_fmt, uint32_t has_ubwc_buf)
 {
     LayerBufferFormat format = kFormatInvalid;
 
-    if (flags.has_ubwc_buf) {
+    if (has_ubwc_buf) {
         switch (src_fmt) {
             case SDM_BUFFER_FORMAT_RGBA_8888:
                 format = sdm::kFormatRGBA8888Ubwc;
@@ -1977,6 +2195,16 @@ DisplayError SdmNullDisplay::SetOutputBuffer(void *buf, shared_ptr<Fence> &relea
   return kErrorNone;
 }
 
+DisplayError SdmNullDisplay::SetFrameDumpConfig(uint32_t count, CwbConfig &cwb_config,
+                                                int32_t format) {
+    return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::SetReadbackBuffer(void *gbm_buf, shared_ptr<Fence> acquire_fence,
+                                                CwbConfig cwb_config) {
+    return kErrorNone;
+}
+
 DisplayError SdmNullDisplay::RegisterCb(int display_id, vblank_cb_t vbcb) {
   vblank_cb_   = vbcb;
 
@@ -2048,6 +2276,191 @@ void *SdmDisplayProxy::UeventThreadHandler() {
   pthread_exit(0);
 
   return NULL;
+}
+
+DisplayError SdmFrameDumper::DumpOutputBuffer(const BufferInfo &buffer_info, void *base,
+                                              shared_ptr<Fence> &retire_fence, uint32_t index) {
+    char dump_file_name[PATH_MAX] = "";
+    size_t result = 0;
+
+    if (base) {
+        if (Fence::Wait(retire_fence) != kErrorNone) {
+            DLOGE("sync_wait error errno = %d, desc = %s", errno, strerror(errno));
+            return kErrorParameters;
+        }
+
+        snprintf(dump_file_name, sizeof(dump_file_name), "%s/output_layer_%dx%d_%s_frame%d.raw",
+                 dump_dir_path_.c_str(), buffer_info.alloc_buffer_info.aligned_width,
+                 buffer_info.alloc_buffer_info.aligned_height,
+                 GetFormatString(buffer_info.buffer_config.format), index);
+
+        FILE *fp = fopen(dump_file_name, "w+");
+        if (fp) {
+            result = fwrite(base, buffer_info.alloc_buffer_info.size, 1, fp);
+            fclose(fp);
+        }
+
+        DLOGE("Frame Dump of %s is %s", dump_file_name, result ? "Successful" : "Failed");
+    } else {
+        DLOGE("No available output buffer address");
+        return kErrorParameters;
+    }
+
+    if (!result)
+        return kErrorParameters;
+
+    return kErrorNone;
+}
+
+void SdmFrameDumper::DumpOutputThread() {
+    BufferInfo output_buffer_info = {};
+    void *output_buffer_base = nullptr;
+    uint32_t frame_index = 0;
+    shared_ptr<Fence> retire_fence = nullptr;
+    int fd = -1;
+    DisplayError error = kErrorNone;
+    std::thread::id thread_id = std::this_thread::get_id();
+
+    {
+        std::unique_lock<std::mutex> lock(dump_output_thread_map_mtx_);
+        while (!dump_output_thread_map_.count(thread_id)) {
+            dump_output_thread_cv_.wait(lock);
+        }
+
+        auto iter = dump_output_thread_map_.find(thread_id);
+        if (iter == dump_output_thread_map_.end()) {
+            DLOGE("cannot find dump thread data");
+            return;
+        }
+
+        output_buffer_info = iter->second->buffer_info;
+        output_buffer_base = iter->second->base;
+        frame_index = iter->second->frame_index;
+        retire_fence = iter->second->retire_fence;
+        fd = iter->second->fd;
+    }
+
+    error = DumpOutputBuffer(output_buffer_info, output_buffer_base,
+                             retire_fence, frame_index);
+    if (error != kErrorNone) {
+        DLOGE("Failed to dump frame[%d] output", frame_index);
+    }
+
+    FreeReadbackBuffer(output_buffer_info);
+
+    std::lock_guard<std::mutex> lock(dump_output_thread_map_mtx_);
+    close(fd);
+    dump_output_thread_map_.erase(thread_id);
+    completion_cv_.notify_one();
+
+    return;
+}
+
+void SdmFrameDumper::CreateDumpThread(shared_ptr<DumpOutputData> data) {
+    //Create ouput dump thread to dump buffer
+    std::thread dump_thread(&SdmFrameDumper::DumpOutputThread, this);
+    std::thread::id dump_thread_id = dump_thread.get_id();
+
+    {
+        std::lock_guard<std::mutex> lock(dump_output_thread_map_mtx_);
+        dump_output_thread_map_[dump_thread_id] = data;
+    }
+
+    dump_output_thread_cv_.notify_one();
+    dump_thread.detach();
+}
+
+void SdmFrameDumper::WaitDumpThreadsDone() {
+    {
+        //Wait output dump thread finished
+        std::unique_lock<std::mutex> lock(dump_output_thread_map_mtx_);
+        while(!dump_output_thread_map_.empty()) {
+            DLOGE("waiting dump output thread done");
+            completion_cv_.wait(lock);
+        }
+    }
+}
+
+DisplayError SdmFrameDumper::CreateDumpDir() {
+    int status  = 0;
+    const char *dir_path = dump_dir_path_.c_str();
+
+    status = mkdir(dir_path, 777);
+    if (errno == EEXIST) {
+        return kErrorNone;
+    }
+
+    if ((status != 0) && errno != EEXIST) {
+        DLOGE("Failed to create %s directory errno = %d, desc = %s", dir_path,
+               errno, strerror(errno));
+        return kErrorPermission;
+    } else {
+        //Even if directory exists already, need to explicitly change the permission.
+        status = chmod(dir_path, 0777);
+    }
+
+    if (status != 0) {
+        DLOGE("Failed to change permissions on %s directory", dir_path);
+        return kErrorPermission;
+    }
+
+    return kErrorNone;
+}
+
+void SdmFrameDumper::FreeReadbackBuffer(BufferInfo &output_buffer_info) {
+    int ret = 0;
+    struct gbm_bo *bo = reinterpret_cast<struct gbm_bo *>(output_buffer_info.private_data);
+
+    // Unmap and Free buffer
+    if (bo != nullptr) {
+        int ret = gbm_perform(GBM_PERFORM_CPU_UNMAP_FOR_BO, bo);
+        if (ret != GBM_ERROR_NONE) {
+            DLOGE("Failed to Unmap gbm buffer");
+        }
+    }
+
+    buffer_allocator_->FreeBuffer(&output_buffer_info);
+}
+
+DisplayError SdmFrameDumper::CreateReadbackBuffer(BufferInfo &output_buffer_info, void **base) {
+    int ret = 0;
+    struct gbm_bo *bo = nullptr;
+    DisplayError error = kErrorNone;
+
+    //Allocate and map output buffer
+    error = static_cast<DisplayError>(buffer_allocator_->AllocateBuffer(&output_buffer_info));
+    if (error != kErrorNone) {
+        DLOGE("Failed to allocate buffer");
+        output_buffer_info = {};
+        return error;
+    }
+
+    bo = reinterpret_cast<struct gbm_bo *>(output_buffer_info.private_data);
+    ret = gbm_perform(GBM_PERFORM_CPU_MAP_FOR_BO, bo, base);
+    if (ret != GBM_ERROR_NONE) {
+        DLOGE("Failed to mmap with err %d", ret);
+        buffer_allocator_->FreeBuffer(&output_buffer_info);
+        output_buffer_info = {};
+        return kErrorParameters;
+    }
+
+    return error;
+}
+
+SdmFrameDumper::SdmFrameDumper(int display_id, const char *display_string,
+                               SdmDisplayBufferAllocator *buffer_allocator) {
+    int status =0 ;
+    char dir_path[PATH_MAX] = "";
+
+    snprintf(dir_path, sizeof(dir_path), "%s/frame_dump_disp_id_%02u_%s",
+             SdmDisplayDebugger::DumpDir(), UINT32(display_id), display_string);
+
+    dump_dir_path_ = dir_path;
+    buffer_allocator_ = buffer_allocator;
+}
+
+SdmFrameDumper::~SdmFrameDumper() {
+    WaitDumpThreadsDone();
 }
 
 }  // namespace sdm
