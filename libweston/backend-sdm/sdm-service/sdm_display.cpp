@@ -79,6 +79,7 @@
 #include "sdm-service/uevent.h"
 
 #include "sdm-internal.h"
+#include "gbm-buffer-backend.h"
 
 #define __CLASS__ "SdmDisplay"
 extern "C" void NotifyOnRefresh(struct drm_output *);
@@ -445,11 +446,12 @@ DisplayError SdmDisplay::SetDisplayConfiguration(struct DisplayConfigInfo *displ
 
 void SdmDisplay::ParseAndSetDumpConfig() {
     std::stringstream ss;
-    std::string token,dump_config;
+    std::string token, dump_config;
     char property[MAX_PROP_STR_SIZE] = "";
     int index = 0;
     uint32_t display_id, frame_count;
     int32_t output_format;
+    DumpMode dump_mode = INPUT_LAYER_DUMP;
     std::vector<int> configs;
     DisplayError error = kErrorNone;
 
@@ -481,24 +483,37 @@ void SdmDisplay::ParseAndSetDumpConfig() {
     }
 
     frame_count = configs[index++];
-    output_format = configs[index++];
-    CwbConfig cwb_config = {};
-    cwb_config.tap_point = static_cast<CwbTapPoint>(configs[index++]);
+    dump_mode = static_cast<DumpMode>(configs[index++]);
 
-    //Optional CWB config
-    cwb_config.pu_as_cwb_roi = static_cast<bool>(configs[index++]);
-    LayerRect &cwb_roi = cwb_config.cwb_roi;
-    if (configs.size() != index)
-        cwb_roi.left = static_cast<float>(configs[index++]);
-    if (configs.size() != index)
-        cwb_roi.top = static_cast<float>(configs[index++]);
-    if (configs.size() != index)
-        cwb_roi.right = static_cast<float>(configs[index++]);
-    if (configs.size() != index)
-        cwb_roi.bottom = static_cast<float>(configs[index++]);
-    error = SetFrameDumpConfig(frame_count, cwb_config, output_format);
-    if (error != kErrorNone) {
-        DLOGE("Failed to set frame dump config");
+    if (dump_mode == INPUT_LAYER_DUMP) {
+        dump_frame_count_ = frame_count;
+        dump_input_layers_ = true;
+        return;
+    } else if (dump_mode == OUTPUT_LAYER_DUMP) {
+        output_format = configs[index++];
+        CwbConfig cwb_config = {};
+        cwb_config.tap_point = static_cast<CwbTapPoint>(configs[index++]);
+
+        //Optional CWB config
+        cwb_config.pu_as_cwb_roi = static_cast<bool>(configs[index++]);
+        LayerRect &cwb_roi = cwb_config.cwb_roi;
+        if (configs.size() != index)
+            cwb_roi.left = static_cast<float>(configs[index++]);
+        if (configs.size() != index)
+            cwb_roi.top = static_cast<float>(configs[index++]);
+        if (configs.size() != index)
+            cwb_roi.right = static_cast<float>(configs[index++]);
+        if (configs.size() != index)
+            cwb_roi.bottom = static_cast<float>(configs[index++]);
+
+        error = SetFrameDumpConfig(frame_count, cwb_config, output_format);
+        if (error != kErrorNone) {
+            DLOGE("Failed to set frame dump config");
+            return;
+        }
+    } else {
+        DLOGE("Invalid dump mode set");
+        return;
     }
 }
 
@@ -647,6 +662,7 @@ DisplayError SdmDisplay::SetFrameDumpConfig(uint32_t count, CwbConfig &cwb_confi
 
     dump_frame_count_ = count;
     cwb_config_ = cwb_config;
+    dump_input_layers_ = false;
 
     return kErrorNone;
 }
@@ -654,7 +670,7 @@ DisplayError SdmDisplay::SetFrameDumpConfig(uint32_t count, CwbConfig &cwb_confi
 void SdmDisplay::HandleFrameDump() {
     DisplayError error = kErrorNone;
 
-    if (!dump_frame_count_)
+    if (dump_input_layers_ || !dump_frame_count_)
         return;
 
     shared_ptr<SdmFrameDumper::DumpOutputData> thread_data;
@@ -704,6 +720,26 @@ void SdmDisplay::HandleFrameDump() {
 void SdmDisplay::HandleFrameOutput() {
     /*TODO:CWB client request handle*/
     HandleFrameDump();
+}
+
+void SdmDisplay::HandleInputDump(struct drm_output *output) {
+    if (!dump_input_layers_ || !dump_frame_count_)
+        return;
+
+    frame_dumper_->HandleInputDump(output, dump_frame_index_);
+
+    bool stop_frame_dump = false;
+    if (0 == (dump_frame_count_ - 1)) {
+        stop_frame_dump = true;
+    } else {
+        dump_frame_count_--;
+        dump_frame_index_++;
+    }
+
+    if (stop_frame_dump) {
+        dump_frame_count_ = 0;
+        dump_frame_index_ = 0;
+    }
 }
 
 DisplayError SdmDisplay::RegisterCb(int display_id, vblank_cb_t vbcb) {
@@ -1338,6 +1374,8 @@ DisplayError SdmDisplay::Prepare(struct drm_output *output)
         DLOGE("failed during PrePrepare");
     }
 
+    HandleInputDump(output);
+
 #if SDM_DISPLAY_DUMP_LAYER_STACK
     // Dump all input layers of the layer stack:
     GetLayerStackDump(&layer_stack_, dump_buffer, sizeof(dump_buffer));
@@ -1346,8 +1384,8 @@ DisplayError SdmDisplay::Prepare(struct drm_output *output)
     if (display_type_ == kVirtual) {
         layer_stack_.output_buffer = &output_buffer_;
         layer_stack_.cwb_config = &cwb_config_;
-        DLOGD("[%s] display(%d) output(%d) buffer_id(%p)",
-            __FUNCTION__, output->display_id, output->base.id, layer_stack_.output_buffer->buffer_id);
+        DLOGD("display(%d) output(%d) buffer_id(%p)", output->display_id, output->base.id,
+              layer_stack_.output_buffer->buffer_id);
     }
 
     ParseAndSetDumpConfig();
@@ -2276,6 +2314,150 @@ void *SdmDisplayProxy::UeventThreadHandler() {
   pthread_exit(0);
 
   return NULL;
+}
+
+DisplayError SdmFrameDumper::DumpInputBuffer(void *buffer, InputBufferType buffer_type,
+                                             uint32_t frame_index, uint32_t layer_index) {
+    void *buffer_data = nullptr;
+    uint32_t size = 0, width = 0, height = 0, stride = 0, format = 0;
+    char dump_file_name[PATH_MAX] = "";
+    int ret = 0;
+
+    if (buffer_type == SHM_BUFFER) {
+        struct wl_shm_buffer *shm = static_cast<wl_shm_buffer*>(buffer);
+
+        format = wl_shm_buffer_get_format(shm);
+        buffer_data = wl_shm_buffer_get_data(shm);
+        stride = wl_shm_buffer_get_stride(shm);
+        width = wl_shm_buffer_get_width(shm);
+        height = wl_shm_buffer_get_height(shm);
+        size = stride * height;
+    } else if (buffer_type == GBM_BUFFER) {
+        struct gbm_buffer *gbmbuf = static_cast<gbm_buffer*>(buffer);
+        size_t bo_size = 0;
+
+        ret = gbm_perform(GBM_PERFORM_CPU_MAP_FOR_BO, gbmbuf->bo, &buffer_data);
+        if (ret != GBM_ERROR_NONE) {
+            DLOGE("Failed to  mmap with err %d", ret);
+            return kErrorParameters;
+        }
+
+        ret = gbm_perform(GBM_PERFORM_GET_BO_SIZE, gbmbuf->bo, &bo_size);
+        if (ret != GBM_ERROR_NONE) {
+            DLOGE("Failed to  get bo size with err %d", ret);
+            return kErrorParameters;
+        }
+
+        size = UINT32(bo_size);
+        width = gbm_bo_get_width(gbmbuf->bo);
+        height = gbm_bo_get_height(gbmbuf->bo);
+        format = gbm_bo_get_format(gbmbuf->bo);
+    }
+
+    snprintf(dump_file_name, sizeof(dump_file_name), "%s/input_layer%d_%dx%d_format%d_frame%d.raw",
+             dump_dir_path_.c_str(), layer_index, width, height, format, frame_index);
+
+    FILE *fp = fopen(dump_file_name, "w+");
+    if (fp) {
+        ret = fwrite(buffer_data, size, 1, fp);
+        fclose(fp);
+    }
+
+    DLOGE("Frame Dump of %s is %s", dump_file_name, ret ? "Successful" : "Failed");
+
+    if (!ret)
+        return kErrorParameters;
+
+    return kErrorNone;
+}
+
+void SdmFrameDumper::DumpInputThread() {
+    std::thread::id thread_id = std::this_thread::get_id();
+    void *buffer_data = nullptr;
+    InputBufferType buffer_type = SHM_BUFFER;
+    uint32_t frame_index = 0;
+    uint32_t layer_index = 0;
+    DisplayError error = kErrorNone;
+
+    {
+        std::unique_lock<std::mutex> lock(dump_input_thread_map_mtx_);
+        while (!dump_input_thread_map_.count(thread_id)) {
+            dump_input_thread_cv_.wait(lock);
+        }
+
+        auto iter = dump_input_thread_map_.find(thread_id);
+        if (iter == dump_input_thread_map_.end()) {
+            DLOGE("Failed to find dump thread data");
+            return;
+        }
+
+        buffer_data = iter->second->buffer;
+        buffer_type = iter->second->buffer_type;
+        frame_index = iter->second->frame_index;
+        layer_index = iter->second->layer_index;
+    }
+
+    error = DumpInputBuffer(buffer_data, buffer_type, frame_index, layer_index);
+    if (error != kErrorNone) {
+        DLOGE("Failed to dump frame[%d] input", frame_index);
+    }
+
+    std::lock_guard<std::mutex> lock(dump_input_thread_map_mtx_);
+    dump_input_thread_map_.erase(thread_id);
+    completion_cv_.notify_one();
+}
+
+void SdmFrameDumper::HandleInputDump(struct drm_output *output, uint32_t frame_index) {
+    struct sdm_layer *sdm_layer = nullptr;
+    uint32_t layer_index = 0;
+    std::vector<shared_ptr<DumpInputData>> dump_input_data = {};
+
+    wl_list_for_each_reverse(sdm_layer, &output->sdm_layer_list, link) {
+        struct weston_buffer *buffer = sdm_layer->buffer_ref.buffer;
+
+        layer_index++;
+
+        if (!buffer)
+            continue;
+
+        shared_ptr<DumpInputData> dump_data = std::make_shared<DumpInputData>();
+
+        dump_data->frame_index = frame_index;
+        dump_data->layer_index = layer_index;
+
+        void *shm = static_cast<void*>(wl_shm_buffer_get(buffer->resource));
+        if (shm) {
+            dump_data->buffer = shm;
+            dump_data->buffer_type = SHM_BUFFER;
+            dump_input_data.push_back(dump_data);
+            continue;
+        }
+
+        void *gbmbuf = static_cast<void*>(gbm_buffer_get(buffer->resource));
+        if (gbmbuf) {
+            dump_data->buffer = gbmbuf;
+            dump_data->buffer_type = GBM_BUFFER;
+            dump_input_data.push_back(dump_data);
+        }
+    }
+
+    for (const auto &dump_data : dump_input_data) {
+        CreateDumpThread(dump_data);
+    }
+}
+
+void SdmFrameDumper::CreateDumpThread(shared_ptr<DumpInputData> data) {
+    //Create input dump thread to dump buffer
+    std::thread dump_thread(&SdmFrameDumper::DumpInputThread, this);
+    std::thread::id dump_thread_id = dump_thread.get_id();
+
+    {
+        std::lock_guard<std::mutex> lock(dump_input_thread_map_mtx_);
+        dump_input_thread_map_[dump_thread_id] = data;
+    }
+
+    dump_input_thread_cv_.notify_one();
+    dump_thread.detach();
 }
 
 DisplayError SdmFrameDumper::DumpOutputBuffer(const BufferInfo &buffer_info, void *base,

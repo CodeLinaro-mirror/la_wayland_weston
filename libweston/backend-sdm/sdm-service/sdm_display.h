@@ -78,14 +78,32 @@ typedef std::map<uint32_t, HWDisplayInfo> SdmDisplaysInfo;
 typedef std::map<uint32_t, SdmDisplayProxy *> CreatedDisplaysInfo;
 typedef class SDMColorMode SDMColorMode;
 
+enum DumpMode {
+  INPUT_LAYER_DUMP = 1,
+  OUTPUT_LAYER_DUMP,
+};
+
 class SdmFrameDumper {
   public:
-    struct DumpOutputData{
+    struct DumpOutputData {
       BufferInfo buffer_info = {};
       void *base = nullptr;
       shared_ptr<Fence> retire_fence = nullptr;
       uint32_t frame_index = 0;
       int fd = -1;
+    };
+
+    enum InputBufferType {
+      SHM_BUFFER,
+      GBM_BUFFER,
+      DMA_BUFFER, //Not supported
+    };
+
+    struct DumpInputData {
+      void *buffer = nullptr;
+      InputBufferType buffer_type = SHM_BUFFER;
+      uint32_t frame_index = 0;
+      uint32_t layer_index = 0;
     };
 
     SdmFrameDumper(int display_id, const char *display_string,
@@ -97,6 +115,9 @@ class SdmFrameDumper {
     void FreeReadbackBuffer(BufferInfo &output_buffer_info);
     void CreateDumpThread(shared_ptr<DumpOutputData> data);
 
+    void HandleInputDump(struct drm_output *output, uint32_t frame_index);
+    void CreateDumpThread(shared_ptr<DumpInputData> data);
+
     private:
     void WaitDumpThreadsDone();
 
@@ -104,6 +125,11 @@ class SdmFrameDumper {
     void DumpOutputThread();
     DisplayError DumpOutputBuffer(const BufferInfo &buffer_info, void *base,
                                   shared_ptr<Fence> &retire_fence, uint32_t index);
+
+    //input dump thread methods
+    void DumpInputThread();
+    DisplayError DumpInputBuffer(void *buffer, InputBufferType buffer_type,
+                                 uint32_t frame_index, uint32_t layer_index);
 
     string dump_dir_path_;
     SdmDisplayBufferAllocator *buffer_allocator_ = nullptr;
@@ -114,6 +140,11 @@ class SdmFrameDumper {
     std::unordered_map<std::thread::id, shared_ptr<DumpOutputData>> dump_output_thread_map_ = {};
     std::mutex dump_output_thread_map_mtx_;
     std::condition_variable dump_output_thread_cv_;
+
+    //intput thread data
+    std::unordered_map<std::thread::id, shared_ptr<DumpInputData>> dump_input_thread_map_ = {};
+    std::mutex dump_input_thread_map_mtx_;
+    std::condition_variable dump_input_thread_cv_;
 };
 
 class SdmDisplayInterface {
@@ -282,6 +313,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     void ParseAndSetDumpConfig();
     void HandleFrameOutput();
     void HandleFrameDump();
+    void HandleInputDump(struct drm_output *output);
 
     LayerBufferFormat GetSDMFormat(uint32_t src_fmt, uint32_t has_ubwc_buf);
     LayerBlending GetSDMBlending(uint32_t source);
@@ -334,6 +366,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     uint32_t dump_frame_count_ = 0;
     uint32_t dump_frame_index_ = 0;
     CwbConfig cwb_config_ = {};
+    bool dump_input_layers_ = false;
     SdmFrameDumper *frame_dumper_ = NULL;
 
     SDMColorMode *display_colormode_ = NULL;
