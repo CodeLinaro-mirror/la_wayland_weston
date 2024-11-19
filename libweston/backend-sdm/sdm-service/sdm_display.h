@@ -40,9 +40,11 @@
 #include <string>
 #include <utility>
 #include <map>
+#include <unordered_map>
 #include <vector>
 #include <iostream>
 #include <thread>
+#include <condition_variable>
 #include <private/color_params.h>
 
 #include "sdm-service/sdm_display_debugger.h"
@@ -76,6 +78,75 @@ typedef std::map<uint32_t, HWDisplayInfo> SdmDisplaysInfo;
 typedef std::map<uint32_t, SdmDisplayProxy *> CreatedDisplaysInfo;
 typedef class SDMColorMode SDMColorMode;
 
+enum DumpMode {
+  INPUT_LAYER_DUMP = 1,
+  OUTPUT_LAYER_DUMP,
+};
+
+class SdmFrameDumper {
+  public:
+    struct DumpOutputData {
+      BufferInfo buffer_info = {};
+      void *base = nullptr;
+      shared_ptr<Fence> retire_fence = nullptr;
+      uint32_t frame_index = 0;
+      int fd = -1;
+    };
+
+    enum InputBufferType {
+      SHM_BUFFER,
+      GBM_BUFFER,
+      DMA_BUFFER, //Not supported
+    };
+
+    struct DumpInputData {
+      void *buffer = nullptr;
+      InputBufferType buffer_type = SHM_BUFFER;
+      uint32_t frame_index = 0;
+      uint32_t layer_index = 0;
+    };
+
+    SdmFrameDumper(int display_id, const char *display_string,
+                   SdmDisplayBufferAllocator *buffer_allocator);
+    ~SdmFrameDumper();
+
+    DisplayError CreateDumpDir();
+    DisplayError CreateReadbackBuffer(BufferInfo &output_buffer_info, void **base);
+    void FreeReadbackBuffer(BufferInfo &output_buffer_info);
+    void CreateDumpThread(shared_ptr<DumpOutputData> data);
+
+    void HandleInputDump(struct drm_output *output, uint32_t frame_index);
+    void CreateDumpThread(shared_ptr<DumpInputData> data);
+
+    private:
+    void WaitDumpThreadsDone();
+
+    //output dump thread methods
+    void DumpOutputThread();
+    DisplayError DumpOutputBuffer(const BufferInfo &buffer_info, void *base,
+                                  shared_ptr<Fence> &retire_fence, uint32_t index);
+
+    //input dump thread methods
+    void DumpInputThread();
+    DisplayError DumpInputBuffer(void *buffer, InputBufferType buffer_type,
+                                 uint32_t frame_index, uint32_t layer_index);
+
+    string dump_dir_path_;
+    SdmDisplayBufferAllocator *buffer_allocator_ = nullptr;
+
+    std::condition_variable completion_cv_;
+
+    //output thread data
+    std::unordered_map<std::thread::id, shared_ptr<DumpOutputData>> dump_output_thread_map_ = {};
+    std::mutex dump_output_thread_map_mtx_;
+    std::condition_variable dump_output_thread_cv_;
+
+    //intput thread data
+    std::unordered_map<std::thread::id, shared_ptr<DumpInputData>> dump_input_thread_map_ = {};
+    std::mutex dump_input_thread_map_mtx_;
+    std::condition_variable dump_input_thread_cv_;
+};
+
 class SdmDisplayInterface {
   public:
     virtual ~SdmDisplayInterface() {}
@@ -90,6 +161,10 @@ class SdmDisplayInterface {
     virtual DisplayError GetDisplayConfiguration(struct DisplayConfigInfo *display_config) = 0;
     virtual DisplayError SetDisplayConfiguration(struct DisplayConfigInfo *display_config) = 0;
     virtual DisplayError SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence) = 0;
+    virtual DisplayError SetFrameDumpConfig(uint32_t count, CwbConfig &cwb_config,
+                                            int32_t format) = 0;
+    virtual DisplayError SetReadbackBuffer(void *gbm_buf, shared_ptr<Fence> acquire_fence,
+                                           CwbConfig cwb_config) = 0;
     virtual DisplayError RegisterCb(int display_id, vblank_cb_t vbcb) = 0;
     virtual SdmDisplayIntfType GetDisplayIntfType() = 0;
     virtual DisplayError SetPanelBrightness(float brightness) = 0;
@@ -130,6 +205,9 @@ class SdmNullDisplay : public SdmDisplayInterface {
     DisplayError GetDisplayConfiguration(struct DisplayConfigInfo *display_config);
     DisplayError SetDisplayConfiguration(struct DisplayConfigInfo *display_config);
     DisplayError SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence);
+    DisplayError SetFrameDumpConfig(uint32_t count, CwbConfig &cwb_config, int32_t format);
+    DisplayError SetReadbackBuffer(void *gbm_buf, shared_ptr<Fence> acquire_fence,
+                                   CwbConfig cwb_config);
     DisplayError RegisterCb(int display_id, vblank_cb_t vbcb);
     DisplayError SetPanelBrightness(float brightness);
     DisplayError GetPanelBrightness(float *brightness);
@@ -168,6 +246,9 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     DisplayError GetDisplayConfiguration(struct DisplayConfigInfo *display_config);
     DisplayError SetDisplayConfiguration(struct DisplayConfigInfo *display_config);
     DisplayError SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence);
+    DisplayError SetFrameDumpConfig(uint32_t count, CwbConfig &cwb_config, int32_t format);
+    DisplayError SetReadbackBuffer(void *gbm_buf, shared_ptr<Fence> acquire_fence,
+                                   CwbConfig cwb_config);
     DisplayError RegisterCb(int display_id, vblank_cb_t vbcb);
     DisplayError SetPanelBrightness(float brightness);
     DisplayError GetPanelBrightness(float *brightness);
@@ -226,10 +307,15 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     DisplayError PrePrepare(struct drm_output *output);
     DisplayError PostPrepare(struct drm_output *output);
     DisplayError PreCommit();
-
     DisplayError PostCommit();
-    LayerBufferFormat GetSDMFormat(uint32_t src_fmt,
-                                   struct LayerGeometryFlags flags);
+
+    //Dump related methods
+    void ParseAndSetDumpConfig();
+    void HandleFrameOutput();
+    void HandleFrameDump();
+    void HandleInputDump(struct drm_output *output);
+
+    LayerBufferFormat GetSDMFormat(uint32_t src_fmt, uint32_t has_ubwc_buf);
     LayerBlending GetSDMBlending(uint32_t source);
     uint32_t GetSDMTransform(uint32_t wl_transform);
     void DumpInputBuffers(void *compositor_output);
@@ -272,8 +358,17 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     LayerStack prev_layer_stack_;
     bool esd_reset_panel_ = false;
 
+    //Dump related
     LayerBuffer output_buffer_ = {};
+    BufferConfig base_buffer_config_;
+    BufferInfo output_buffer_info_ = {};
+    void *output_buffer_base_ = nullptr;
+    uint32_t dump_frame_count_ = 0;
+    uint32_t dump_frame_index_ = 0;
     CwbConfig cwb_config_ = {};
+    bool dump_input_layers_ = false;
+    SdmFrameDumper *frame_dumper_ = NULL;
+
     SDMColorMode *display_colormode_ = NULL;
     bool hdr_supported_ = false;
     int disable_hdr_handling_ = 0;
@@ -315,6 +410,14 @@ class SdmDisplayProxy {
     }
     DisplayError SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence) {
       return display_intf_->SetOutputBuffer(buf, release_fence);
+    }
+    DisplayError SetFrameDumpConfig(uint32_t count, CwbConfig &cwb_config,
+                                    int32_t format) {
+      return display_intf_->SetFrameDumpConfig(count, cwb_config, format);
+    }
+     DisplayError SetReadbackBuffer(void *gbm_buf, shared_ptr<Fence> acquire_fence,
+                                    CwbConfig cwb_config) {
+      return display_intf_->SetReadbackBuffer(gbm_buf, acquire_fence, cwb_config);
     }
     DisplayError RegisterCbs(int display_id, sdm_cbs_t *cbs) {
       // TODO: move vblank_cb up?

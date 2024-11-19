@@ -23,7 +23,7 @@
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
 *
-* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
@@ -271,6 +271,14 @@ int SdmDisplayDebugger::GetProperty(const char *property_name, int *value) {
 
 int SdmDisplayDebugger::GetProperty(const char *property_name, char *value) {
   if (property_get(property_name, value, NULL) > 0) {
+    return kErrorNone;
+  }
+
+  return kErrorNotSupported;
+}
+
+int SdmDisplayDebugger::SetProperty(const char *property_name, const char *value) {
+  if (property_set(property_name, value) == 0) {
     return kErrorNone;
   }
 
