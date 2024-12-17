@@ -192,6 +192,17 @@ simple_clients = [
 	},
 ]
 
+if not get_option('renderer-gl')
+	simple_build_all = false
+	foreach t : simple_clients
+		t_name = t.get('name')
+		deps = t.get('deps', [])
+		if not deps.contains('glesv2') and not deps.contains('egl')
+			simple_clients_enabled += t_name
+		endif
+	endforeach
+endif
+
 foreach t : simple_clients
 	if simple_build_all or simple_clients_enabled.contains(t.get('name'))
 		t_name = 'weston-simple-' + t.get('name')
@@ -371,9 +382,17 @@ if get_option('demo-clients')
 		t_name = 'weston-' + t.get('basename')
 		t_srcs = [ t.get('basename') + '.c' ] + t.get('add_sources', [])
 		t_deps = [ dep_toytoolkit, t.get('dep_objs', []) ]
+		should_install = true
 		foreach depname : t.get('deps', [])
 			dep = dependency(depname, required: false)
 			if not dep.found()
+				if not get_option('renderer-gl')
+					if depname.contains('egl') or depname.contains('glesv2')
+						warning('@0@ requires \'@1@\' which was not found. Skip build.'.format(t_name, depname))
+						should_install = false
+						break
+					endif
+				endif
 				error('@0@ requires \'@1@\' which was not found. If you rather not build this, set \'-Ddemo-clients=false\'.'.format(t_name, depname))
 			endif
 			t_deps += dep
@@ -383,7 +402,7 @@ if get_option('demo-clients')
 			t_name, t_srcs,
 			include_directories: common_inc,
 			dependencies: t_deps,
-			install: true
+			install: should_install
 		)
 	endforeach
 endif

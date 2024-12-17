@@ -1382,7 +1382,7 @@ DisplayError SdmDisplay::Prepare(struct drm_output *output)
 #endif
 
     if (display_type_ == kVirtual) {
-        layer_stack_.output_buffer = &output_buffer_;
+        layer_stack_.output_buffer = std::make_shared<sdm::LayerBuffer>(output_buffer_);
         layer_stack_.cwb_config = &cwb_config_;
         DLOGD("display(%d) output(%d) buffer_id(%p)", output->display_id, output->base.id,
               layer_stack_.output_buffer->buffer_id);
