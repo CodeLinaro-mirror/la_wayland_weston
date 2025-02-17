@@ -1038,13 +1038,13 @@ uint32_t SdmDisplay::GetSDMTransform(uint32_t wl_transform)
             sdm_transform = SDM_TRANSFORM_FLIP_H;
             break;
         case WL_OUTPUT_TRANSFORM_FLIPPED_90:
-            sdm_transform = SDM_TRANSFORM_FLIP_H | SDM_TRANSFORM_270;
+            sdm_transform = SDM_TRANSFORM_FLIP_H ^ SDM_TRANSFORM_270;
             break;
         case WL_OUTPUT_TRANSFORM_FLIPPED_180:
-            sdm_transform = SDM_TRANSFORM_FLIP_H | SDM_TRANSFORM_180;
+            sdm_transform = SDM_TRANSFORM_FLIP_H ^ SDM_TRANSFORM_180;
             break;
         case WL_OUTPUT_TRANSFORM_FLIPPED_270:
-            sdm_transform = SDM_TRANSFORM_FLIP_H | SDM_TRANSFORM_90;
+            sdm_transform = SDM_TRANSFORM_FLIP_H ^ SDM_TRANSFORM_90;
             break;
         case WL_OUTPUT_TRANSFORM_NORMAL:
         default:
