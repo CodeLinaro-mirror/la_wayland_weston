@@ -1384,7 +1384,7 @@ udev_drm_event(int fd, uint32_t mask, void *data)
 	int hpd = udev_event_is_hotplug(b, event);
 	int connected = udev_event_is_connected(b, event);
 	int disconnected = udev_event_is_disconnected(b, event);
-	int expect_hpd = hpd && (connected || disconnected);
+	int expect_hpd = hpd;
 
 	if (expect_hpd) {
 		weston_log("expected hpd event,connected=[%d] disconnected=[%d]\n",

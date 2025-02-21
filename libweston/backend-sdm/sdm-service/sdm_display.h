@@ -378,12 +378,12 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
 
 class SdmDisplayProxy {
   public:
-    SdmDisplayProxy(DisplayType type, CoreInterface *core_intf,
+    SdmDisplayProxy(uint32_t display_id, DisplayType type, CoreInterface *core_intf,
                     SdmDisplayBufferAllocator *buffer_allocator);
     ~SdmDisplayProxy();
 
-    DisplayError CreateDisplay(uint32_t display_id) {
-      DisplayError rc = display_intf_->CreateDisplay(display_id);
+    DisplayError CreateDisplay() {
+      DisplayError rc = display_intf_->CreateDisplay(display_id_);
       if (rc != kErrorNone)
         display_intf_ = &null_disp_;
       return kErrorNone;
@@ -419,10 +419,10 @@ class SdmDisplayProxy {
                                     CwbConfig cwb_config) {
       return display_intf_->SetReadbackBuffer(gbm_buf, acquire_fence, cwb_config);
     }
-    DisplayError RegisterCbs(int display_id, sdm_cbs_t *cbs) {
+    DisplayError RegisterCbs(sdm_cbs_t *cbs) {
       // TODO: move vblank_cb up?
       hotplug_cb_ = cbs->hotplug_cb;
-      return display_intf_->RegisterCb(display_id, cbs->vblank_cb);
+      return display_intf_->RegisterCb(display_id_, cbs->vblank_cb);
     }
     DisplayError SetPanelBrightness(float brightness) {
       return display_intf_->SetPanelBrightness(brightness);
@@ -499,6 +499,7 @@ class SdmDisplayProxy {
     bool uevent_thread_exit_ = false;
     const char *uevent_thread_name_ = "SDM_UeventThread";
     hotplug_cb_t hotplug_cb_;
+    uint32_t display_id_;
 };
 
 #ifdef __cplusplus

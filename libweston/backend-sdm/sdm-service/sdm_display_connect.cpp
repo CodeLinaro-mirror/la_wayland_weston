@@ -240,10 +240,10 @@ int CreateDisplay(uint32_t display_id)
 
     enum DisplayType display_type = hw_display_info.display_type;
 
-    SdmDisplayProxy *sdm_display = new SdmDisplayProxy(display_type, core_intf_, buffer_allocator_);
+    SdmDisplayProxy *sdm_display = new SdmDisplayProxy(display_id, display_type, core_intf_, buffer_allocator_);
 
     displays_[display_id] = sdm_display;
-    error = displays_[display_id]->CreateDisplay(display_id) ;
+    error = displays_[display_id]->CreateDisplay() ;
     if (error != kErrorNone) {
         DLOGE("Failed to create display(%d)", display_id);
         delete displays_[display_id];
@@ -426,7 +426,7 @@ int RegisterCbs(uint32_t display_id, sdm_cbs *cbs) {
         return kErrorNotSupported;
     }
 
-    error = dpy->RegisterCbs(display_id, cbs);
+    error = dpy->RegisterCbs(cbs);
 
     if (error != kErrorNone) {
         DLOGE("function failed with error = %d", error);

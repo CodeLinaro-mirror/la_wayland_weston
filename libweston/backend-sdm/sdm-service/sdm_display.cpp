@@ -143,7 +143,7 @@ DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
     char property[MAX_PROP_STR_SIZE] = {0};
     struct DisplayHdrInfo display_hdr_info = {};
 
-    error = core_intf_->CreateDisplay(display_type_, this, &display_intf_);
+    error = core_intf_->CreateDisplay(display_id, this, &display_intf_);
 
     if (error != kErrorNone) {
         DLOGE("Display creation failed. Error = %d", error);
@@ -2257,9 +2257,9 @@ DisplayError SdmNullDisplay::SetDetailEnhancerConfig(const DisplayDetailEnhancer
 DisplayError SdmNullDisplay::SetHWDetailedEnhancerConfig(void *params) {
   return kErrorNone;
 }
-SdmDisplayProxy::SdmDisplayProxy(DisplayType type, CoreInterface *core_intf,
+SdmDisplayProxy::SdmDisplayProxy(uint32_t display_id, DisplayType type, CoreInterface *core_intf,
                                  SdmDisplayBufferAllocator *buffer_allocator)
-  : disp_type_(type), core_intf_(core_intf),
+  : display_id_(display_id), disp_type_(type), core_intf_(core_intf),
     sdm_disp_(type, core_intf, buffer_allocator), null_disp_(type, core_intf) {
 
     display_intf_ = &sdm_disp_;
