@@ -559,7 +559,7 @@ DisplayError SdmDisplay::SetOutputBuffer(void *buf, shared_ptr<Fence> &release_f
     output_buffer_.flags.video = GetVideoPresenceByFormatFromGbm(gbm_format);
     output_buffer_.format = GetSDMFormat(sdm_format, ubwc_flags.has_ubwc_buf);
     output_buffer_.buffer_id = reinterpret_cast<uint64_t>(bo);
-    output_buffer_.handle_id = bo->ion_fd;
+    output_buffer_.handle_id = frame_dumper_->GetHandleID();
 
     output_buffer_.unaligned_width = width;
     output_buffer_.unaligned_height = height;
@@ -2602,6 +2602,10 @@ DisplayError SdmFrameDumper::CreateDumpDir() {
     return kErrorNone;
 }
 
+uint64_t SdmFrameDumper::GetHandleID() {
+    return ++handle_id_;
+}
+
 void SdmFrameDumper::FreeReadbackBuffer(BufferInfo &output_buffer_info) {
     int ret = 0;
     struct gbm_bo *bo = reinterpret_cast<struct gbm_bo *>(output_buffer_info.private_data);
@@ -2652,6 +2656,7 @@ SdmFrameDumper::SdmFrameDumper(int display_id, const char *display_string,
 
     dump_dir_path_ = dir_path;
     buffer_allocator_ = buffer_allocator;
+    handle_id_ = 0;
 }
 
 SdmFrameDumper::~SdmFrameDumper() {
