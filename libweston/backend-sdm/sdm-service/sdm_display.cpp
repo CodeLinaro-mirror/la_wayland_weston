@@ -48,7 +48,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -1811,6 +1811,19 @@ void SdmDisplay::ComputeSrcDstRect(struct drm_output *output, struct weston_view
     sdm_weston_global_transform_rect(ev, box, &sx1, &sy1, &sx2, &sy2);
 
     pixman_region32_fini(&src_rect);
+
+    /* Buffer transforms may mean that x2 is to the left of x1, and/or that
+    * y2 is above y1. */
+    if (sx2 < sx1) {
+        double tmp = sx1;
+        sx1 = sx2;
+        sx2 = tmp;
+    }
+    if (sy2 < sy1) {
+        double tmp = sy1;
+        sy1 = sy2;
+        sy2 = tmp;
+    }
 
     src_ret->left = sx1;
     src_ret->top = sy1;
