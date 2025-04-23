@@ -48,7 +48,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -559,7 +559,7 @@ DisplayError SdmDisplay::SetOutputBuffer(void *buf, shared_ptr<Fence> &release_f
     output_buffer_.flags.video = GetVideoPresenceByFormatFromGbm(gbm_format);
     output_buffer_.format = GetSDMFormat(sdm_format, ubwc_flags.has_ubwc_buf);
     output_buffer_.buffer_id = reinterpret_cast<uint64_t>(bo);
-    output_buffer_.handle_id = bo->ion_fd;
+    output_buffer_.handle_id = frame_dumper_->GetHandleID();
 
     output_buffer_.unaligned_width = width;
     output_buffer_.unaligned_height = height;
@@ -1812,6 +1812,19 @@ void SdmDisplay::ComputeSrcDstRect(struct drm_output *output, struct weston_view
 
     pixman_region32_fini(&src_rect);
 
+    /* Buffer transforms may mean that x2 is to the left of x1, and/or that
+    * y2 is above y1. */
+    if (sx2 < sx1) {
+        double tmp = sx1;
+        sx1 = sx2;
+        sx2 = tmp;
+    }
+    if (sy2 < sy1) {
+        double tmp = sy1;
+        sy1 = sy2;
+        sy2 = tmp;
+    }
+
     src_ret->left = sx1;
     src_ret->top = sy1;
     src_ret->right = sx2;
@@ -2589,6 +2602,10 @@ DisplayError SdmFrameDumper::CreateDumpDir() {
     return kErrorNone;
 }
 
+uint64_t SdmFrameDumper::GetHandleID() {
+    return ++handle_id_;
+}
+
 void SdmFrameDumper::FreeReadbackBuffer(BufferInfo &output_buffer_info) {
     int ret = 0;
     struct gbm_bo *bo = reinterpret_cast<struct gbm_bo *>(output_buffer_info.private_data);
@@ -2639,6 +2656,7 @@ SdmFrameDumper::SdmFrameDumper(int display_id, const char *display_string,
 
     dump_dir_path_ = dir_path;
     buffer_allocator_ = buffer_allocator;
+    handle_id_ = 0;
 }
 
 SdmFrameDumper::~SdmFrameDumper() {

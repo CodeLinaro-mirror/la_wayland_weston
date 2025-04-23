@@ -22,7 +22,7 @@
 * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *
 * Changes from Qualcomm Innovation Center are provided under the following license:
-* Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 *
 */
@@ -41,6 +41,7 @@
 #include <utility>
 #include <map>
 #include <unordered_map>
+#include <atomic>
 #include <vector>
 #include <iostream>
 #include <thread>
@@ -117,6 +118,7 @@ class SdmFrameDumper {
 
     void HandleInputDump(struct drm_output *output, uint32_t frame_index);
     void CreateDumpThread(shared_ptr<DumpInputData> data);
+    uint64_t GetHandleID();
 
     private:
     void WaitDumpThreadsDone();
@@ -145,6 +147,8 @@ class SdmFrameDumper {
     std::unordered_map<std::thread::id, shared_ptr<DumpInputData>> dump_input_thread_map_ = {};
     std::mutex dump_input_thread_map_mtx_;
     std::condition_variable dump_input_thread_cv_;
+
+    std::atomic<uint64_t> handle_id_;
 };
 
 class SdmDisplayInterface {
