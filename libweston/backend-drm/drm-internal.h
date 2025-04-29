@@ -27,6 +27,8 @@
  * SOFTWARE.
  */
 
+#pragma once
+
 #include "config.h"
 
 #include <errno.h>
@@ -226,6 +228,8 @@ struct drm_device {
 	bool tearing_supported;
 
 	bool aspect_ratio_supported;
+
+	bool color_pipeline_supported;
 
 	int32_t cursor_width;
 	int32_t cursor_height;
@@ -491,6 +495,10 @@ struct drm_plane {
 	struct wl_list link;
 
 	struct weston_drm_format_array formats;
+
+	uint32_t pipeline_props_id;
+	uint32_t num_color_pipelines;
+	struct drm_color_pipeline *pipelines;
 };
 
 struct drm_plane_handle {
@@ -869,6 +877,7 @@ extern struct drm_property_enum_info content_protection_enums[];
 extern struct drm_property_enum_info hdcp_content_type_enums[];
 extern const struct drm_property_info connector_props[];
 extern const struct drm_property_info crtc_props[];
+extern const struct drm_property_info colorop_props[];
 
 int
 init_kms_caps(struct drm_device *device);

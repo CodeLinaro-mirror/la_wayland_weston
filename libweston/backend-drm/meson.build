@@ -32,6 +32,10 @@ srcs_drm = [
 	presentation_time_server_protocol_h,
 ]
 
+if (libdrm_supports_color_pipeline)
+       srcs_drm += 'colorops.c'
+endif
+
 deps_drm = [
 	dep_egl, # optional
 	dep_vulkan, # optional

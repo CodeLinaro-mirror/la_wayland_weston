@@ -210,6 +210,10 @@ if get_option('backend-drm')
 	dep_session_helper = declare_dependency(link_with: lib_session_helper)
 endif
 
+libdrm_version = dep_libdrm.version()
+libdrm_supports_color_pipeline = libdrm_version.version_compare('>=2.4.130')
+config_h.set10('CAN_OFFLOAD_COLOR_PIPELINE', libdrm_supports_color_pipeline)
+
 lib_libinput_backend = static_library(
 	'libinput-backend',
 	[

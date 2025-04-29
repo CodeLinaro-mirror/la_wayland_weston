@@ -51,6 +51,7 @@
 #include <libweston/libweston.h>
 #include <libweston/backend-drm.h>
 #include <libweston/weston-log.h>
+#include "colorops.h"
 #include "drm-internal.h"
 #include "shared/hash.h"
 #include "shared/helpers.h"
@@ -1485,6 +1486,8 @@ drm_plane_create(struct drm_device *device, const drmModePlane *kplane)
 		goto err;
 	}
 
+	drm_plane_populate_color_pipelines(plane, props);
+
 	drmModeFreeObjectProperties(props);
 
 	if (plane->type == WDRM_PLANE_TYPE__COUNT)
@@ -1588,6 +1591,7 @@ drm_plane_destroy(struct drm_plane *plane)
 				0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 	drm_plane_state_free(plane->state_cur, true);
 	drm_property_info_free(plane->props, WDRM_PLANE__COUNT);
+	drm_plane_release_color_pipelines(plane);
 	weston_plane_release(&plane->base);
 	weston_drm_format_array_fini(&plane->formats);
 	wl_list_remove(&plane->link);
