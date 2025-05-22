@@ -41,6 +41,7 @@
 #include <libweston/pixel-formats.h>
 #include "xdg-shell-client-protocol.h"
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
+#include "presentation-time-client-protocol.h"
 
 #include <xf86drm.h>
 #include <gbm.h>
@@ -48,6 +49,11 @@
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
+
+#define L_LINE "│   "
+#define L_VAL  "├───"
+#define L_LAST "└───"
+#define L_GAP  "    "
 
 #define NUM_BUFFERS 4
 
@@ -62,7 +68,10 @@ static const char *vert_shader_text =
 	"attribute vec4 color;\n"
 	"varying vec4 v_color;\n"
 	"void main() {\n"
-	"	gl_Position = pos;\n"
+	"	// We need to render upside-down, because rendering through an\n"
+	"	// FBO causes the bottom of the image to be written to the top\n"
+	"	// pixel row of the buffer, y-flipping the image.\n"
+	"	gl_Position = vec4(1.0, -1.0, 1.0, 1.0) * pos;\n"
 	"	v_color = color;\n"
 	"}\n";
 
@@ -110,6 +119,9 @@ struct output {
 	int width, height;
 	int scale;
 	bool initialized;
+	struct {
+		int width, height;
+	} configure;
 };
 
 struct egl {
@@ -135,11 +147,14 @@ struct display {
 	struct output output;
 	struct xdg_wm_base *wm_base;
 	struct zwp_linux_dmabuf_v1 *dmabuf;
+	struct wp_presentation *presentation;
 	struct gbm_device *gbm_device;
 	struct egl egl;
 };
 
 struct buffer {
+	bool created;
+	bool valid;
 	struct window *window;
 	struct wl_buffer *buffer;
 	enum {
@@ -147,7 +162,6 @@ struct buffer {
 		IN_USE,
 		AVAILABLE
 	} status;
-	bool recreate;
 	int dmabuf_fds[4];
 	struct gbm_bo *bo;
 	EGLImageKHR egl_image;
@@ -166,12 +180,14 @@ struct window {
 	struct xdg_surface *xdg_surface;
 	struct xdg_toplevel *xdg_toplevel;
 	struct wl_callback *callback;
+	struct wp_presentation_feedback *presentation_feedback;
 	bool wait_for_configure;
-	uint32_t n_redraws;
+	bool presented_zero_copy;
 	struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback_obj;
 	struct dmabuf_feedback dmabuf_feedback, pending_dmabuf_feedback;
 	int card_fd;
 	struct drm_format format;
+	uint32_t bo_flags;
 	struct buffer buffers[NUM_BUFFERS];
 };
 
@@ -448,26 +464,30 @@ buffer_free(struct buffer *buf)
 
 	for (i = 0; i < buf->num_planes; i++)
 		close(buf->dmabuf_fds[i]);
+
+	buf->created = false;
 }
 
 static void
 create_dmabuf_buffer(struct window *window, struct buffer *buf, uint32_t width,
 		     uint32_t height, uint32_t format, unsigned int count_modifiers,
-		     uint64_t *modifiers);
+		     uint64_t *modifiers, uint32_t bo_flags);
 
 static void
-buffer_recreate(struct buffer *buf)
+buffer_recreate(struct buffer *buf, struct window *window)
 {
-	struct window *window = buf->window;
-	uint32_t width = buf->width;
-	uint32_t height = buf->height;
+	uint32_t width = window->display->output.width;
+	uint32_t height = window->display->output.height;
 
-	buffer_free(buf);
+	if (buf->created)
+		buffer_free(buf);
+
 	create_dmabuf_buffer(window, buf, width, height,
 			     window->format.format,
 			     window->format.modifiers.size / sizeof(uint64_t),
-			     window->format.modifiers.data);
-	buf->recreate = false;
+			     window->format.modifiers.data, window->bo_flags);
+	buf->created = true;
+	buf->valid = true;
 }
 
 static void
@@ -476,9 +496,6 @@ buffer_release(void *data, struct wl_buffer *buffer)
 	struct buffer *buf = data;
 
 	buf->status = AVAILABLE;
-
-	if (buf->recreate)
-		buffer_recreate(buf);
 }
 
 static const struct wl_buffer_listener buffer_listener = {
@@ -516,7 +533,7 @@ static const struct zwp_linux_buffer_params_v1_listener params_listener = {
 static void
 create_dmabuf_buffer(struct window *window, struct buffer *buf, uint32_t width,
 		     uint32_t height, uint32_t format, unsigned int count_modifiers,
-		     uint64_t *modifiers)
+		     uint64_t *modifiers, uint32_t bo_flags)
 {
 	struct display *display = window->display;
 	static uint32_t flags = 0;
@@ -529,21 +546,27 @@ create_dmabuf_buffer(struct window *window, struct buffer *buf, uint32_t width,
 	buf->height = height;
 	buf->format = format;
 
-#ifdef HAVE_GBM_MODIFIERS
 	if (count_modifiers > 0) {
+#ifdef HAVE_GBM_BO_CREATE_WITH_MODIFIERS2
+		buf->bo = gbm_bo_create_with_modifiers2(display->gbm_device,
+							buf->width, buf->height,
+							format, modifiers,
+							count_modifiers,
+							bo_flags);
+#else
 		buf->bo = gbm_bo_create_with_modifiers(display->gbm_device,
 						       buf->width, buf->height,
 						       format, modifiers,
 						       count_modifiers);
+#endif
 		if (buf->bo)
 			buf->modifier = gbm_bo_get_modifier(buf->bo);
 	}
-#endif
 
 	if (!buf->bo) {
 		buf->bo = gbm_bo_create(display->gbm_device, buf->width,
 					buf->height, buf->format,
-					GBM_BO_USE_RENDERING);
+					bo_flags);
 		buf->modifier = DRM_FORMAT_MOD_INVALID;
 	}
 
@@ -580,22 +603,29 @@ window_next_buffer(struct window *window)
 {
 	unsigned int i;
 
-	for (i = 0; i < NUM_BUFFERS; i++)
-		if (window->buffers[i].status == AVAILABLE)
-			return &window->buffers[i];
-
-	/* In this client, we sometimes have to recreate the buffers. As we are
-	* not using the create_immed request from zwp_linux_dmabuf_v1, we need
-	* to wait an event from the server (what leads to create_succeeded()
-	* being called in this client). So if all buffers are busy, it may be
-	* the case in which all the buffers were recreated but the server still
-	* didn't send the events. This is very unlikely to happen, but a
-	* roundtrip() guarantees that we receive and process the events. */
-	wl_display_roundtrip(window->display->display);
+	for (i = 0; i < NUM_BUFFERS; i++) {
+		if (!window->buffers[i].created ||
+		    (!window->buffers[i].valid &&
+		     window->buffers[i].status == AVAILABLE))
+			buffer_recreate(&window->buffers[i], window);
+	}
 
 	for (i = 0; i < NUM_BUFFERS; i++)
 		if (window->buffers[i].status == AVAILABLE)
 			return &window->buffers[i];
+
+	while (true) {
+		/* In this client, we create buffers lazily and also sometimes
+		* have to recreate the buffers. As we are not using the
+		* create_immed request from zwp_linux_dmabuf_v1, we need to wait
+		* for an event from the server (what leads to create_succeeded()
+		* being called in this client). */
+		wl_display_roundtrip(window->display->display);
+
+		for (i = 0; i < NUM_BUFFERS; i++)
+			if (window->buffers[i].status == AVAILABLE)
+				return &window->buffers[i];
+	}
 
 	return NULL;
 }
@@ -635,10 +665,11 @@ render(struct buffer *buffer)
 	glDisableVertexAttribArray(window->gl.pos);
 	glDisableVertexAttribArray(window->gl.color);
 
-	glFinish();
+	glFlush();
 }
 
 static const struct wl_callback_listener frame_listener;
+static const struct wp_presentation_feedback_listener presentation_feedback_listener;
 
 static void
 redraw(void *data, struct wl_callback *callback, uint32_t time)
@@ -660,6 +691,20 @@ redraw(void *data, struct wl_callback *callback, uint32_t time)
 
 	window->callback = wl_surface_frame(window->surface);
 	wl_callback_add_listener(window->callback, &frame_listener, window);
+
+	if (window->presentation_feedback) {
+		wp_presentation_feedback_destroy(window->presentation_feedback);
+		window->presentation_feedback = NULL;
+	}
+	if (window->display->presentation) {
+		window->presentation_feedback =
+			wp_presentation_feedback(window->display->presentation,
+						 window->surface);
+		wp_presentation_feedback_add_listener(window->presentation_feedback,
+						      &presentation_feedback_listener,
+						      window);
+	}
+
 	wl_surface_commit(window->surface);
 	buf->status = IN_USE;
 
@@ -674,11 +719,75 @@ static const struct wl_callback_listener frame_listener = {
 	redraw
 };
 
+static void presentation_feedback_handle_sync_output(void *data,
+						     struct wp_presentation_feedback *feedback,
+						     struct wl_output *output)
+{
+}
+
+static void presentation_feedback_handle_presented(void *data,
+						   struct wp_presentation_feedback *feedback,
+						   uint32_t tv_sec_hi,
+						   uint32_t tv_sec_lo,
+						   uint32_t tv_nsec,
+						   uint32_t refresh,
+						   uint32_t seq_hi,
+						   uint32_t seq_lo,
+						   uint32_t flags)
+{
+	struct window *window = data;
+	bool zero_copy = flags & WP_PRESENTATION_FEEDBACK_KIND_ZERO_COPY;
+
+	if (zero_copy && !window->presented_zero_copy) {
+		fprintf(stderr, "Presenting in zero-copy mode\n");
+	}
+	if (!zero_copy && window->presented_zero_copy) {
+		fprintf(stderr, "Stopped presenting in zero-copy mode\n");
+	}
+
+	window->presented_zero_copy = zero_copy;
+	wp_presentation_feedback_destroy(feedback);
+	window->presentation_feedback = NULL;
+}
+
+static void presentation_feedback_handle_discarded(void *data,
+						   struct wp_presentation_feedback *feedback)
+{
+	struct window *window = data;
+	wp_presentation_feedback_destroy(feedback);
+	window->presentation_feedback = NULL;
+}
+
+static const struct wp_presentation_feedback_listener presentation_feedback_listener = {
+	.sync_output = presentation_feedback_handle_sync_output,
+	.presented = presentation_feedback_handle_presented,
+	.discarded = presentation_feedback_handle_discarded,
+};
+
+
+static void
+window_buffers_invalidate(struct window *window)
+{
+	unsigned int i;
+
+	for (i = 0; i < NUM_BUFFERS; i++)
+		window->buffers[i].valid = false;
+}
+
 static void
 xdg_surface_handle_configure(void *data, struct xdg_surface *surface,
 			     uint32_t serial)
 {
 	struct window *window = data;
+	struct output *output = &window->display->output;
+
+	if (output->configure.width != output->width ||
+	    output->configure.height != output->height) {
+		output->width = output->configure.width;
+		output->height = output->configure.height;
+
+		window_buffers_invalidate (window);
+	}
 
 	xdg_surface_ack_configure(surface, serial);
 	window->wait_for_configure = false;
@@ -693,6 +802,11 @@ xdg_toplevel_handle_configure(void *data, struct xdg_toplevel *toplevel,
 			      int32_t width, int32_t height,
 			      struct wl_array *states)
 {
+	struct window *window = data;
+	struct output *output = &window->display->output;
+
+	output->configure.width = width;
+	output->configure.height = height;
 }
 
 static void
@@ -810,6 +924,8 @@ destroy_window(struct window *window)
 
 	if (window->callback)
 		wl_callback_destroy(window->callback);
+	if (window->presentation_feedback)
+		wp_presentation_feedback_destroy(window->presentation_feedback);
 
 	for (i = 0; i < NUM_BUFFERS; i++)
 		if (window->buffers[i].buffer)
@@ -838,9 +954,6 @@ static struct window *
 create_window(struct display *display)
 {
 	struct window *window;
-	uint32_t width = display->output.width;
-	uint32_t height	= display->output.height;
-	unsigned int i;
 
 	window = zalloc(sizeof *window);
 	assert(window && "error: failed to allocate memory for window");
@@ -869,12 +982,6 @@ create_window(struct display *display)
 	egl_setup(window);
 	gl_setup(window);
 
-	for (i = 0; i < NUM_BUFFERS; i++)
-		create_dmabuf_buffer(window, &window->buffers[i], width, height,
-				     window->format.format,
-				     window->format.modifiers.size / sizeof(uint64_t),
-				     window->format.modifiers.data);
-
 
 	window->xdg_surface = xdg_wm_base_get_xdg_surface(display->wm_base,
 							  window->surface);
@@ -890,13 +997,12 @@ create_window(struct display *display)
 	xdg_toplevel_set_title(window->xdg_toplevel, "simple-dmabuf-feedback");
 	xdg_toplevel_set_app_id(window->xdg_toplevel,
 			"org.freedesktop.weston.simple-dmabuf-feedback");
+	xdg_toplevel_set_fullscreen(window->xdg_toplevel, NULL);
 
 	window->wait_for_configure = true;
 	wl_surface_commit(window->surface);
 
 	wl_display_roundtrip(display->display);
-
-	xdg_toplevel_set_fullscreen(window->xdg_toplevel, NULL);
 
 	assert(!window->wait_for_configure &&
 	       "error: could not configure XDG surface");
@@ -1000,8 +1106,7 @@ dmabuf_feedback_main_device(void *data,
 	drm_node = get_drm_node(feedback->main_device, false);
 	assert(drm_node && "error: failed to retrieve drm node");
 
-	fprintf(stderr, "compositor sent main_device event for dma-buf feedback - %s\n",
-		drm_node);
+	fprintf(stderr, "feedback: main device %s\n", drm_node);
 
 	if (!window->card_fd) {
 		window->card_fd = open(drm_node, O_RDWR | O_CLOEXEC);
@@ -1110,12 +1215,12 @@ print_tranche_format_modifier(uint32_t format, uint64_t modifier)
 		char fourcc_str[5];
 
 		fourcc2str(format, fourcc_str, sizeof(fourcc_str));
-		len = asprintf(&format_str, "0x%08x (%s)", format, fourcc_str);
+		len = asprintf(&format_str, "%s (0x%08x)", fourcc_str, format);
 	}
 	assert(len > 0);
 
-	fprintf(stderr, "│	├────────tranche format/modifier pair - format %s, modifier %s\n",
-			format_str, mod_name);
+	fprintf(stderr, L_LINE L_VAL " format %s, modifier %s\n",
+		format_str, mod_name);
 
 	free(format_str);
 	free(mod_name);
@@ -1131,14 +1236,14 @@ print_dmabuf_feedback_tranche(struct dmabuf_feedback_tranche *tranche)
 	drm_node = get_drm_node(tranche->target_device, tranche->is_scanout_tranche);
 	assert(drm_node && "error: could not retrieve drm node");
 
-	fprintf(stderr, "├──────target_device for tranche - %s\n", drm_node);
-	fprintf(stderr, "│	└scanout tranche? %s\n", tranche->is_scanout_tranche ? "yes" : "no");
+	fprintf(stderr, L_VAL " tranche: target device %s, %s\n",
+		drm_node, tranche->is_scanout_tranche ? "scanout" : "no flags");
 
 	wl_array_for_each(fmt, &tranche->formats.arr)
 		wl_array_for_each(mod, &fmt->modifiers)
 			print_tranche_format_modifier(fmt->format, *mod);
 
-	fprintf(stderr, "│	└end of tranche\n");
+	fprintf(stderr, L_LINE L_LAST " end of tranche\n");
 }
 
 static void
@@ -1173,6 +1278,8 @@ pick_initial_format_from_renderer_tranche(struct window *window,
 		window->format.format = fmt->format;
 		wl_array_copy(&window->format.modifiers, &fmt->modifiers);
 
+		window->bo_flags = GBM_BO_USE_RENDERING;
+
 		return true;
 	}
 	return false;
@@ -1203,6 +1310,8 @@ pick_format_from_scanout_tranche(struct window *window,
 		window->format.format = fmt->format;
 		wl_array_copy(&window->format.modifiers, &fmt->modifiers);
 
+		window->bo_flags = GBM_BO_USE_RENDERING | GBM_BO_USE_SCANOUT;
+
 		return true;
 	}
 	return false;
@@ -1214,9 +1323,8 @@ dmabuf_feedback_done(void *data, struct zwp_linux_dmabuf_feedback_v1 *dmabuf_fee
 	struct window *window = data;
 	struct dmabuf_feedback_tranche *tranche;
 	bool got_scanout_tranche = false;
-	unsigned int i;
 
-	fprintf(stderr, "└end of dma-buf feedback\n\n");
+	fprintf(stderr, L_LAST " end of dma-buf feedback\n\n");
 
 	/* The first time that we receive dma-buf feedback for a surface it
 	 * contains only the renderer tranches. We pick the INITIAL_BUFFER_FORMAT
@@ -1229,8 +1337,7 @@ dmabuf_feedback_done(void *data, struct zwp_linux_dmabuf_feedback_v1 *dmabuf_fee
 		if (tranche->is_scanout_tranche) {
 			got_scanout_tranche = true;
 			if (pick_format_from_scanout_tranche(window, tranche)) {
-				for (i = 0; i < NUM_BUFFERS; i++)
-					window->buffers[i].recreate = true;
+				window_buffers_invalidate(window);
 				break;
 			}
 		}
@@ -1276,12 +1383,6 @@ static void
 output_handle_mode(void *data, struct wl_output *wl_output, uint32_t flags,
 		   int width, int height, int refresh)
 {
-	struct output *output = data;
-
-	if (flags & WL_OUTPUT_MODE_CURRENT) {
-		output->width = width;
-		output->height = height;
-	}
 }
 
 static void
@@ -1344,6 +1445,10 @@ registry_handle_global(void *data, struct wl_registry *registry,
 		d->dmabuf = wl_registry_bind(registry, id,
 					     &zwp_linux_dmabuf_v1_interface,
 					     MIN(version, 4));
+	} else if (strcmp(interface, "wp_presentation") == 0) {
+		d->presentation = wl_registry_bind(registry, id,
+					           &wp_presentation_interface,
+						   1);
 	}
 }
 
@@ -1367,6 +1472,9 @@ destroy_display(struct display *display)
 		eglDestroyContext(display->egl.display, display->egl.context);
 	if (display->egl.display != EGL_NO_DISPLAY)
 		eglTerminate(display->egl.display);
+
+	if (display->presentation)
+		wp_presentation_destroy(display->presentation);
 
 	zwp_linux_dmabuf_v1_destroy(display->dmabuf);
 	xdg_wm_base_destroy(display->wm_base);
@@ -1407,43 +1515,31 @@ create_display()
 }
 
 /* Simple client to test the dma-buf feedback implementation. This does not
- * replace the need to implement a dma-buf feedback test that can be run in
- * the CI. But as we still don't know exactly how to do this, this client
- * can be helpful to run tests manually.
+ * replace the need to implement a dma-buf feedback test that can be run in the
+ * CI. But as we still don't know exactly how to do this, this client can be
+ * helpful to run tests manually. It can also be helpful to test other
+ * compositors.
  *
- * In order to use this, we have to hack the DRM-backend to pretend that
- * INITIAL_BUFFER_FORMAT is not supported by the planes of the underlying
- * hardware. In Weston, we have to do this in
- * drm_output_prepare_plane_view(), more specifically in the part where
- * we call drm_output_plane_view_has_valid_format(). So we'd have something
- * like this:
+ * In order to use this client, we have to hack the DRM-backend of the
+ * compositor to pretend that INITIAL_BUFFER_FORMAT is not supported by the
+ * planes of the underlying hardware.
  *
- *     // in this example, INITIAL_BUFFER_FORMAT == DRM_FORMAT_XRGB8888
+ * How this client works:
  *
- *     bool fake_unsupported_format = false;
- *     if (fb && fb->format->format == DRM_FORMAT_XRGB8888)
- *             fake_unsupported_format = true;
+ * This client creates a surface and buffers for it with the same resolution of
+ * the output mode in use. Also, it sets the surface to fullscreen. So we have
+ * everything set to allow the surface to be placed in an overlay plane. But as
+ * these buffers are created with INITIAL_BUFFER_FORMAT, they are not eligible
+ * for direct scanout.
  *
- *     if (!drm_output_plane_view_has_valid_format(plane, state, ev, fb) ||
- *         fake_unsupported_format)
- *         ...
- *
- * It creates a surface and buffers for it with the same resolution of the
- * output mode in use. Also, it sets the surface to fullscreen. So we have
- * everything set to allow the surface to be placed in a plane. But as
- * these buffers are created with INITIAL_BUFFER_FORMAT, they are placed in
- * the renderer.
- *
- * When the compositor creates the client surface, it adds only the
- * renderer tranche to its dma-buf feedback object and send the feedback to
- * the client. But as the repaint cycles start and Weston detects that the
- * only reason why the surface has not been placed in a plane was the
- * incompatibility between the framebuffer format and the ones supported by
- * the planes of the underlying hardware, Weston adds a scanout tranche to
- * the surface dma-buf feedback and resend them. In this tranche the client
- * can find pairs of formats and modifiers supported by the planes, and so
- * it can recreate its buffers using one of these pairs in order to
- * increase the chances of its surface end up in a plane. */
+ * When Weston creates a client's surface, it adds only the renderer tranche to
+ * its dma-buf feedback object and send the feedback to the client. But as the
+ * repaint cycles start and Weston detects that the view of the client is not
+ * eligible for direct scanout because of the incompatibility of the
+ * framebuffer's format/modifier pair and the KMS device, it adds a scanout
+ * tranche to the feedback and resend it. In this scanout tranche the client can
+ * find parameters to re-allocate its buffers and increase its chances of
+ * hitting direct scanout. */
 int
 main(int argc, char **argv)
 {
