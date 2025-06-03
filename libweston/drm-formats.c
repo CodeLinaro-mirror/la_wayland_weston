@@ -128,6 +128,20 @@ weston_drm_format_array_add_format(struct weston_drm_format_array *formats,
 	struct weston_drm_format *fmt;
 
 	/* We should not try to add repeated formats to an array. */
+#ifdef QCOM_BSP
+	if(!weston_drm_format_array_find_format(formats, format)) {
+		fmt = wl_array_add(&formats->arr, sizeof(*fmt));
+		if (!fmt) {
+			weston_log("%s: out of memory\n", __func__);
+			return NULL;
+		}
+
+		fmt->format = format;
+		wl_array_init(&fmt->modifiers);
+	} else {
+		fmt = weston_drm_format_array_find_format(formats, format);
+	}
+#else
 	assert(!weston_drm_format_array_find_format(formats, format));
 
 	fmt = wl_array_add(&formats->arr, sizeof(*fmt));
@@ -138,7 +152,7 @@ weston_drm_format_array_add_format(struct weston_drm_format_array *formats,
 
 	fmt->format = format;
 	wl_array_init(&fmt->modifiers);
-
+#endif
 	return fmt;
 }
 
@@ -446,8 +460,17 @@ weston_drm_format_add_modifier(struct weston_drm_format *format,
 			       uint64_t modifier)
 {
 	uint64_t *mod;
-
 	/* We should not try to add repeated modifiers to a set. */
+#ifdef QCOM_BSP
+	if (!weston_drm_format_has_modifier(format, modifier)) {
+		mod = wl_array_add(&format->modifiers, sizeof(*mod));
+		if (!mod) {
+			weston_log("%s: out of memory\n", __func__);
+			return -1;
+		}
+		*mod = modifier;
+	}
+#else
 	assert(!weston_drm_format_has_modifier(format, modifier));
 
 	mod = wl_array_add(&format->modifiers, sizeof(*mod));
@@ -456,7 +479,7 @@ weston_drm_format_add_modifier(struct weston_drm_format *format,
 		return -1;
 	}
 	*mod = modifier;
-
+#endif
 	return 0;
 }
 

@@ -102,6 +102,10 @@ if get_option('backend-vnc')
 	deps_libweston += dep_pam
 endif
 
+if get_option('qcom-bsp')
+	config_h.set('QCOM_BSP', '1')
+endif
+
 lib_weston = shared_library(
 	'weston-@0@'.format(libweston_major),
 	srcs_libweston,
