@@ -200,7 +200,8 @@ foreach t : simple_clients
 			t_name, t.get('sources'),
 			include_directories: common_inc,
 			dependencies: t_deps,
-			install: true
+			install: true,
+			c_args: ['-fstack-protector-all']
 		)
 	endif
 endforeach
