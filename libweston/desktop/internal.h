@@ -21,6 +21,12 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #ifndef WESTON_DESKTOP_INTERNAL_H
 #define WESTON_DESKTOP_INTERNAL_H
 
@@ -214,6 +220,12 @@ void
 weston_desktop_surface_set_relative_to(struct weston_desktop_surface *surface,
 				       struct weston_desktop_surface *parent,
 				       struct weston_coord_surface offset, bool use_geometry);
+#ifdef QCOM_BSP
+void
+weston_desktop_surface_set_position(struct weston_desktop *desktop,
+				    struct weston_desktop_surface *dsurface,
+				    uint32_t x, uint32_t y);
+#endif
 void
 weston_desktop_surface_unset_relative_to(struct weston_desktop_surface *surface);
 void

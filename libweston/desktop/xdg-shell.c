@@ -23,6 +23,11 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include "config.h"
 
@@ -463,6 +468,30 @@ weston_desktop_xdg_toplevel_protocol_move(struct wl_client *wl_client,
 	weston_desktop_api_move(toplevel->base.desktop, dsurface, seat, serial);
 }
 
+#ifdef QCOM_BSP
+static void
+weston_desktop_xdg_toplevel_protocol_set_position(struct wl_client *wl_client,
+						  struct wl_resource *resource,
+						  uint32_t x,
+						  uint32_t y)
+{
+	struct weston_desktop_surface *dsurface =
+		wl_resource_get_user_data(resource);
+	struct weston_desktop_xdg_toplevel *toplevel =
+		weston_desktop_surface_get_implementation_data(dsurface);
+
+	if (!toplevel->base.configured) {
+		wl_resource_post_error(toplevel->resource,
+				       XDG_SURFACE_ERROR_NOT_CONSTRUCTED,
+				       "Surface has not been configured yet");
+		return;
+	}
+
+	if (toplevel->next.state.maximized || toplevel->next.state.fullscreen)
+		return;
+	weston_desktop_surface_set_position(toplevel->base.desktop, dsurface, x, y);
+}
+#endif
 static void
 weston_desktop_xdg_toplevel_protocol_resize(struct wl_client *wl_client,
 					    struct wl_resource *resource,
@@ -898,6 +927,9 @@ static const struct xdg_toplevel_interface weston_desktop_xdg_toplevel_implement
 	.set_app_id          = weston_desktop_xdg_toplevel_protocol_set_app_id,
 	.show_window_menu    = weston_desktop_xdg_toplevel_protocol_show_window_menu,
 	.move                = weston_desktop_xdg_toplevel_protocol_move,
+#ifdef QCOM_BSP
+	.set_position        = weston_desktop_xdg_toplevel_protocol_set_position,
+#endif
 	.resize              = weston_desktop_xdg_toplevel_protocol_resize,
 	.set_min_size        = weston_desktop_xdg_toplevel_protocol_set_min_size,
 	.set_max_size        = weston_desktop_xdg_toplevel_protocol_set_max_size,
