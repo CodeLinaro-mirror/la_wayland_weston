@@ -3640,8 +3640,8 @@ gl_renderer_create_window_surface(struct gl_renderer *gr,
 {
 	static bool firstCreateWin = true;
 	if (firstCreateWin) {
+		weston_place_marker("G - first create window start");
 		weston_log("GL - first create window start \n");
-		firstCreateWin = false;
 	}
 
 	EGLSurface egl_surface = EGL_NO_SURFACE;
@@ -3663,6 +3663,11 @@ gl_renderer_create_window_surface(struct gl_renderer *gr,
 		egl_surface = eglCreateWindowSurface(gr->egl_display,
 						     egl_config,
 						     window_for_legacy, NULL);
+
+	if (firstCreateWin) {
+		weston_place_marker("G - first create window end");
+		firstCreateWin = false;
+	}
 
 	return egl_surface;
 }
@@ -3970,6 +3975,7 @@ gl_renderer_display_create(struct weston_compositor *ec,
 
 	static bool firstCreateDisplay = true;
 	if (firstCreateDisplay) {
+		weston_place_marker("G - setup egl start");
 		weston_log("GL - setup egl start \n");
 	}
 
@@ -4031,6 +4037,7 @@ gl_renderer_display_create(struct weston_compositor *ec,
 	}
 
 	if (firstCreateDisplay) {
+		weston_place_marker("G - setup egl end");
 		weston_log("GL - setup egl end \n");
 		firstCreateDisplay = false;
 	}

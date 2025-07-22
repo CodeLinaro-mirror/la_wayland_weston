@@ -22,6 +22,12 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
+ */
 
 #include "config.h"
 
@@ -31,6 +37,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
+#include <fcntl.h>
 
 #include <wayland-util.h>
 
@@ -155,3 +162,15 @@ weston_log_continue(const char *fmt, ...)
 
 	return l;
 }
+
+WL_EXPORT void
+weston_place_marker(const char *name)
+{
+	int fd = open("/sys/kernel/boot_kpi/kpi_values", O_WRONLY);
+
+	if (fd > 0) {
+		write(fd, name, strlen(name));
+		close(fd);
+	}
+}
+

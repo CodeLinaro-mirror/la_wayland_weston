@@ -114,6 +114,7 @@ static int
 on_vblank(int fd, uint32_t mask, void *data)
 {
 	struct drm_output *output = (struct drm_output *) data;
+	static bool first_displayed = true;
 	/* During the initial modeset, we can disable CRTCs which we don't
 	 * actually handle during normal operation; this will give us events
 	 * for unknown outputs. Ignore them. */
@@ -123,6 +124,11 @@ on_vblank(int fd, uint32_t mask, void *data)
 	struct drm_backend *b = to_drm_backend(output->base.compositor);;
 	unsigned int sec, usec;
 	uint64_t v = 0;
+
+	if (first_displayed) {
+		first_displayed = false;
+		weston_place_marker("W - first frame have been displayed");
+	}
 
 	read(fd, &v, sizeof(v));
 
@@ -489,6 +495,7 @@ drm_repaint_flush(struct weston_compositor *compositor, void *repaint_data)
 	struct drm_backend *b = to_drm_backend(compositor);
 	struct weston_output *output = NULL;
 	int ret = 0;
+	static bool commit = false;
 
 	wl_list_for_each(output, &compositor->output_list, link) {
 		struct drm_output *drm_output = to_drm_output(output);
@@ -519,6 +526,11 @@ drm_repaint_flush(struct weston_compositor *compositor, void *repaint_data)
 		if (ret != 0) {
 			weston_log("%s : commit failed err = %d\n", __func__, ret);
 			return -2;
+		}
+
+		if (!commit) {
+			commit = true;
+			weston_place_marker("W - first commit submitted");
 		}
 
 		if (is_virtual_output(drm_output->display_id)) {
@@ -1902,6 +1914,7 @@ drm_backend_create(struct weston_compositor *compositor,
 		goto err_udev_monitor;
 	}
 
+	weston_place_marker("W - backend full ready");
 	return b;
 
 err_udev_monitor:
