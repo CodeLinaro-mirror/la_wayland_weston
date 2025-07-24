@@ -153,6 +153,20 @@ simple_clients = [
 		'deps': [ 'egl', 'wayland-egl', 'glesv2', 'wayland-cursor' ],
 		'options': [ 'renderer-gl' ]
 	},
+	{
+		'name': 'qdcm-solid-color',
+		'sources': [
+			'weston-qdcm-solid-color-tool.c',
+			xdg_shell_client_protocol_h,
+			xdg_shell_protocol_c,
+			ivi_application_client_protocol_h,
+			ivi_application_protocol_c,
+			xdg_output_unstable_v1_client_protocol_h,
+			xdg_output_unstable_v1_protocol_c,
+		],
+		'dep_objs': [ dep_wayland_client, dep_libshared, dep_libm ],
+		'deps': [ 'egl', 'wayland-egl', 'glesv2', 'wayland-cursor' ],
+	},
 	# weston-simple-im is handled specially separately due to install_dir and odd window.h usage
 	{
 		'name': 'shm',
