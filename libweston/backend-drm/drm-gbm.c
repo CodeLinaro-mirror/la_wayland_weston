@@ -26,6 +26,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include "config.h"
 
@@ -197,6 +202,7 @@ create_gbm_surface(struct gbm_device *gbm, struct drm_output *output)
 		return;
 	}
 
+#ifndef QCOM_BSP
 	if (!weston_drm_format_has_modifier(fmt, DRM_FORMAT_MOD_INVALID)) {
 		modifiers = weston_drm_format_get_modifiers(fmt, &num_modifiers);
 		output->gbm_surface =
@@ -205,6 +211,7 @@ create_gbm_surface(struct gbm_device *gbm, struct drm_output *output)
 							  output->format->format,
 							  modifiers, num_modifiers);
 	}
+#endif
 
 	/*
 	 * If we cannot use modifiers to allocate the GBM surface and the GBM
