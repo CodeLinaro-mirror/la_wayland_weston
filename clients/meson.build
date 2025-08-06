@@ -46,6 +46,8 @@ endif
 simple_clients_enabled = get_option('simple-clients')
 simple_build_all = simple_clients_enabled.contains('all')
 
+qcom_bsp_enabled = get_option('qcom-bsp')
+
 simple_clients = [
 	{
 		'name': 'damage',
@@ -191,6 +193,28 @@ simple_clients = [
 		'dep_objs': [ dep_wayland_client, dep_libshared ]
 	},
 ]
+
+
+if qcom_bsp_enabled
+    simple_clients += [
+        # It's a demo client based on gbm buffer backend protocol implemented by QCOM
+        {
+                'name': 'gbmbuf',
+                'sources': [
+                        'simple-gbmbuf.c',
+                        viewporter_client_protocol_h,
+                        viewporter_protocol_c,
+                        xdg_shell_client_protocol_h,
+                        xdg_shell_protocol_c,
+                        fullscreen_shell_unstable_v1_client_protocol_h,
+                        fullscreen_shell_unstable_v1_protocol_c,
+                        gbm_buffer_backend_client_protocol_h,
+                        gbm_buffer_backend_protocol_c,
+                  ],
+                  'dep_objs': [ dep_wayland_client, dep_libshared, dep_gbm ]
+        }
+    ]
+endif
 
 foreach t : simple_clients
 	if simple_build_all or simple_clients_enabled.contains(t.get('name'))

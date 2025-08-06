@@ -25,6 +25,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include "config.h"
 
@@ -60,6 +65,9 @@
 #include <libweston/weston-log.h>
 #include "linux-dmabuf.h"
 #include "linux-dmabuf-unstable-v1-server-protocol.h"
+#ifdef QCOM_BSP
+#include "gbm-buffer-backend.h"
+#endif
 #include "viewporter-server-protocol.h"
 #include "presentation-time-server-protocol.h"
 #include "xdg-output-unstable-v1-server-protocol.h"
@@ -2593,6 +2601,9 @@ weston_buffer_from_resource(struct weston_compositor *ec,
 	struct linux_dmabuf_buffer *dmabuf;
 	struct wl_listener *listener;
 	struct weston_solid_buffer_values *solid;
+#ifdef QCOM_BSP
+	struct gbm_buffer *gbmbuf;
+#endif
 
 	listener = wl_resource_get_destroy_listener(resource,
 						    weston_buffer_destroy_handler);
@@ -2640,6 +2651,18 @@ weston_buffer_from_resource(struct weston_compositor *ec,
 			buffer->buffer_origin = ORIGIN_BOTTOM_LEFT;
 		else
 			buffer->buffer_origin = ORIGIN_TOP_LEFT;
+#ifdef QCOM_BSP
+	} else if (gbmbuf = gbm_buffer_get(buffer->resource)) {
+		buffer->type = WESTON_BUFFER_GBMBUF;
+		buffer->gbmbuf = gbmbuf;
+		buffer->direct_display = false;
+		buffer->width = gbmbuf->width;
+		buffer->height = gbmbuf->height;
+		buffer->pixel_format = pixel_format_get_info(gbmbuf->format);
+		assert(buffer->pixel_format && !buffer->pixel_format->hide_from_clients);
+		buffer->format_modifier = DRM_FORMAT_MOD_LINEAR;
+		buffer->buffer_origin = ORIGIN_TOP_LEFT;
+#endif
 	} else if ((solid = single_pixel_buffer_get(buffer->resource))) {
 		buffer->type = WESTON_BUFFER_SOLID;
 		buffer->solid = *solid;
@@ -8730,6 +8753,11 @@ debug_scene_view_print_buffer(FILE *fp, struct weston_view *view)
 		fprintf(fp, "\t\tEGL buffer:\n");
 		fprintf(fp, "\t\t\t[format may be inaccurate]\n");
 		break;
+#ifdef QCOM_BSP
+	case WESTON_BUFFER_GBMBUF:
+		fprintf(fp, "\t\tgbm buffer:\n");
+		break;
+#endif
 	}
 
 	if (buffer->busy_count > 0) {
@@ -9390,6 +9418,33 @@ weston_compositor_dmabuf_can_scanout(struct weston_compositor *compositor,
 
 	return true;
 }
+
+#ifdef QCOM_BSP
+/** Import gbmbuf buffer into current renderer
+ *
+ * \param compositor
+ * \param buffer the gbmbuf buffer to import
+ * \return true on usable buffers, false otherwise
+ *
+ * This function tests that the gbm_buffer is usable
+ * for the current renderer. Returns false on unusable buffers. Usually
+ * usability is tested by importing the gbmbuf for composition.
+ *
+ * This hook is also used for detecting if the renderer supports
+ * gbmbuf at all. If the renderer hook is NULL, dmabufs are not
+ * supported.
+ * */
+WL_EXPORT bool
+weston_compositor_import_gbmbuf(struct weston_compositor *compositor,
+				struct gbm_buffer *buffer)
+{
+	struct weston_renderer *renderer;
+	renderer = compositor->renderer;
+	if (renderer->import_gbmbuf == NULL)
+		return false;
+	return renderer->import_gbmbuf(compositor, buffer);
+}
+#endif
 
 WL_EXPORT void
 weston_version(int *major, int *minor, int *micro)

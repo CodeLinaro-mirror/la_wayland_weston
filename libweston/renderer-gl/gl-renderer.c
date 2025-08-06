@@ -23,6 +23,10 @@
  * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "config.h"
@@ -54,7 +58,10 @@
 #include "linux-explicit-synchronization.h"
 #include "output-capture.h"
 #include "pixel-formats.h"
-
+#ifdef QCOM_BSP
+#include "gbm_priv.h"
+#include "gbm-buffer-backend.h"
+#endif
 #include "shared/fd-util.h"
 #include "shared/helpers.h"
 #include "shared/platform.h"
@@ -3124,6 +3131,309 @@ gl_renderer_attach_dmabuf(struct weston_surface *surface,
 	return true;
 }
 
+#ifdef QCOM_BSP
+static EGLImageKHR
+import_simple_gbm_buffer(struct gl_renderer *gr, struct gbm_buffer *gbmbuf)
+{
+	EGLImageKHR egl_image;
+	EGLint attribs[50];
+	int atti = 0;
+	int colorspace = 0;
+	ColorMetaData colormeta = {0};
+	int result = -1;
+
+	/* This requires the Mesa commit in
+	 * Mesa 10.3 (08264e5dad4df448e7718e782ad9077902089a07) or
+	 * Mesa 10.2.7 (55d28925e6109a4afd61f109e845a8a51bd17652).
+	 * Otherwise Mesa closes the fd behind our back and re-importing
+	 * will fail.
+	 * https://bugs.freedesktop.org/show_bug.cgi?id=76188
+	 */
+	attribs[atti++] = EGL_WIDTH;
+	attribs[atti++] = gbmbuf->width;
+	attribs[atti++] = EGL_HEIGHT;
+	attribs[atti++] = gbmbuf->height;
+	attribs[atti++] = EGL_LINUX_DRM_FOURCC_EXT;
+	attribs[atti++] = gbmbuf->format;
+	/* XXX: Add modifier here when supported */
+	if (gbmbuf->num_planes > 0) {
+		attribs[atti++] = EGL_DMA_BUF_PLANE0_FD_EXT;
+		attribs[atti++] = gbmbuf->fd;
+		attribs[atti++] = EGL_DMA_BUF_PLANE0_OFFSET_EXT;
+		attribs[atti++] = gbmbuf->offset[0];
+		attribs[atti++] = EGL_DMA_BUF_PLANE0_PITCH_EXT;
+		attribs[atti++] = gbmbuf->stride[0];
+	}
+	if (gbmbuf->num_planes > 1) {
+		attribs[atti++] = EGL_DMA_BUF_PLANE1_FD_EXT;
+		attribs[atti++] = -1;
+		attribs[atti++] = EGL_DMA_BUF_PLANE1_OFFSET_EXT;
+		attribs[atti++] = gbmbuf->offset[1];
+		attribs[atti++] = EGL_DMA_BUF_PLANE1_PITCH_EXT;
+		attribs[atti++] = gbmbuf->stride[1];
+	}
+	if (gbmbuf->num_planes > 2) {
+		attribs[atti++] = EGL_DMA_BUF_PLANE2_FD_EXT;
+		attribs[atti++] = -1;
+		attribs[atti++] = EGL_DMA_BUF_PLANE2_OFFSET_EXT;
+		attribs[atti++] = gbmbuf->offset[2];
+		attribs[atti++] = EGL_DMA_BUF_PLANE2_PITCH_EXT;
+		attribs[atti++] = gbmbuf->stride[2];
+	}
+
+	result = gbm_perform(GBM_PERFORM_GET_METADATA,
+			gbmbuf->bo,
+			GBM_METADATA_GET_COLOR_METADATA,
+			&colormeta);
+	if (result == GBM_ERROR_NONE) {
+		switch (colormeta.matrixCoefficients) {
+		case MatrixCoEff_BT709_5:
+			/* currently don't support the 709 full range yet.*/
+			colorspace = (colormeta.range) ? GBM_METADATA_COLOR_SPACE_ITU_R_709 :
+							GBM_METADATA_COLOR_SPACE_ITU_R_709;
+			break;
+		case MatrixCoEff_BT601_6_525:
+		case MatrixCoEff_BT601_6_625:/* fall back to BT601_6_525 case currently.*/
+			colorspace = (colormeta.range) ? GBM_METADATA_COLOR_SPACE_ITU_R_601_FR :
+							GBM_METADATA_COLOR_SPACE_ITU_R_601;
+			break;
+		case MatrixCoEff_BT2020:
+			colorspace = (colormeta.range) ? GBM_METADATA_COLOR_SPACE_ITU_R_2020_FR :
+							GBM_METADATA_COLOR_SPACE_ITU_R_2020;
+			break;
+		default:
+			break;
+		}
+	} else {
+		result = gbm_perform(GBM_PERFORM_GET_METADATA,
+				gbmbuf->bo,
+				GBM_METADATA_GET_COLOR_SPACE,
+				&colorspace);
+	}
+	if (result == GBM_ERROR_NONE) {
+		switch (colorspace) {
+		case GBM_METADATA_COLOR_SPACE_ITU_R_601:
+			attribs[atti++] = EGL_YUV_COLOR_SPACE_HINT_EXT;
+			attribs[atti++] = EGL_ITU_REC601_EXT;
+			attribs[atti++] = EGL_SAMPLE_RANGE_HINT_EXT;
+			attribs[atti++] = EGL_YUV_NARROW_RANGE_EXT;
+			break;
+		case GBM_METADATA_COLOR_SPACE_ITU_R_601_FR:
+			attribs[atti++] = EGL_YUV_COLOR_SPACE_HINT_EXT;
+			attribs[atti++] = EGL_ITU_REC601_EXT;
+			attribs[atti++] = EGL_SAMPLE_RANGE_HINT_EXT;
+			attribs[atti++] = EGL_YUV_FULL_RANGE_EXT;
+			break;
+		case GBM_METADATA_COLOR_SPACE_ITU_R_709:
+			attribs[atti++] = EGL_YUV_COLOR_SPACE_HINT_EXT;
+			attribs[atti++] = EGL_ITU_REC709_EXT;
+			attribs[atti++] = EGL_SAMPLE_RANGE_HINT_EXT;
+			attribs[atti++] = EGL_YUV_NARROW_RANGE_EXT;
+			break;
+		case GBM_METADATA_COLOR_SPACE_ITU_R_2020:
+			attribs[atti++] = EGL_YUV_COLOR_SPACE_HINT_EXT;
+			attribs[atti++] = EGL_ITU_REC2020_EXT;
+			attribs[atti++] = EGL_SAMPLE_RANGE_HINT_EXT;
+			attribs[atti++] = EGL_YUV_NARROW_RANGE_EXT;
+			break;
+		case GBM_METADATA_COLOR_SPACE_ITU_R_2020_FR:
+			attribs[atti++] = EGL_YUV_COLOR_SPACE_HINT_EXT;
+			attribs[atti++] = EGL_ITU_REC2020_EXT;
+			attribs[atti++] = EGL_SAMPLE_RANGE_HINT_EXT;
+			attribs[atti++] = EGL_YUV_FULL_RANGE_EXT;
+			break;
+		default:
+			weston_log("Unsupport GBM_METADATA_COLOR_SPACE:%d\n", colorspace);
+			break;
+		}
+	}
+
+	attribs[atti++] = EGL_NONE;
+
+	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->width=%d", gbmbuf->width);
+	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->height=%d", gbmbuf->height);
+	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->format=%d", gbmbuf->format);
+	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->num_planes=%d", gbmbuf->num_planes);
+
+	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->fd=%d\n", gbmbuf->fd);
+	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->offset[0]=%d", gbmbuf->offset[0]);
+	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->stride[0]=%d", gbmbuf->stride[0]);
+	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->offset[1]=%d", gbmbuf->offset[1]);
+	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->stride[1]=%d", gbmbuf->stride[1]);
+
+	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->offset[2]=%d", gbmbuf->offset[2]);
+	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->stride[2]=%d", gbmbuf->stride[2]);
+
+	egl_image = gr->create_image(gr->egl_display, EGL_NO_CONTEXT,
+					EGL_LINUX_DMA_BUF_EXT, NULL, attribs);
+
+	GBM_PROTOCOL_LOG(LOG_DBG,"import_simple_gbm_buffer::Image created =%p\n", egl_image);
+
+	return egl_image;
+
+}
+
+static GLenum
+choose_texture_gbm_buf_target(struct gbm_buffer *gbmbuf)
+{
+	if (gbmbuf->num_planes > 1)
+		return GL_TEXTURE_EXTERNAL_OES;
+
+	switch (gbmbuf->format & ~DRM_FORMAT_BIG_ENDIAN) {
+	case DRM_FORMAT_YUYV:
+	case DRM_FORMAT_YVYU:
+	case DRM_FORMAT_UYVY:
+	case DRM_FORMAT_VYUY:
+	case DRM_FORMAT_AYUV:
+		return GL_TEXTURE_EXTERNAL_OES;
+	default:
+		return GL_TEXTURE_2D;
+	}
+}
+
+static void
+gl_renderer_destroy_gbm_buffer(struct gbm_buffer *gbm_buf)
+{
+	struct gl_buffer_state *gb =
+			gbm_buffer_backend_get_user_data(gbm_buf);
+
+	gbm_buffer_backend_set_user_data(gbm_buf, NULL, NULL);
+	destroy_buffer_state(gb);
+}
+
+static struct gl_buffer_state *
+import_gbmbuf(struct gl_renderer *gr,struct gbm_buffer *gbmbuf)
+{
+	EGLImageKHR egl_image;
+	struct gl_buffer_state *gb;
+	GLenum target;
+	int result = -1;
+
+	gb = zalloc(sizeof(*gb));
+	if (!gb)
+		return NULL;
+
+	gb->gr = gr;
+	pixman_region32_init(&gb->texture_damage);
+	wl_list_init(&gb->destroy_listener.link);
+
+	egl_image = import_simple_gbm_buffer(gr, gbmbuf);
+
+	if (egl_image != EGL_NO_IMAGE_KHR) {
+		gb->num_images = 1;
+		gb->images[0] = egl_image;
+		target = choose_texture_gbm_buf_target(gbmbuf);
+
+		switch (target) {
+		case GL_TEXTURE_2D:
+			gb->shader_variant = SHADER_VARIANT_RGBA;
+			break;
+		default:
+			gb->shader_variant = SHADER_VARIANT_EXTERNAL;
+		}
+
+		ensure_textures(gb, target, gb->num_images);
+	} else {
+		destroy_buffer_state(gb);
+		return NULL;
+	}
+
+	return gb;
+}
+
+static bool
+gl_renderer_import_gbmbuf(struct weston_compositor *ec, struct gbm_buffer *gbm_buf)
+{
+	struct gl_renderer *gr = get_renderer(ec);
+	struct gl_buffer_state *gb;
+	struct gbm_device * gbm = gr->gbm_handle;
+	struct gbm_buf_info  buf_info;
+	generic_buf_layout_t buf_lyt;
+	struct gbm_bo *bo;
+	uint32_t j;
+
+	buf_info.fd = gbm_buf->fd;
+	buf_info.metadata_fd = gbm_buf->metadata_fd;
+	buf_info.height = gbm_buf->height;
+	buf_info.width = gbm_buf->width;
+	buf_info.format	= gbm_buf->format;
+
+	GBM_PROTOCOL_LOG(LOG_DBG,"gl_renderer_import_gbm_buffer:Invoked");
+
+	//We will import BO to create an entry into the hash map fo this fd
+	bo = gbm_bo_import(gbm, GBM_BO_IMPORT_GBM_BUF_TYPE, &buf_info, GBM_BO_USE_RENDERING);
+	//save gbm buffer object
+	gbm_buf->bo = bo;
+
+	GBM_PROTOCOL_LOG(LOG_DBG,"gl_renderer_import_gbm_buffer:bo created= %p",bo);
+
+	int ret=gbm_perform(GBM_PERFORM_GET_PLANE_INFO, bo, &buf_lyt);
+	if (ret == GBM_ERROR_NONE){
+		gbm_buf->num_planes = buf_lyt.num_planes;
+		for(j = 0; j < buf_lyt.num_planes; j++){
+			gbm_buf->offset[j] = buf_lyt.planes[j].offset;
+			gbm_buf->stride[j] = buf_lyt.planes[j].v_increment;
+		}
+	} else {
+		weston_log("gl_renderer_import_gbm_buffer::GET YUV Info failed\n");
+		return false;
+	}
+
+	//Fill up the remaining fields with default values
+	for (; j < MAX_NUM_PLANES; j++){
+		gbm_buf->offset[j] = 0;
+		gbm_buf->stride[j] = 0;
+	}
+
+	GBM_PROTOCOL_LOG(LOG_DBG,"gl_renderer_import_gbm_buffer:Invoke import_gbmbuf()");
+
+	gb = import_gbmbuf(gr, gbm_buf);
+	if (!gb)
+		return false;
+
+	gbm_buffer_backend_set_user_data(gbm_buf, gb, gl_renderer_destroy_gbm_buffer);
+
+	GBM_PROTOCOL_LOG(LOG_DBG,"gl_renderer_import_gbm_buffer:Exited");
+	return true;
+}
+
+static bool
+gl_renderer_attach_gbmbuf(struct weston_surface *surface,
+	          struct weston_buffer *buffer)
+{
+	struct gl_renderer *gr = get_renderer(surface->compositor);
+	struct gl_surface_state *gs = get_surface_state(surface);
+	struct gl_buffer_state *gb;
+	struct gbm_buffer *gbmbuf = buffer->gbmbuf;
+	GLenum target;
+	int i, ret;
+
+	if (!buffer->renderer_private) {
+		gb = gbm_buffer_backend_get_user_data(gbmbuf);
+		assert(gb);
+		gbm_buffer_backend_set_user_data(gbmbuf, NULL, NULL);
+		buffer->renderer_private = gb;
+		gb->destroy_listener.notify = handle_buffer_destroy;
+		wl_signal_add(&buffer->destroy_signal, &gb->destroy_listener);
+	}
+
+	assert(buffer->renderer_private);
+	assert(gbm_buffer_backend_get_user_data(gbmbuf) == NULL);
+	gb = buffer->renderer_private;
+
+	gs->buffer = gb;
+	target = gl_shader_texture_variant_get_target(gb->shader_variant);
+
+	for (i = 0; i < gb->num_images; ++i) {
+		glActiveTexture(GL_TEXTURE0 + i);
+		glBindTexture(target, gb->textures[i]);
+		gr->image_target_texture_2d(target, gb->images[i]);
+	}
+
+	return true;
+}
+#endif
+
 static const struct weston_drm_format_array *
 gl_renderer_get_supported_formats(struct weston_compositor *ec)
 {
@@ -3253,6 +3563,11 @@ gl_renderer_attach(struct weston_surface *es, struct weston_buffer *buffer)
 	case WESTON_BUFFER_SOLID:
 		ret = gl_renderer_attach_solid(es, buffer);
 		break;
+#ifdef QCOM_BSP
+	case WESTON_BUFFER_GBMBUF:
+		ret = gl_renderer_attach_gbmbuf(es, buffer);
+		break;
+#endif
 	default:
 		break;
 	}
@@ -3349,6 +3664,9 @@ gl_renderer_surface_copy_content(struct weston_surface *surface,
 		/* fall through */
 	case WESTON_BUFFER_DMABUF:
 	case WESTON_BUFFER_RENDERER_OPAQUE:
+#ifdef QCOM_BSP
+	case WESTON_BUFFER_GBMBUF:
+#endif
 		break;
 	}
 
@@ -3893,7 +4211,12 @@ gl_renderer_display_create(struct weston_compositor *ec,
 {
 	struct gl_renderer *gr;
 	int ret;
-
+#ifdef QCOM_BSP
+	static bool firstCreateDisplay = true;
+	if (firstCreateDisplay) {
+		weston_log("GL - setup egl start \n");
+	}
+#endif
 	gr = zalloc(sizeof *gr);
 	if (gr == NULL)
 		return -1;
@@ -3902,6 +4225,10 @@ gl_renderer_display_create(struct weston_compositor *ec,
 	wl_list_init(&gr->shader_list);
 	gr->platform = options->egl_platform;
 
+#ifdef QCOM_BSP
+	//gbm device handle
+	gr->gbm_handle =(struct gbm_device *)options->egl_native_display;
+#endif
 	gr->renderer_scope = weston_compositor_add_log_scope(ec, "gl-renderer",
 		"GL-renderer verbose messages\n", NULL, NULL, gr);
 	if (!gr->renderer_scope)
@@ -3955,7 +4282,12 @@ gl_renderer_display_create(struct weston_compositor *ec,
 			goto fail_terminate;
 		}
 	}
-
+#ifdef QCOM_BSP
+	if (firstCreateDisplay) {
+		weston_log("GL - setup egl end \n");
+		firstCreateDisplay = false;
+	}
+#endif
 	ec->capabilities |= WESTON_CAP_ROTATION_ANY;
 	ec->capabilities |= WESTON_CAP_CAPTURE_YFLIP;
 	ec->capabilities |= WESTON_CAP_VIEW_CLIP_MASK;
@@ -3964,6 +4296,9 @@ gl_renderer_display_create(struct weston_compositor *ec,
 
 	if (gr->has_dmabuf_import) {
 		gr->base.import_dmabuf = gl_renderer_import_dmabuf;
+#ifdef QCOM_BSP
+		gr->base.import_gbmbuf = gl_renderer_import_gbmbuf;
+#endif
 		gr->base.get_supported_formats = gl_renderer_get_supported_formats;
 		ret = populate_supported_formats(ec, &gr->supported_formats);
 		if (ret < 0)
