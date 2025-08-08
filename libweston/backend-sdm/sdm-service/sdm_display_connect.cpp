@@ -128,6 +128,12 @@ int CreateCore(bool use_pixman)
         return kErrorNone;
     }
     buffer_allocator_ = new SdmDisplayBufferAllocator(use_pixman);
+
+/*
+ * qdcmsession init is slow, affecting display kpi.
+ * No need this feature for now, so I'll delete it first.
+ */
+#if 0
     if (!qdcmsession_) {
       qdcmsession_ = new QDCMSession;
       if (qdcmsession_) {
@@ -136,6 +142,7 @@ int CreateCore(bool use_pixman)
         }
       }
     }
+#endif
 
     // TODO: Check the requirement for this property
     std::shared_ptr<IPCIntf> ipc_intf = nullptr;
