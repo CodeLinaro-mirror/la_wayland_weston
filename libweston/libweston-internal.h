@@ -24,6 +24,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #ifndef LIBWESTON_INTERNAL_H
 #define LIBWESTON_INTERNAL_H
@@ -43,6 +48,9 @@
 #include <libweston/libweston.h>
 #include <assert.h>
 #include "color.h"
+#ifdef QCOM_BSP
+#include "gbm-buffer-backend.h"
+#endif
 
 /* compositor <-> renderer interface */
 
@@ -91,6 +99,11 @@ struct weston_renderer {
 				    int src_x, int src_y,
 				    int width, int height);
 
+#ifdef QCOM_BSP
+	/** See weston_compositor_import_gbmbuf() */
+	bool (*import_gbmbuf)(struct weston_compositor *ec,
+			      struct gbm_buffer *buffer);
+#endif
 	/** See weston_compositor_import_dmabuf() */
 	bool (*import_dmabuf)(struct weston_compositor *ec,
 			      struct linux_dmabuf_buffer *buffer);
@@ -175,6 +188,11 @@ weston_compositor_import_dmabuf(struct weston_compositor *compositor,
 bool
 weston_compositor_dmabuf_can_scanout(struct weston_compositor *compositor,
 					struct linux_dmabuf_buffer *buffer);
+#ifdef QCOM_BSP
+bool
+weston_compositor_import_gbmbuf(struct weston_compositor *compositor,
+				struct gbm_buffer *buffer);
+#endif
 void
 weston_compositor_offscreen(struct weston_compositor *compositor);
 

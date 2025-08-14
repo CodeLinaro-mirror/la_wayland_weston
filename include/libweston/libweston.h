@@ -24,6 +24,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #ifndef _WAYLAND_SYSTEM_COMPOSITOR_H_
 #define _WAYLAND_SYSTEM_COMPOSITOR_H_
@@ -1531,6 +1536,9 @@ struct weston_buffer {
 	enum {
 		WESTON_BUFFER_SHM,
 		WESTON_BUFFER_DMABUF,
+#ifdef QCOM_BSP
+		WESTON_BUFFER_GBMBUF,
+#endif
 		WESTON_BUFFER_RENDERER_OPAQUE,
 		WESTON_BUFFER_SOLID,
 	} type;
@@ -1538,6 +1546,9 @@ struct weston_buffer {
 	union {
 		struct wl_shm_buffer *shm_buffer;
 		void *dmabuf;
+#ifdef QCOM_BSP
+		void *gbmbuf;
+#endif
 		void *legacy_buffer;
 		struct weston_solid_buffer_values solid;
 	};

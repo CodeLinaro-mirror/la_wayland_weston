@@ -26,6 +26,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include "config.h"
 
@@ -68,6 +73,9 @@
 #include "linux-dmabuf.h"
 #include "linux-dmabuf-unstable-v1-server-protocol.h"
 #include "linux-explicit-synchronization.h"
+#ifdef QCOM_BSP
+#include "gbm-buffer-backend.h"
+#endif
 
 static const char default_seat[] = "seat0";
 
@@ -4083,6 +4091,13 @@ drm_backend_create(struct weston_compositor *compositor,
 				   "support failed.\n");
 	}
 
+#ifdef QCOM_BSP
+	if (compositor->renderer->import_gbmbuf) {
+		if (gbm_buffer_backend_setup(compositor) < 0)
+			weston_log("Error: initializing gbm_buffer_backend_setup"
+				   "support failed.\n");
+	}
+#endif
 	if (compositor->capabilities & WESTON_CAP_EXPLICIT_SYNC) {
 		if (linux_explicit_synchronization_setup(compositor) < 0)
 			weston_log("Error: initializing explicit "

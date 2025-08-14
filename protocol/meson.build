@@ -5,14 +5,22 @@ dep_wp = dependency('wayland-protocols', version: '>= 1.31',
 	fallback: ['wayland-protocols', 'wayland_protocols'])
 dir_wp_base = dep_wp.get_variable(pkgconfig: 'pkgdatadir', internal: 'pkgdatadir')
 
+qcom_bsp_enabled = get_option('qcom-bsp')
+
+xml_files = [
+        'weston-content-protection.xml',
+        'weston-debug.xml',
+        'weston-direct-display.xml',
+        'weston-output-capture.xml',
+]
+
+if qcom_bsp_enabled
+        xml_files += ['gbm-buffer-backend.xml']
+endif
+
 install_data(
-	[
-		'weston-content-protection.xml',
-		'weston-debug.xml',
-		'weston-direct-display.xml',
-		'weston-output-capture.xml',
-	],
-	install_dir: join_paths(dir_data, dir_protocol_libweston)
+        xml_files,
+        install_dir: join_paths(dir_data, dir_protocol_libweston)
 )
 
 generated_protocols = [
@@ -45,6 +53,10 @@ generated_protocols = [
 	[ 'xdg-shell', 'stable' ],
 	[ 'xwayland-shell', 'staging', 'v1' ],
 ]
+
+if qcom_bsp_enabled
+        generated_protocols += [ [ 'gbm-buffer-backend', 'internal' ] ]
+endif
 
 foreach proto: generated_protocols
 	proto_name = proto[0]

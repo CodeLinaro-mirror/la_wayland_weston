@@ -7,6 +7,11 @@ deps_libweston = [
 	dep_xkbcommon,
 	dep_matrix_c
 ]
+
+if qcom_bsp_enabled
+       deps_libweston += [dep_gbm]
+endif
+
 srcs_libweston = [
 	git_version_h,
 	'animation.c',
@@ -77,6 +82,13 @@ srcs_libweston = [
 	tablet_unstable_v2_server_protocol_h,
 ]
 
+if qcom_bsp_enabled
+    srcs_libweston += [
+        'gbm-buffer-backend.c',
+        gbm_buffer_backend_protocol_c,
+        gbm_buffer_backend_server_protocol_h,
+]
+endif
 subdir('desktop')
 subdir('shell-utils')
 
@@ -104,6 +116,7 @@ endif
 
 if get_option('qcom-bsp')
 	config_h.set('QCOM_BSP', '1')
+        qcom_bsp_enabled = true
 endif
 
 lib_weston = shared_library(

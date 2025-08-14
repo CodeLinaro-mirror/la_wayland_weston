@@ -24,6 +24,10 @@
  * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #ifndef GL_RENDERER_INTERNAL_H
@@ -141,6 +145,9 @@ struct gl_renderer {
 	EGLContext egl_context;
 	EGLConfig egl_config;
 
+#ifdef QCOM_BSP
+	struct gbm_device *gbm_handle;
+#endif
 	uint32_t gl_version;
 
 	struct wl_array vertices;

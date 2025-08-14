@@ -144,6 +144,11 @@ dep_libdrm = dependency('libdrm', version: '>= 2.4.108')
 dep_libdrm_headers = dep_libdrm.partial_dependency(compile_args: true)
 dep_threads = dependency('threads')
 
+qcom_bsp_enabled = get_option('qcom-bsp')
+if qcom_bsp_enabled
+dep_gbm = dependency('gbm')
+endif
+
 dep_lcms2 = dependency('lcms2', version: '>= 2.9', required: false)
 
 prog_python = import('python').find_installation('python3')
