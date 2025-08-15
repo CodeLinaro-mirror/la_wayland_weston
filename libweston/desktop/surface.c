@@ -20,6 +20,11 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include "config.h"
 
@@ -851,6 +856,20 @@ weston_desktop_surface_unset_relative_to(struct weston_desktop_surface *surface)
 		weston_desktop_view_destroy(view);
 }
 
+#ifdef QCOM_BSP
+void
+weston_desktop_surface_set_position(struct weston_desktop *desktop,
+				    struct weston_desktop_surface *dsurface,
+				    uint32_t x, uint32_t y)
+{
+	struct weston_desktop_view *view;
+	struct weston_coord_global pos;
+
+	pos.c = weston_coord(x, y);
+	wl_list_for_each(view, &dsurface->view_list, link)
+		weston_view_set_position(view->view, pos);
+}
+#endif
 void
 weston_desktop_surface_popup_grab(struct weston_desktop_surface *surface,
 				  struct weston_desktop_surface *parent,

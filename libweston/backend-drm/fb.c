@@ -26,6 +26,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include "config.h"
 
@@ -44,6 +49,10 @@
 #include "drm-internal.h"
 #include "linux-dmabuf.h"
 
+#ifdef QCOM_BSP
+#include "gbm_priv.h"
+#include "gbm-buffer-backend.h"
+#endif
 static void
 drm_fb_destroy(struct drm_fb *fb)
 {
@@ -747,6 +756,42 @@ drm_fb_get_from_paint_node(struct drm_output_state *state,
 			gbm_bo_destroy(bo);
 			goto unsuitable;
 		}
+#ifdef QCOM_BSP
+	} else if (buffer->type == WESTON_BUFFER_GBMBUF) {
+		struct gbm_bo *bo = NULL;
+		struct gbm_buffer *gbmbuf = buffer->gbmbuf;
+
+		if (gbmbuf) {
+			//gstreamer will use this for buffer sharing
+			struct gbm_buf_info gbmbuf_info = {
+				.fd = gbmbuf->fd,
+				.metadata_fd = gbmbuf->metadata_fd,
+				.width = gbmbuf->width,
+				.height = gbmbuf->height,
+				.format = gbmbuf->format
+			};
+
+			bo = gbm_bo_import(b->gbm, GBM_BO_IMPORT_GBM_BUF_TYPE,
+					&gbmbuf_info, GBM_BO_USE_SCANOUT);
+		}
+
+		if (!gbmbuf && !buffer->dmabuf) {
+			//simple-egl will use WL_BUFFER
+			bo = gbm_bo_import(b->gbm, GBM_BO_IMPORT_WL_BUFFER,
+					buffer->resource, GBM_BO_USE_SCANOUT);
+		}
+
+		if (!bo)
+			goto unsuitable;
+
+		fb = drm_fb_get_from_bo(bo, device, is_opaque, BUFFER_CLIENT);
+		if (!fb) {
+			pnode->try_view_on_plane_failure_reasons |=
+				(1 << FAILURE_REASONS_ADD_FB_FAILED);
+			gbm_bo_destroy(bo);
+			goto unsuitable;
+		}
+#endif
 	} else {
 		pnode->try_view_on_plane_failure_reasons |= FAILURE_REASONS_BUFFER_TYPE;
 		goto unsuitable;

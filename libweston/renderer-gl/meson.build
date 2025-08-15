@@ -37,6 +37,11 @@ deps_renderer_gl = [
 	dep_vertex_clipping
 ]
 
+if qcom_bsp_enabled
+        deps_renderer_gl += [dep_gbm]
+endif
+
+
 foreach name : [ 'egl', 'glesv2' ]
 	d = dependency(name, required: false)
 	if not d.found()
