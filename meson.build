@@ -1,10 +1,12 @@
 project('weston',
 	'c',
+	'cpp',
 	version: '13.0.1',
 	default_options: [
 		'warning_level=3',
 		'c_std=gnu99',
 		'b_lundef=true',
+		'cpp_std=c++17',
 	],
 	meson_version: '>= 0.63.0',
 	license: 'MIT/Expat',
@@ -68,6 +70,7 @@ global_args = cc.get_supported_arguments(
 	'-fvisibility=hidden',
 )
 add_project_arguments(global_args, language: 'c')
+add_project_arguments(global_args, language: 'cpp')
 
 if cc.has_header_symbol('sys/sysmacros.h', 'major')
 	config_h.set('MAJOR_IN_SYSMACROS', 1)
@@ -116,8 +119,9 @@ config_h.set_quoted('LIBWESTON_MODULEDIR', dir_module_libweston)
 
 backend_default = get_option('backend-default')
 if backend_default == 'auto'
-	foreach b : [ 'headless', 'x11', 'wayland', 'drm' ]
+	foreach b : [ 'headless', 'x11', 'wayland', 'drm', 'sdm' ]
 		if get_option('backend-' + b)
+			message('backend ' + b)
 			backend_default = b
 		endif
 	endforeach
@@ -147,6 +151,18 @@ dep_threads = dependency('threads')
 qcom_bsp_enabled = get_option('qcom-bsp')
 if qcom_bsp_enabled
 dep_gbm = dependency('gbm')
+if get_option('backend-sdm')
+	dep_glib = dependency('glib-2.0')
+	dep_libsdmcore = cc.find_library('sdmcore')
+	dep_libsdmutils = cc.find_library('sdmutils')
+	dep_libsdmdal = cc.find_library('sdmdal')
+	dep_libdrmutils = cc.find_library('drmutils')
+	dep_libqservice = cc.find_library('qservice', required: false)
+	dep_libgputonemapper = cc.find_library('libgpu_tonemapper', required: false)
+	if dep_libgputonemapper.found()
+		config_h.set('HAS_HDR_SUPPORT', '1')
+	endif
+endif
 endif
 
 dep_lcms2 = dependency('lcms2', version: '>= 2.9', required: false)

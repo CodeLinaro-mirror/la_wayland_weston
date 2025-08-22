@@ -2652,7 +2652,7 @@ weston_buffer_from_resource(struct weston_compositor *ec,
 		else
 			buffer->buffer_origin = ORIGIN_TOP_LEFT;
 #ifdef QCOM_BSP
-	} else if (gbmbuf = gbm_buffer_get(buffer->resource)) {
+	} else if ((gbmbuf = gbm_buffer_get(buffer->resource))) {
 		buffer->type = WESTON_BUFFER_GBMBUF;
 		buffer->gbmbuf = gbmbuf;
 		buffer->direct_display = false;
@@ -9708,6 +9708,9 @@ static const char * const backend_map[] = {
 	[WESTON_BACKEND_VNC] =		"vnc-backend.so",
 	[WESTON_BACKEND_WAYLAND] =	"wayland-backend.so",
 	[WESTON_BACKEND_X11] =		"x11-backend.so",
+#ifdef QCOM_BSP
+	[WESTON_BACKEND_SDM] =		"sdm-backend.so",
+#endif
 };
 
 /** Load a backend into a weston_compositor
