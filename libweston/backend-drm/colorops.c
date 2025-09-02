@@ -58,22 +58,51 @@ drm_colorop_3x1d_lut_blob_destroy_handler(struct wl_listener *l, void *data)
  * \param device The DRM device in which we want to look for the blob.
  * \param xform The xform from which the LUT comes from.
  * \param curve_step What curve step from the xform originated the 3x1D LUT.
+ * \param quantization The colorop 3x1D LUT quantization (U32 or U16).
  * \param lut_len How many taps each of the 1D LUT has.
  */
 struct drm_colorop_3x1d_lut_blob *
 drm_colorop_3x1d_lut_blob_search(struct drm_device *device,
 				 struct weston_color_transform *xform,
 				 enum weston_color_curve_step curve_step,
+				 enum drm_colorop_3x1d_lut_blob_quantization quantization,
 				 uint32_t lut_len)
 {
 	struct drm_colorop_3x1d_lut_blob *lut;
 
 	wl_list_for_each(lut, &device->drm_colorop_3x1d_lut_blob_list, link)
 		if (lut->xform == xform && lut->curve_step == curve_step &&
-		    lut->lut_len == lut_len)
+		    lut->lut_len == lut_len && lut->quantization == quantization)
 			return lut;
 
 	return NULL;
+}
+
+static struct drm_color_lut32
+drm_vec3f_to_u32(struct weston_vec3f vec)
+{
+	struct drm_color_lut32 res;
+
+	/* UINT32_MAX exceeds the 24-bit integer precision of floats and could
+	 * be rounded incorrectly if multiplied in float. */
+
+	res.red   = (double) vec.r * UINT32_MAX;
+	res.green = (double) vec.g * UINT32_MAX;
+	res.blue  = (double) vec.b * UINT32_MAX;
+
+	return res;
+}
+
+static struct drm_color_lut
+drm_vec3f_to_u16(struct weston_vec3f vec)
+{
+	struct drm_color_lut res;
+
+	res.red   = vec.r * UINT16_MAX;
+	res.green = vec.g * UINT16_MAX;
+	res.blue  = vec.b * UINT16_MAX;
+
+	return res;
 }
 
 /**
@@ -88,23 +117,64 @@ drm_colorop_3x1d_lut_blob_search(struct drm_device *device,
  * \param xform The xform from which the LUT comes from. This object matches its
  * lifetime.
  * \param curve_step What xform curve step originated the 3x1D LUT.
+ * \param quantization The colorop 3x1D LUT quantization (U32 or U16).
+ * \param cm_lut The 3x1D LUT from which the colorop will be created.
  * \param lut_len The number of taps for each of the 1D LUT.
- * \param blob_id The KMS blob id (associated to the DRM device).
  * \return The 3x1D LUT colorop blob.
  */
 struct drm_colorop_3x1d_lut_blob *
 drm_colorop_3x1d_lut_blob_create(struct drm_device *device,
 				 struct weston_color_transform *xform,
 				 enum weston_color_curve_step curve_step,
-				 uint32_t lut_len, uint32_t blob_id)
+				 enum drm_colorop_3x1d_lut_blob_quantization quantization,
+				 struct weston_vec3f *cm_lut, uint32_t lut_len)
 {
+	struct drm_backend *b = device->backend;
 	struct drm_colorop_3x1d_lut_blob *lut;
+	uint32_t blob_id;
+	unsigned int i;
+	int ret = -1;
+
+	switch (quantization) {
+	case DRM_COLOROP_3X1D_LUT_BLOB_QUANTIZATION_U16: {
+		struct drm_color_lut *drm_lut =
+			xcalloc(lut_len, sizeof(*drm_lut));
+
+		for (i = 0; i < lut_len; i++)
+			drm_lut[i] = drm_vec3f_to_u16(cm_lut[i]);
+
+		ret = drmModeCreatePropertyBlob(device->kms_device->fd, drm_lut, lut_len * sizeof(*drm_lut),
+						&blob_id);
+		free(drm_lut);
+		break;
+	}
+	case DRM_COLOROP_3X1D_LUT_BLOB_QUANTIZATION_U32: {
+		struct drm_color_lut32 *drm_lut =
+			xcalloc(lut_len, sizeof(*drm_lut));
+
+		for (i = 0; i < lut_len; i++)
+			drm_lut[i] = drm_vec3f_to_u32(cm_lut[i]);
+
+		ret = drmModeCreatePropertyBlob(device->kms_device->fd, drm_lut, lut_len * sizeof(*drm_lut),
+						&blob_id);
+		free(drm_lut);
+		break;
+	}}
+
+	if (ret < 0) {
+		drm_debug(b, "[colorop] failed to create blob for colorop 3x1D LUT;\n" \
+			     "          lut_len %u, quantization %s",
+			     lut_len,
+			     quantization == DRM_COLOROP_3X1D_LUT_BLOB_QUANTIZATION_U16 ? "u16" : "u32");
+		return NULL;
+	}
 
 	lut = xzalloc(sizeof(*lut));
 
 	lut->device = device;
 	lut->xform = xform;
 	lut->curve_step = curve_step;
+	lut->quantization = quantization;
 	lut->lut_len = lut_len;
 	lut->blob_id = blob_id;
 

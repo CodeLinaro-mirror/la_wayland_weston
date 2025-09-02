@@ -397,6 +397,11 @@ struct drm_output_state {
 	bool planes_enabled;
 };
 
+enum drm_colorop_3x1d_lut_blob_quantization {
+	DRM_COLOROP_3X1D_LUT_BLOB_QUANTIZATION_U16 = 0,
+	DRM_COLOROP_3X1D_LUT_BLOB_QUANTIZATION_U32,
+};
+
 struct drm_colorop_3x1d_lut_blob {
 	/* drm_device::drm_colorop_3x1d_lut_blob_list */
 	struct wl_list link;
@@ -408,6 +413,8 @@ struct drm_colorop_3x1d_lut_blob {
 
 	/* Which curve of the xform the 3x1D LUT was generated from. */
 	enum weston_color_curve_step curve_step;
+
+	enum drm_colorop_3x1d_lut_blob_quantization quantization;
 
 	uint32_t lut_len;
 

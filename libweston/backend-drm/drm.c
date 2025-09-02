@@ -2284,13 +2284,9 @@ drm_output_pick_blend_to_output(struct drm_output *output)
 	struct drm_colorop_3x1d_lut_blob *colorop_lut;
 	struct weston_color_transform *xform;
 	enum weston_color_curve_step curve_step;
-	struct drm_color_lut *drm_lut;
 	size_t lut_len;
-	uint32_t gamma_lut_blob_id;
 	struct weston_vec3f *cm_lut;
 	char *err_msg;
-	unsigned int i;
-	int ret;
 
 	/* Check if there's actually something to offload. */
 	weston_assert_ptr_not_null(compositor, output->base.color_outcome);
@@ -2315,7 +2311,9 @@ drm_output_pick_blend_to_output(struct drm_output *output)
 	 * First let's check if the LUT has already been cached. If that's the
 	 * case, we make use of it.
 	 */
-	colorop_lut = drm_colorop_3x1d_lut_blob_search(device, xform, curve_step, lut_len);
+	colorop_lut = drm_colorop_3x1d_lut_blob_search(device, xform, curve_step,
+						       DRM_COLOROP_3X1D_LUT_BLOB_QUANTIZATION_U16,
+						       lut_len);
 	if (colorop_lut) {
 		output->blend_to_output_xform = colorop_lut;
 		return 0;
@@ -2329,24 +2327,16 @@ drm_output_pick_blend_to_output(struct drm_output *output)
 		return -1;
 	}
 
-	drm_lut = xzalloc(lut_len * sizeof(*drm_lut));
-	for (i = 0; i < lut_len; i++) {
-		drm_lut[i].red   = cm_lut[i].r * 0xffff;
-		drm_lut[i].green = cm_lut[i].g * 0xffff;
-		drm_lut[i].blue  = cm_lut[i].b * 0xffff;
-	}
+	output->blend_to_output_xform =
+		drm_colorop_3x1d_lut_blob_create(device, xform, curve_step,
+						 DRM_COLOROP_3X1D_LUT_BLOB_QUANTIZATION_U16,
+						 cm_lut, lut_len);
 	free(cm_lut);
-	ret = drmModeCreatePropertyBlob(device->kms_device->fd, drm_lut, lut_len * sizeof(*drm_lut),
-					&gamma_lut_blob_id);
-	free(drm_lut);
-	if (ret < 0) {
-		drm_debug(b, "[output] failed to create blob for gamma LUT\n");
+	if (!output->blend_to_output_xform) {
+		drm_debug(b, "[output] failed to create colorop 3x1D LUT");
 		return -1;
 	}
 
-	output->blend_to_output_xform =
-		drm_colorop_3x1d_lut_blob_create(device, xform, curve_step,
-						 lut_len, gamma_lut_blob_id);
 	return 0;
 }
 
