@@ -406,6 +406,9 @@ struct drm_colorop_3x1d_lut_blob {
 	struct weston_color_transform *xform;
 	struct wl_listener destroy_listener;
 
+	/* Which curve of the xform the 3x1D LUT was generated from. */
+	enum weston_color_curve_step curve_step;
+
 	uint32_t lut_len;
 
 	uint32_t blob_id;

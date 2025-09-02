@@ -57,11 +57,13 @@ struct drm_color_pipeline {
 struct drm_colorop_3x1d_lut_blob *
 drm_colorop_3x1d_lut_blob_create(struct drm_device *device,
 				 struct weston_color_transform *xform,
+				 enum weston_color_curve_step curve_step,
 				 uint32_t lut_len, uint32_t blob_id);
 
 struct drm_colorop_3x1d_lut_blob *
 drm_colorop_3x1d_lut_blob_search(struct drm_device *device,
 				 struct weston_color_transform *xform,
+				 enum weston_color_curve_step curve_step,
 				 uint32_t lut_len);
 
 void
@@ -76,6 +78,7 @@ drm_plane_release_color_pipelines(struct drm_plane *plane);
 static inline struct drm_colorop_3x1d_lut_blob *
 drm_colorop_3x1d_lut_blob_create(struct drm_device *device,
 				 struct weston_color_transform *xform,
+				 enum weston_color_curve_step curve_step,
 				 uint32_t lut_len, uint32_t blob_id)
 {
 	return NULL;
@@ -84,6 +87,7 @@ drm_colorop_3x1d_lut_blob_create(struct drm_device *device,
 static inline struct drm_colorop_3x1d_lut_blob *
 drm_colorop_3x1d_lut_blob_search(struct drm_device *device,
 				 struct weston_color_transform *xform,
+				 enum weston_color_curve_step curve_step,
 				 uint32_t lut_len)
 {
 	return NULL;

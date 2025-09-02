@@ -57,17 +57,20 @@ drm_colorop_3x1d_lut_blob_destroy_handler(struct wl_listener *l, void *data)
  *
  * \param device The DRM device in which we want to look for the blob.
  * \param xform The xform from which the LUT comes from.
+ * \param curve_step What curve step from the xform originated the 3x1D LUT.
  * \param lut_len How many taps each of the 1D LUT has.
  */
 struct drm_colorop_3x1d_lut_blob *
 drm_colorop_3x1d_lut_blob_search(struct drm_device *device,
 				 struct weston_color_transform *xform,
+				 enum weston_color_curve_step curve_step,
 				 uint32_t lut_len)
 {
 	struct drm_colorop_3x1d_lut_blob *lut;
 
 	wl_list_for_each(lut, &device->drm_colorop_3x1d_lut_blob_list, link)
-		if (lut->xform == xform && lut->lut_len == lut_len)
+		if (lut->xform == xform && lut->curve_step == curve_step &&
+		    lut->lut_len == lut_len)
 			return lut;
 
 	return NULL;
@@ -84,6 +87,7 @@ drm_colorop_3x1d_lut_blob_search(struct drm_device *device,
  * \param device The DRM device in which this colorop blob is stored.
  * \param xform The xform from which the LUT comes from. This object matches its
  * lifetime.
+ * \param curve_step What xform curve step originated the 3x1D LUT.
  * \param lut_len The number of taps for each of the 1D LUT.
  * \param blob_id The KMS blob id (associated to the DRM device).
  * \return The 3x1D LUT colorop blob.
@@ -91,6 +95,7 @@ drm_colorop_3x1d_lut_blob_search(struct drm_device *device,
 struct drm_colorop_3x1d_lut_blob *
 drm_colorop_3x1d_lut_blob_create(struct drm_device *device,
 				 struct weston_color_transform *xform,
+				 enum weston_color_curve_step curve_step,
 				 uint32_t lut_len, uint32_t blob_id)
 {
 	struct drm_colorop_3x1d_lut_blob *lut;
@@ -98,9 +103,10 @@ drm_colorop_3x1d_lut_blob_create(struct drm_device *device,
 	lut = xzalloc(sizeof(*lut));
 
 	lut->device = device;
-	lut->blob_id = blob_id;
 	lut->xform = xform;
+	lut->curve_step = curve_step;
 	lut->lut_len = lut_len;
+	lut->blob_id = blob_id;
 
 	wl_list_insert(&device->drm_colorop_3x1d_lut_blob_list, &lut->link);
 

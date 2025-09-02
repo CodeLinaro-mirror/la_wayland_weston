@@ -2283,6 +2283,7 @@ drm_output_pick_blend_to_output(struct drm_output *output)
 	struct drm_backend *b = device->backend;
 	struct drm_colorop_3x1d_lut_blob *colorop_lut;
 	struct weston_color_transform *xform;
+	enum weston_color_curve_step curve_step;
 	struct drm_color_lut *drm_lut;
 	size_t lut_len;
 	uint32_t gamma_lut_blob_id;
@@ -2304,10 +2305,17 @@ drm_output_pick_blend_to_output(struct drm_output *output)
 	}
 
 	/**
-	 * First let's check if the xform has already been cached. If that's the
+	 * For now we expect blend-to-output to be composed of pre-curve only,
+	 * so lut_3x1d_from_blend_to_output() will return a LUT it creates from
+	 * the xform pre-curve.
+	 */
+	curve_step = WESTON_COLOR_CURVE_STEP_PRE;
+
+	/**
+	 * First let's check if the LUT has already been cached. If that's the
 	 * case, we make use of it.
 	 */
-	colorop_lut = drm_colorop_3x1d_lut_blob_search(device, xform, lut_len);
+	colorop_lut = drm_colorop_3x1d_lut_blob_search(device, xform, curve_step, lut_len);
 	if (colorop_lut) {
 		output->blend_to_output_xform = colorop_lut;
 		return 0;
@@ -2337,8 +2345,8 @@ drm_output_pick_blend_to_output(struct drm_output *output)
 	}
 
 	output->blend_to_output_xform =
-		drm_colorop_3x1d_lut_blob_create(device, xform, lut_len,
-						 gamma_lut_blob_id);
+		drm_colorop_3x1d_lut_blob_create(device, xform, curve_step,
+						 lut_len, gamma_lut_blob_id);
 	return 0;
 }
 
