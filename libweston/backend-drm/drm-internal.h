@@ -253,6 +253,8 @@ struct drm_device {
 
 	/* struct drm_colorop_3x1d_lut_blob::link  */
 	struct wl_list drm_colorop_3x1d_lut_blob_list;
+	/* struct drm_colorop_matrix_blob::link */
+	struct wl_list drm_colorop_matrix_blob_list;
 
 	int reused_state_failures;
 };
@@ -440,6 +442,9 @@ struct drm_plane_state {
 	} fb_ref;
 
 	struct weston_paint_node *paint_node; /**< maintained for drm_assign_planes only */
+
+	/* only when a color transformation is being offloaded */
+	struct drm_color_pipeline_state *pipeline_state;
 
 	int32_t src_x, src_y;
 	uint32_t src_w, src_h;

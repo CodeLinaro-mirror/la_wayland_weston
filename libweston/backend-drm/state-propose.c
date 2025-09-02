@@ -39,6 +39,7 @@
 #include "drm-internal.h"
 
 #include "color.h"
+#include "colorops.h"
 #include "color-representation.h"
 #include "linux-dmabuf.h"
 #include "presentation-time-server-protocol.h"
@@ -140,6 +141,21 @@ drm_output_try_paint_node_on_plane(struct drm_plane_handle *handle,
 	state->paint_node = pnode;
 	state->fb = drm_fb_ref(fb);
 	state->in_fence_fd = surface->acquire_fence_fd;
+
+	drm_color_pipeline_state_destroy(state->pipeline_state);
+	state->pipeline_state = NULL;
+	if (pnode->surf_xform.transform) {
+		state->pipeline_state =
+			drm_color_pipeline_state_from_xform(plane,
+							    pnode->surf_xform.transform,
+							    "\t\t\t\t");
+		if (!state->pipeline_state) {
+			drm_debug(b, "\t\t\t\t[view] not placing paint node %s on plane %lu: "
+				     "not compatible with surface color xform\n",
+				     pnode->internal_name, (unsigned long) plane->plane_id);
+			goto out;
+		}
+	}
 
 	if (fb->format && fb->format->color_model == COLOR_MODEL_YUV) {
 		struct weston_color_representation color_rep;
@@ -580,6 +596,14 @@ pnode_can_use_plane(struct drm_output_state *output_state,
 	if (pnode->view_alpha != 1.0f && plane->alpha_max == plane->alpha_min) {
 		drm_debug(b, "\t\t\t\t[plane] not trying plane %d:"
 			     "plane-alpha not supported\n",
+			     plane->plane_id);
+		return false;
+	}
+
+	/* If we have a surf color xform we need to be able to offload that to KMS. */
+	if (pnode->surf_xform.transform && plane->num_color_pipelines == 0) {
+		drm_debug(b, "\t\t\t\t[plane] not trying plane %d: surf_xform present "
+			     "but plane has no color pipelines\n",
 			     plane->plane_id);
 		return false;
 	}
@@ -1371,8 +1395,8 @@ drm_output_propose_state(struct weston_output *output_base,
 			pnode->try_view_on_plane_failure_reasons |=
 				FAILURE_REASONS_OUTPUT_COLOR_EFFECT;
 
-		if (pnode->surf_xform.transform != NULL ||
-		    !pnode->surf_xform.identity_pipeline)
+		if (pnode->surf_xform.transform && (!device->color_pipeline_supported ||
+						    !pnode->output->from_blend_to_output_by_backend))
 			pnode->try_view_on_plane_failure_reasons |=
 				FAILURE_REASONS_NO_COLOR_TRANSFORM;
 

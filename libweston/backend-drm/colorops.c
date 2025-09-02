@@ -186,6 +186,193 @@ drm_colorop_3x1d_lut_blob_create(struct drm_device *device,
 	return lut;
 }
 
+enum lowering_curve_policy {
+	LOWERING_CURVE_POLICY_ALLOW = true,
+	LOWERING_CURVE_POLICY_DENY = false,
+};
+
+static const char *
+lowering_curve_policy_str(enum lowering_curve_policy policy)
+{
+	switch (policy) {
+	case LOWERING_CURVE_POLICY_DENY:
+		return "deny lowering curve";
+	case LOWERING_CURVE_POLICY_ALLOW:
+		return "allow lowering curve";
+	}
+	return "???";
+}
+
+static struct drm_colorop_3x1d_lut_blob *
+drm_colorop_3x1d_lut_blob_from_curve(struct drm_device *device,
+				     struct weston_color_transform *xform,
+				     enum weston_color_curve_step curve_step,
+				     uint32_t lut_len)
+{
+	struct weston_compositor *compositor = xform->cm->compositor;
+	struct drm_backend *b = device->backend;
+	struct drm_colorop_3x1d_lut_blob *colorop_lut;
+	char *err_msg;
+	struct weston_vec3f *cm_lut;
+
+	/* No need to create, 3x1D LUT colorop already exists. */
+	colorop_lut = drm_colorop_3x1d_lut_blob_search(device, xform, curve_step,
+						       DRM_COLOROP_3X1D_LUT_BLOB_QUANTIZATION_U32,
+						       lut_len);
+	if (colorop_lut)
+		return colorop_lut;
+
+	cm_lut = weston_color_curve_to_3x1D_LUT(compositor, xform, curve_step,
+						WESTON_COLOR_PRECISION_CARELESS,
+						lut_len, &err_msg);
+	if (!cm_lut) {
+		drm_debug(b, "[colorop] failed to create colorop 3x1D from curve: %s\n",
+			     err_msg);
+		free(err_msg);
+		return NULL;
+	}
+
+	colorop_lut =
+		drm_colorop_3x1d_lut_blob_create(device, xform, curve_step,
+						 DRM_COLOROP_3X1D_LUT_BLOB_QUANTIZATION_U32,
+						 cm_lut, lut_len);
+	free(cm_lut);
+	if (!colorop_lut) {
+		drm_debug(b, "[colorop] failed to create colorop 3x1D from curve\n");
+		return NULL;
+	}
+
+	return colorop_lut;
+}
+
+static void
+drm_colorop_matrix_blob_destroy(struct drm_colorop_matrix_blob *mat)
+{
+	wl_list_remove(&mat->destroy_listener.link);
+	wl_list_remove(&mat->link);
+	drmModeDestroyPropertyBlob(mat->device->kms_device->fd, mat->blob_id);
+	free(mat);
+}
+
+static void
+drm_colorop_matrix_blob_destroy_handler(struct wl_listener *l, void *data)
+{
+	struct drm_colorop_matrix_blob *mat =
+		wl_container_of(l, mat, destroy_listener);
+
+	drm_colorop_matrix_blob_destroy(mat);
+}
+
+static struct drm_colorop_matrix_blob *
+drm_colorop_matrix_blob_search(struct drm_device *device,
+			       struct weston_color_transform *xform)
+{
+	struct drm_colorop_matrix_blob *mat;
+
+	wl_list_for_each(mat, &device->drm_colorop_matrix_blob_list, link)
+		if (mat->xform == xform)
+			return mat;
+
+	return NULL;
+}
+
+/**
+ * Float to S31.32 sign-magnitude representation.
+ */
+static uint64_t
+float_to_s31_32_sign_magnitude(float val)
+{
+	uint64_t ret;
+
+	if (val < 0) {
+		ret = (uint64_t) (-val * (1ULL << 32));
+		ret |= 1ULL << 63;
+	} else {
+		ret = (uint64_t) (val * (1ULL << 32));
+	}
+
+	return ret;
+}
+
+static struct drm_colorop_matrix_blob *
+drm_colorop_matrix_blob_create(struct drm_device *device,
+			       struct weston_color_transform *xform,
+			       struct drm_color_ctm_3x4 *matrix)
+{
+	struct drm_backend *b = device->backend;
+	struct drm_colorop_matrix_blob *colorop_mat;
+	uint32_t blob_id;
+	int ret;
+
+	ret = drmModeCreatePropertyBlob(device->kms_device->fd, matrix,
+					sizeof(*matrix), &blob_id);
+	if (ret < 0) {
+		drm_debug(b, "[colorop] failed to create blob for matrix\n");
+		return NULL;
+	}
+
+	colorop_mat = xzalloc(sizeof(*colorop_mat));
+
+	colorop_mat->blob_id = blob_id;
+	colorop_mat->device = device;
+	colorop_mat->xform = xform;
+	wl_list_insert(&device->drm_colorop_matrix_blob_list, &colorop_mat->link);
+	colorop_mat->destroy_listener.notify = drm_colorop_matrix_blob_destroy_handler;
+	wl_signal_add(&xform->destroy_signal, &colorop_mat->destroy_listener);
+
+	return colorop_mat;
+}
+
+static struct drm_colorop_matrix_blob *
+drm_colorop_matrix_blob_from_mapping(struct drm_device *device,
+				     struct weston_color_transform *xform)
+{
+	struct drm_backend *b = device->backend;
+	struct weston_color_mapping *mapping = &xform->mapping;
+	struct drm_colorop_matrix_blob *colorop_mat;
+	struct drm_color_ctm_3x4 *mat_3x4;
+	unsigned int row, col;
+	float val;
+
+	/* No need to create, colorop matrix already exists. */
+	colorop_mat = drm_colorop_matrix_blob_search(device, xform);
+	if (colorop_mat)
+		return colorop_mat;
+
+	mat_3x4 = xzalloc(sizeof(*mat_3x4));
+
+	/**
+	 * mapping->u.mat.matrix is in column-major order. We transpose it and
+	 * also add a new column with the offset. Also, kernel requires the
+	 * values in S31.32 sign-magnitude representation.
+	 */
+	for (row = 0; row < 3; row++) {
+		for (col = 0; col < 3; col++) {
+			val = mapping->u.mat.matrix.col[col].el[row];
+			mat_3x4->matrix[row * 4 + col] = float_to_s31_32_sign_magnitude(val);
+		}
+		val = mapping->u.mat.offset.el[row];
+		mat_3x4->matrix[row * 4 + 3] = float_to_s31_32_sign_magnitude(val);
+	}
+
+	colorop_mat = drm_colorop_matrix_blob_create(device, xform, mat_3x4);
+	free(mat_3x4);
+	if (!colorop_mat) {
+		drm_debug(b, "[colorop] failed to create colorop matrix from mapping\n");
+		return NULL;
+	}
+
+	return colorop_mat;
+}
+
+static enum wdrm_colorop_curve_1d
+weston_tf_to_colorop_curve(const struct weston_color_tf_info *tf_info,
+			   enum weston_tf_direction tf_direction)
+{
+	return (tf_direction == WESTON_INVERSE_TF) ?
+		tf_info->kms_colorop_inverse : tf_info->kms_colorop;
+}
+
 static void
 drm_colorop_destroy(struct drm_colorop *colorop)
 {
@@ -248,10 +435,426 @@ drm_colorop_create(struct drm_color_pipeline *pipeline, uint32_t colorop_id,
 	return colorop;
 }
 
-static const char *
+/**
+ * Given a colorop this returns its type as a string.
+ *
+ * \param colorop The colorop.
+ * \return The colorop type as a string.
+ */
+const char *
 drm_colorop_type_to_str(struct drm_colorop *colorop)
 {
 	return colorop->props[WDRM_COLOROP_TYPE].enum_values[colorop->type].name;
+}
+
+static struct drm_colorop *
+drm_colorop_iterate(struct drm_color_pipeline *pipeline, struct drm_colorop *iter)
+{
+	struct wl_list *list = &pipeline->colorop_list;
+	struct wl_list *node;
+
+	if (iter)
+		node = iter->link.next;
+	else
+		node = list->next;
+
+	if (node == list)
+		return NULL;
+
+	return container_of(node, struct drm_colorop, link);
+}
+
+static bool
+is_colorop_compatible_with_curve(struct weston_compositor *compositor,
+				 struct drm_colorop *colorop,
+				 struct weston_color_curve *curve)
+{
+	struct weston_color_curve_parametric param;
+	struct drm_property_info *prop_info;
+	enum wdrm_colorop_curve_1d curve_type;
+	bool ret;
+
+	if (colorop->type == WDRM_COLOROP_TYPE_1D_CURVE) {
+		if (curve->type != WESTON_COLOR_CURVE_TYPE_ENUM)
+			return false;
+
+		curve_type = weston_tf_to_colorop_curve(curve->u.enumerated.tf.info,
+							curve->u.enumerated.tf_direction);
+		if (curve_type == WDRM_COLOROP_CURVE_1D__COUNT)
+			return false;
+
+		prop_info = &colorop->props[WDRM_COLOROP_CURVE_1D];
+		if (!prop_info->enum_values[curve_type].valid)
+			return false;
+
+		return true;
+	} else if (colorop->type == WDRM_COLOROP_TYPE_1D_LUT) {
+		switch (curve->type) {
+		case WESTON_COLOR_CURVE_TYPE_LUT_3x1D:
+			return true;
+		case WESTON_COLOR_CURVE_TYPE_PARAMETRIC:
+			/* Parametric can be lowered to LUT. */
+			return true;
+		case WESTON_COLOR_CURVE_TYPE_ENUM:
+			switch (curve->u.enumerated.tf.info->tf) {
+			case WESTON_TF_ST2084_PQ:
+				/* This TF is implemented, so we can lower curve to LUT. */
+				return true;
+			default:
+				/* If we can lower the TF to parametric, we can use it
+				 * to create a LUT. */
+				ret = weston_color_curve_enum_get_parametric(compositor,
+									     &curve->u.enumerated,
+									     &param);
+				return ret;
+			}
+		case WESTON_COLOR_CURVE_TYPE_IDENTITY:
+			/* Dead code, function never called for IDENTITY. */
+			weston_assert_not_reached(compositor,
+						  "no need to get colorop for identity curve");
+		}
+
+		return false;
+	}
+
+	return false;
+}
+
+static struct drm_colorop *
+search_colorop_compatible_curve(struct drm_color_pipeline *pipeline,
+				struct drm_colorop *previous_colorop,
+				struct weston_color_curve *curve,
+				enum lowering_curve_policy policy)
+{
+	struct drm_backend *b = pipeline->plane->device->backend;
+	struct drm_colorop *colorop = previous_colorop;
+
+	/**
+	 * Identity curve should not need a colorop, so calling this func for
+	 * IDENTITY is not allowed.
+	 */
+	weston_assert_u32_ne(b->compositor,
+			     curve->type, WESTON_COLOR_CURVE_TYPE_IDENTITY);
+
+	while ((colorop = drm_colorop_iterate(pipeline, colorop))) {
+		switch (curve->type) {
+		case WESTON_COLOR_CURVE_TYPE_ENUM:
+			if (colorop->type == WDRM_COLOROP_TYPE_1D_CURVE &&
+			    is_colorop_compatible_with_curve(b->compositor, colorop, curve))
+				return colorop;
+			else if (colorop->type == WDRM_COLOROP_TYPE_1D_LUT &&
+				 policy == LOWERING_CURVE_POLICY_ALLOW &&
+				 is_colorop_compatible_with_curve(b->compositor, colorop, curve))
+				return colorop;
+			break;
+		case WESTON_COLOR_CURVE_TYPE_PARAMETRIC:
+		case WESTON_COLOR_CURVE_TYPE_LUT_3x1D:
+			if (colorop->type == WDRM_COLOROP_TYPE_1D_LUT)
+				return colorop;
+			break;
+		case WESTON_COLOR_CURVE_TYPE_IDENTITY:
+			/* Dead code. */
+			weston_assert_not_reached(b->compositor,
+						  "no need to get colorop for identity curve");
+		}
+
+		if (!colorop->can_bypass)
+			break;
+	}
+
+	return NULL;
+}
+
+static struct drm_colorop *
+search_colorop_type(struct drm_color_pipeline *pipeline,
+		    struct drm_colorop *previous_colorop,
+		    enum wdrm_colorop_type type)
+{
+	struct drm_colorop *colorop = previous_colorop;
+
+	while ((colorop = drm_colorop_iterate(pipeline, colorop))) {
+		if (colorop->type == type)
+			return colorop;
+
+		if (!colorop->can_bypass)
+			break;
+	}
+
+	return NULL;
+}
+
+static struct drm_colorop_state *
+drm_colorop_state_create(struct drm_color_pipeline_state *pipeline_state,
+			 struct drm_colorop *colorop,
+			 struct drm_colorop_state_object so)
+{
+	struct drm_colorop_state *colorop_state;
+
+	colorop_state = xzalloc(sizeof(*colorop_state));
+
+	wl_list_insert(pipeline_state->colorop_state_list.prev, &colorop_state->link);
+
+	colorop_state->colorop = colorop;
+	colorop_state->object = so;
+
+	return colorop_state;
+}
+
+static void
+drm_colorop_state_destroy(struct drm_colorop_state *colorop_state)
+{
+	wl_list_remove(&colorop_state->link);
+	free(colorop_state);
+}
+
+static struct drm_color_pipeline_state *
+drm_color_pipeline_state_create(struct drm_color_pipeline *pipeline)
+{
+	struct drm_color_pipeline_state *state;
+
+	state = xzalloc(sizeof(*state));
+
+	state->pipeline = pipeline;
+
+	wl_list_init(&state->colorop_state_list);
+
+	return state;
+}
+
+/**
+ * Destroys a color pipeline state.
+ *
+ * @param state The pipeline state to destroy.
+ */
+void
+drm_color_pipeline_state_destroy(struct drm_color_pipeline_state *state)
+{
+	struct drm_colorop_state *colorop_state, *tmp_colorop_state;
+
+	if (!state)
+		return;
+
+	wl_list_for_each_safe(colorop_state, tmp_colorop_state,
+			      &state->colorop_state_list, link)
+		drm_colorop_state_destroy(colorop_state);
+
+	free(state);
+}
+
+static uint64_t
+prop_val_from_curve(struct drm_device *device, struct drm_colorop *colorop,
+		    struct weston_color_curve *curve)
+{
+	struct weston_compositor *compositor = device->backend->compositor;
+	enum wdrm_colorop_curve_1d curve_type;
+	struct drm_property_enum_info *prop_info;
+
+	weston_assert_u32_eq(compositor, curve->type,
+			     WESTON_COLOR_CURVE_TYPE_ENUM);
+
+	curve_type = weston_tf_to_colorop_curve(curve->u.enumerated.tf.info,
+						curve->u.enumerated.tf_direction);
+	weston_assert_u32_ne(compositor, curve_type,
+			     WDRM_COLOROP_CURVE_1D__COUNT);
+
+	prop_info = &colorop->props[WDRM_COLOROP_CURVE_1D].enum_values[curve_type];
+	weston_assert_true(compositor, prop_info->valid);
+
+	return prop_info->value;
+}
+
+static struct drm_colorop_state *
+curve_create_colorop_state(struct drm_color_pipeline_state *pipeline_state,
+			   struct drm_colorop *previous_colorop,
+			   struct weston_color_transform *xform,
+			   enum weston_color_curve_step curve_step,
+			   enum lowering_curve_policy policy)
+{
+	struct drm_color_pipeline *pipeline = pipeline_state->pipeline;
+	struct weston_compositor *compositor = pipeline->plane->base.compositor;
+	struct drm_device *device = pipeline->plane->device;
+	struct drm_colorop_3x1d_lut_blob *lut_blob;
+	struct weston_color_curve *curve;
+	struct drm_colorop_state_object so = { 0 };
+	struct drm_colorop *colorop;
+	uint32_t lut_len;
+
+	curve = (curve_step == WESTON_COLOR_CURVE_STEP_PRE) ? &xform->pre_curve :
+							      &xform->post_curve;
+
+	colorop = search_colorop_compatible_curve(pipeline, previous_colorop,
+						  curve, policy);
+	if (!colorop)
+		return NULL;
+
+	switch (colorop->type) {
+	case WDRM_COLOROP_TYPE_1D_CURVE:
+		so.type = COLOROP_OBJECT_TYPE_CURVE;
+		so.curve_type_prop_val = prop_val_from_curve(device, colorop, curve);
+		break;
+	case WDRM_COLOROP_TYPE_1D_LUT:
+		lut_len = colorop->size;
+		lut_blob = drm_colorop_3x1d_lut_blob_from_curve(device, xform,
+								curve_step, lut_len);
+		if (!lut_blob)
+			return NULL;
+		so.type = COLOROP_OBJECT_TYPE_3x1D_LUT;
+		so.lut_3x1d_blob_id = lut_blob->blob_id;
+		break;
+	default:
+		weston_assert_not_reached(compositor,
+					  "curve colorop should be 1D curve or 1D LUT");
+	}
+
+	return drm_colorop_state_create(pipeline_state, colorop, so);
+}
+
+static struct drm_colorop_state *
+mapping_create_colorop_state(struct drm_color_pipeline_state *pipeline_state,
+			     struct drm_colorop *previous_colorop,
+			     struct weston_color_transform *xform)
+{
+	struct drm_color_pipeline *pipeline = pipeline_state->pipeline;
+	struct weston_compositor *compositor = pipeline->plane->base.compositor;
+	struct drm_device *device = pipeline->plane->device;
+	struct weston_color_mapping *mapping = &xform->mapping;
+	struct drm_colorop_matrix_blob *mat_blob;
+	struct drm_colorop_state_object so = { 0 };
+	struct drm_colorop *colorop;
+
+	/* For now Weston has only matrices color mapping. */
+	weston_assert_u32_eq(compositor,
+			     mapping->type, WESTON_COLOR_MAPPING_TYPE_MATRIX);
+
+	colorop = search_colorop_type(pipeline, previous_colorop,
+				      WDRM_COLOROP_TYPE_CTM_3X4);
+	if (!colorop)
+		return NULL;
+
+	mat_blob = drm_colorop_matrix_blob_from_mapping(device, xform);
+	if (!mat_blob)
+		return NULL;
+
+	so.type = COLOROP_OBJECT_TYPE_MATRIX;
+	so.matrix_blob_id = mat_blob->blob_id;
+
+	return drm_colorop_state_create(pipeline_state, colorop, so);
+}
+
+static struct drm_color_pipeline_state *
+drm_color_pipeline_state_from_xform_steps(struct drm_color_pipeline *pipeline,
+					  struct weston_color_transform *xform,
+					  enum lowering_curve_policy policy,
+					  const char *indent)
+{
+	struct drm_backend *b = pipeline->plane->device->backend;
+	struct drm_color_pipeline_state *pipeline_state;
+	struct drm_colorop_state *colorop_state;
+	struct drm_colorop *previous_colorop;
+	uint32_t type;
+
+	pipeline_state = drm_color_pipeline_state_create(pipeline);
+
+	/* First previous_colorop: none. */
+	previous_colorop = NULL;
+
+	/* Find colorop for pre-curve. */
+	type = xform->pre_curve.type;
+	if (type != WESTON_COLOR_CURVE_TYPE_IDENTITY) {
+		colorop_state = curve_create_colorop_state(pipeline_state,
+							   previous_colorop, xform,
+							   WESTON_COLOR_CURVE_STEP_PRE,
+							   policy);
+		if (!colorop_state)
+			goto err;
+
+		previous_colorop = colorop_state->colorop;
+	}
+
+	/* Find colorop for color mapping. */
+	type = xform->mapping.type;
+	if (type != WESTON_COLOR_MAPPING_TYPE_IDENTITY) {
+		colorop_state = mapping_create_colorop_state(pipeline_state,
+							     previous_colorop, xform);
+		if (!colorop_state)
+			goto err;
+
+		previous_colorop = colorop_state->colorop;
+	}
+
+	/* Find colorop for post-curve. */
+	type = xform->post_curve.type;
+	if (type != WESTON_COLOR_CURVE_TYPE_IDENTITY) {
+		colorop_state = curve_create_colorop_state(pipeline_state,
+							   previous_colorop, xform,
+							   WESTON_COLOR_CURVE_STEP_POST,
+							   policy);
+		if (!colorop_state)
+			goto err;
+	}
+
+	drm_debug(b, "%s[colorop] color pipeline id %u IS compatible with xform t%u;\n" \
+		     "%s          policy: %s\n",
+		     indent, pipeline->id, xform->id, indent,
+		     lowering_curve_policy_str(policy));
+	return pipeline_state;
+
+err:
+	drm_color_pipeline_state_destroy(pipeline_state);
+	drm_debug(b, "%s[colorop] color pipeline id %u NOT compatible with xform t%u;\n" \
+		     "%s          policy: %s\n",
+		     indent, pipeline->id, xform->id, indent,
+		     lowering_curve_policy_str(policy));
+	return NULL;
+}
+
+/**
+ * Given a color transformation, returns a color pipeline state that can
+ * be used to offload such xform to KMS.
+ *
+ * @param plane The DRM plane that we plan to use to offload the view.
+ * @param xform The xform to offload.
+ * @param indent To print debug error messages with proper indentation.
+ * @return The color pipeline state, or NULL if no color pipelines are
+ * compatible with the xform.
+ */
+struct drm_color_pipeline_state *
+drm_color_pipeline_state_from_xform(struct drm_plane *plane,
+				    struct weston_color_transform *xform,
+				    const char *indent)
+{
+	struct drm_backend *b = plane->device->backend;
+	struct drm_color_pipeline_state *pipeline_state;
+	unsigned int i, mode_index;
+	enum lowering_curve_policy policy;
+	enum lowering_curve_policy policy_modes[2] = {
+		LOWERING_CURVE_POLICY_DENY, LOWERING_CURVE_POLICY_ALLOW
+	};
+
+	drm_debug(b, "%s[colorop] searching color pipeline compatible with xform t%u\n",
+		     indent, xform->id);
+
+	/**
+	 * Try to find a compatible pipeline.
+	 *
+	 * First, we try to find a compatible pipeline but not allowing Weston
+	 * enumerated color curves to be lowered to parametric. If we can't find
+	 * something, we start allowing that.
+	 */
+	if (xform->steps_valid) {
+		for (mode_index = 0; mode_index < ARRAY_LENGTH(policy_modes); mode_index++) {
+			policy = policy_modes[mode_index];
+			for (i = 0; i < plane->num_color_pipelines; i++) {
+				pipeline_state =
+					drm_color_pipeline_state_from_xform_steps(&plane->pipelines[i],
+										  xform, policy, indent);
+				if (pipeline_state)
+					return pipeline_state;
+			}
+		}
+	}
+
+	return NULL;
 }
 
 static void
