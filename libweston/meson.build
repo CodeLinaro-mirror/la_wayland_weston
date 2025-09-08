@@ -208,6 +208,7 @@ if get_option('backend-sdm')
 		dep_libsdmcore,
 		dep_libsdmutils,
 		dep_libsdmdal,
+		dep_libqservice,
 	]
 	srcs_session_helper += [
 		'launcher-libseat.c',

@@ -31,18 +31,18 @@ class QDCMSession : public qClient::BnQClient {
 
   QDCMSession();
   int Init(BufferAllocator *buffer_allocator_);
-  int Deinit();
+  void Deinit();
 
   private:
   virtual int32_t notifyCallback(uint32_t command,
                                  const android::Parcel *input_parcel,
                                  android::Parcel *output_parcel);
-  int32_t QdcmCMDHandler(const android::Parcel *input_parcel,
-                         android::Parcel *output_parcel);
-  int32_t QdcmCMDDispatch(uint32_t display_id,
-                          const struct PPDisplayAPIPayload &req_payload,
-                          struct PPDisplayAPIPayload *resp_payload,
-                          struct PPPendingParams *pending_action);
+  DisplayError QdcmCMDHandler(const android::Parcel *input_parcel,
+                              android::Parcel *output_parcel);
+  DisplayError QdcmCMDDispatch(uint32_t display_id,
+                               const struct PPDisplayAPIPayload &req_payload,
+                               struct PPDisplayAPIPayload *resp_payload,
+                               struct PPPendingParams *pending_action);
   SDMColorManager *color_mgr_ = nullptr;
   SDMQDCMModeManager *qdcm_mode_mgr_ = nullptr;
 };
