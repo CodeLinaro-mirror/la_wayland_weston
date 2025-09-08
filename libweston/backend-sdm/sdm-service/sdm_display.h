@@ -334,7 +334,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     void ComputeSrcDstRect(struct drm_output *output, weston_paint_node *node,
                     struct Rect *src_ret, struct Rect *dst_ret);
     int  ComputeDirtyRegion(struct weston_view *ev, struct RectArray *dirty);
-    uint8_t GetGlobalAlpha(struct weston_view *ev);
+    uint16_t GetGlobalAlpha(struct weston_view *ev);
     int GetVisibleRegion(struct drm_output *output, struct weston_view *ev,
                          pixman_region32_t *aboved_opaque, struct RectArray *visible);
     bool IsTransparentGbmFormat(uint32_t format);

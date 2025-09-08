@@ -1814,7 +1814,7 @@ int SdmDisplay::ComputeDirtyRegion(struct weston_view *ev,
     return 0;
 }
 
-uint8_t SdmDisplay::GetGlobalAlpha(struct weston_view *ev)
+uint16_t SdmDisplay::GetGlobalAlpha(struct weston_view *ev)
 {
     if (ev->alpha > 1.0f)
      return MAX_ALPHA;
