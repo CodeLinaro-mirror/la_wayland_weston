@@ -42,6 +42,9 @@
 #include "shared/xalloc.h"
 
 #include <linux/input.h>
+#ifdef QCOM_BSP
+#include "gbm-buffer-backend.h"
+#endif
 
 struct pixman_output_state {
 	pixman_image_t *shadow_image;
@@ -79,6 +82,9 @@ struct pixman_renderer {
 	struct weston_binding *debug_binding;
 
 	struct wl_signal destroy_signal;
+#ifdef QCOM_BSP
+	struct gbm_device* gbm_device;
+#endif
 };
 
 static inline struct pixman_renderbuffer *
@@ -712,6 +718,17 @@ buffer_state_handle_buffer_destroy(struct wl_listener *listener, void *data)
 	ps->buffer_destroy_listener.notify = NULL;
 }
 
+#ifdef QCOM_BSP
+static void
+pixman_renderer_attach_gbmbuf(struct weston_surface *surface,
+                                   struct weston_buffer *buffer,
+                                   struct gbm_buffer *gbmbuf)
+{
+	buffer->width = gbmbuf->width;
+	buffer->height = gbmbuf->height;
+}
+#endif
+
 static void
 pixman_renderer_surface_set_color(struct weston_surface *es,
 		 float red, float green, float blue, float alpha)
@@ -771,11 +788,25 @@ pixman_renderer_attach(struct weston_surface *es, struct weston_buffer *buffer)
 	}
 
 	if (buffer->type != WESTON_BUFFER_SHM) {
-		weston_log("Pixman renderer supports only SHM buffers\n");
-		weston_buffer_reference(&ps->buffer_ref, NULL,
-					BUFFER_WILL_NOT_BE_ACCESSED);
-		weston_buffer_release_reference(&ps->buffer_release_ref, NULL);
-		return;
+#ifdef QCOM_BSP
+		if (buffer->type == WESTON_BUFFER_GBMBUF) {
+			weston_log("Pixman renderer supports GBM buffers\n");
+			struct gbm_buffer *gbmbuf;
+			gbmbuf = gbm_buffer_get(buffer->resource);
+			if (gbmbuf) {
+				pixman_renderer_attach_gbmbuf(es, buffer, gbmbuf);
+				return;
+			}
+		} else {
+#endif
+			weston_log("Pixman renderer supports only SHM buffers\n");
+			weston_buffer_reference(&ps->buffer_ref, NULL,
+						BUFFER_WILL_NOT_BE_ACCESSED);
+			weston_buffer_release_reference(&ps->buffer_release_ref, NULL);
+			return;
+#ifdef QCOM_BSP
+		}
+#endif
 	}
 
 	shm_buffer = buffer->shm_buffer;
@@ -999,6 +1030,61 @@ debug_binding(struct weston_keyboard *keyboard, const struct timespec *time,
 	}
 }
 
+#ifdef QCOM_BSP
+static bool
+pixman_renderer_import_gbmbuf(
+		struct weston_compositor *compositor, struct gbm_buffer *gbm_buf)
+{
+	struct gbm_buf_info  buf_info;
+	generic_buf_layout_t buf_lyt;
+	struct gbm_bo *bo;
+	uint32_t j;
+	struct pixman_renderer *pr = get_renderer(compositor);
+	struct gbm_device *gbm = pr->gbm_device;
+	if (gbm == NULL) {
+		weston_log("pixman_renderer_import_gbmbuf::gbm_device is null!\n");
+		return false;
+	}
+	if (gbm_buf == NULL) {
+		return false;
+	}
+	buf_info.fd          = gbm_buf->fd;
+	buf_info.metadata_fd = gbm_buf->metadata_fd;
+	buf_info.height      = gbm_buf->height;
+	buf_info.width       = gbm_buf->width;
+	buf_info.format      = gbm_buf->format;
+	GBM_PROTOCOL_LOG(LOG_DBG,"pixman_renderer_import_gbmbuf:Invoked");
+	//We will import BO to create an entry into the hash map for this buf_info
+	bo = gbm_bo_import(gbm, GBM_BO_IMPORT_GBM_BUF_TYPE, &buf_info, GBM_BO_USE_RENDERING);
+	//save gbm buffer object
+	if (!bo) {
+		GBM_PROTOCOL_LOG(LOG_DBG, "pixman_renderer_import_gbmbuf: bo creation failed");
+		return false;
+	}
+	gbm_buf->bo = bo;
+	GBM_PROTOCOL_LOG(LOG_DBG,"pixman_renderer_import_gbmbuf:bo created= %p",bo);
+	int ret = gbm_perform(GBM_PERFORM_GET_PLANE_INFO, bo, &buf_lyt);
+	if (ret == GBM_ERROR_NONE) {
+		gbm_buf->num_planes = buf_lyt.num_planes;
+		for(j = 0;j < buf_lyt.num_planes; j++) {
+			gbm_buf->offset[j] = buf_lyt.planes[j].offset;
+			gbm_buf->stride[j] = buf_lyt.planes[j].v_increment;
+		}
+	}
+	else {
+		GBM_PROTOCOL_LOG(LOG_DBG,"GET PLANE Info failed\n");
+		return false;
+	}
+	//Fill up the remaining fields with default values
+	for (;j < MAX_NUM_PLANES; j++) {
+		gbm_buf->offset[j] = 0;
+		gbm_buf->stride[j] = 0;
+	}
+	GBM_PROTOCOL_LOG(LOG_DBG,"pixman_renderer_import_gbmbuf:Exited");
+	return true;
+}
+#endif
+
 static struct pixman_renderer_interface pixman_renderer_interface;
 
 WL_EXPORT int
@@ -1024,6 +1110,9 @@ pixman_renderer_init(struct weston_compositor *ec)
 		pixman_renderer_surface_copy_content;
 	renderer->base.type = WESTON_RENDERER_PIXMAN;
 	renderer->base.pixman = &pixman_renderer_interface;
+#ifdef QCOM_BSP
+	renderer->base.import_gbmbuf =pixman_renderer_import_gbmbuf;
+#endif
 	ec->renderer = &renderer->base;
 	ec->capabilities |= WESTON_CAP_ROTATION_ANY;
 	ec->capabilities |= WESTON_CAP_VIEW_CLIP_MASK;
@@ -1106,6 +1195,13 @@ pixman_renderer_output_create(struct weston_output *output,
 		return -1;
 
 	output->renderer_state = po;
+
+#ifdef QCOM_BSP
+	if (options->gbm_handle) {
+		struct pixman_renderer *pr = get_renderer(output->compositor);
+		pr->gbm_device = options->gbm_handle;
+	}
+#endif
 
 	if (options->use_shadow)
 		po->shadow_format = pixel_format_get_info(DRM_FORMAT_XRGB8888);
