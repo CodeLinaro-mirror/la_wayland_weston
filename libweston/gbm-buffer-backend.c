@@ -111,6 +111,9 @@ gbm_buffer_destroy(struct gbm_buffer *buffer)
     if (buffer->fd > 0)
       close(buffer->fd);
 
+    if (buffer->metadata_fd > 0)
+      close(buffer->metadata_fd);
+
     gbm_bo_destroy(buffer->bo);
     buffer->bo = NULL;
   }

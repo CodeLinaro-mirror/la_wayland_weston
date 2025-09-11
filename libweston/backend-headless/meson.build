@@ -8,6 +8,9 @@ srcs_headless = [
 	'headless.c',
 	presentation_time_server_protocol_h,
 ]
+
+dep_gbm = dependency('gbm', required: false, version: '>= 21.1.1')
+
 plugin_headless = shared_library(
 	'headless-backend',
 	srcs_headless,
@@ -17,6 +20,7 @@ plugin_headless = shared_library(
 		dep_libdrm_headers,
 		dep_lib_cairo_shared,
 		dep_lib_gl_borders,
+                dep_gbm,
 	],
 	name_prefix: '',
 	install: true,

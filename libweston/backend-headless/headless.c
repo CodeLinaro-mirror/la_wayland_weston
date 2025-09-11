@@ -26,6 +26,12 @@
  * SOFTWARE.
  */
 
+/*
+* Changes from Qualcomm Technologies, Inc. are provided under the following license:
+* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+* SPDX-License-Identifier: BSD-3-Clause-Clear
+*/
+
 #include "config.h"
 
 #include <assert.h>
@@ -34,6 +40,10 @@
 #include <string.h>
 #include <sys/time.h>
 #include <stdbool.h>
+
+#ifdef QCOM_BSP
+#include <gbm.h>
+#endif
 
 #include <libweston/libweston.h>
 #include <libweston/backend-headless.h>
@@ -63,6 +73,10 @@ struct headless_backend {
 
 	const struct pixel_format_info **formats;
 	unsigned int formats_count;
+#ifdef QCOM_BSP
+        struct gbm_device *gbm;
+        int fd;
+#endif
 };
 
 struct headless_head {
@@ -519,6 +533,11 @@ headless_destroy(struct weston_backend *backend)
 	if (b->theme)
 		theme_destroy(b->theme);
 
+#ifdef QCOM_BSP
+        if(b->gbm)
+                gbm_device_destroy(b->gbm);
+
+#endif
 	free(b->formats);
 	free(b);
 
@@ -562,6 +581,15 @@ headless_backend_create(struct weston_compositor *compositor,
 		}
 	}
 
+#ifdef QCOM_BSP
+        // Pass file descriptor 1 for GBM buffer allocation to run egl application headless
+        b->fd = 1;
+        b->gbm = gbm_create_device(b->fd);
+        if(!b->gbm){
+                weston_log("Error: Failed to create gbm device.\n");
+                goto err_free;
+        }
+#endif
 	b->formats_count = ARRAY_LENGTH(headless_formats);
 	b->formats = pixel_format_get_array(headless_formats, b->formats_count);
 
@@ -569,8 +597,13 @@ headless_backend_create(struct weston_compositor *compositor,
 		switch (config->renderer) {
 		case WESTON_RENDERER_GL: {
 			const struct gl_renderer_display_options options = {
-				.egl_platform = EGL_PLATFORM_SURFACELESS_MESA,
-				.egl_native_display = NULL,
+#ifdef QCOM_BSP
+                                .egl_platform = EGL_PLATFORM_GBM_KHR,
+                                .egl_native_display = b->gbm,
+#else
+                                .egl_platform = EGL_PLATFORM_SURFACELESS_MESA,
+                                .egl_native_display = NULL,
+#endif
 				.formats = b->formats,
 				.formats_count = b->formats_count,
 			};
