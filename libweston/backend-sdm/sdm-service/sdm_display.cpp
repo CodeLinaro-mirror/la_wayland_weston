@@ -80,6 +80,7 @@
 
 #include "sdm-internal.h"
 #include "gbm-buffer-backend.h"
+#include "pixel-formats.h"
 
 #define __CLASS__ "SdmDisplay"
 extern "C" void NotifyOnRefresh(struct drm_output *);
@@ -105,8 +106,10 @@ namespace sdm {
 #define SDM_DISABLE_HDR_HANDLING "vendor.display.disable_hdr"
 #define SDM_DISABLE_HDR_TM "vendor.display.disable_hdr_tm"
 #define SDM_DUMP_CONFIG "vendor.display.dump_config"
+/* 16 bits alpha is used in weston 13 */
+#define MAX_ALPHA 0xFFFF
 
-SdmDisplay::SdmDisplay(DisplayType type, CoreInterface *core_intf,
+SdmDisplay::SdmDisplay(SDMDisplayType type, CoreInterface *core_intf,
                                          SdmDisplayBufferAllocator *buffer_allocator) {
     display_type_ = type;
     core_intf_    = core_intf;
@@ -173,21 +176,13 @@ DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
         #ifndef HAS_HDR_SUPPORT
             disable_tone_mapper_ = 1;
         #endif
-        if (!disable_tone_mapper_) {
-            DLOGI("Tone Mapper Enabled");
-            tone_mapper_ = new SdmDisplayToneMapper(buffer_allocator_);
-
-            if (!tone_mapper_) {
-                DLOGE("Failed to create tone_mapper instance");
-            }
-        }
     }
 
     DLOGI("display_id = %d display_type_=%d", display_id, display_type_);
     if (display_type_ == kBuiltIn) {
         display_colormode_ = new SDMColorModeStc(display_intf_);
     } else {
-        display_colormode_ = new SDMColorMode(display_intf_);
+        display_colormode_ = new SDMColorModeMgr(display_intf_);
     }
 
     display_colormode_->Init();
@@ -207,11 +202,6 @@ DisplayError SdmDisplay::DestroyDisplay() {
     display_colormode_ = NULL;
     error = core_intf_->DestroyDisplay(display_intf_);
     display_intf_ = NULL;
-
-    if (tone_mapper_) {
-        delete tone_mapper_;
-        tone_mapper_ = nullptr;
-    }
 
     return error;
 }
@@ -524,7 +514,7 @@ DisplayError SdmDisplay::SetOutputBuffer(void *buf, shared_ptr<Fence> &release_f
     uint32_t alignedWidth = 0;
     uint32_t alignedHeight = 0;
     uint32_t secure_status = 0;
-    void *color_meta = reinterpret_cast<void *>(&output_buffer_.color_metadata);
+    void *color_meta = reinterpret_cast<void *>(&output_buffer_.dataspace);
     int gbm_format = GBM_FORMAT_XBGR8888;
     int sdm_format = SDM_BUFFER_FORMAT_INVALID;
     struct LayerGeometryFlags ubwc_flags;
@@ -831,26 +821,34 @@ DisplayError SdmDisplay::PopulateLayerGeometryOnToLayerStack(struct drm_output *
     // TODO: (user)  }
 
     if (index != layer_stack_.layers.size()-1)
-        layer_buffer->planes[0].fd = layer_geometry->ion_fd;
+        layer_buffer->planes[0].fd = layer_geometry->dma_fd;
 
     /* TODO: Below information should be set according to the real user scenario */
     layer_buffer->flags.secure = layer_geometry->flags.secure_present;
     layer_buffer->flags.video = layer_geometry->flags.video_present;
     layer_buffer->flags.hdr = layer_geometry->flags.hdr_present;
 
-    layer_buffer->color_metadata = layer_geometry->color_metadata;
+    layer_buffer->dataspace.colorPrimaries =
+        static_cast<vendor_qti_hardware_display_common_QtiColorPrimaries>(
+            layer_geometry->color_metadata.colorPrimaries);
+    layer_buffer->dataspace.transfer =
+        static_cast<vendor_qti_hardware_display_common_QtiGammaTransfer>(
+            layer_geometry->color_metadata.transfer);
+    layer_buffer->dataspace.range =
+        static_cast<vendor_qti_hardware_display_common_QtiColorRange>(
+            layer_geometry->color_metadata.range);
 
-    if (layer_buffer->color_metadata.colorPrimaries == 0 &&
-        layer_buffer->color_metadata.transfer == 0) {
-        DLOGD("Invalid color_metadata, reset to default");
-        layer_buffer->color_metadata.colorPrimaries = ColorPrimaries_BT709_5;
-        layer_buffer->color_metadata.transfer = Transfer_sRGB;
+    if (layer_buffer->dataspace.colorPrimaries == 0 &&
+        layer_buffer->dataspace.transfer == 0) {
+        DLOGD("Invalid dataspace, reset to default");
+        layer_buffer->dataspace.colorPrimaries = QtiColorPrimaries_BT709_5;
+        layer_buffer->dataspace.transfer = QtiTransfer_sRGB;
     }
 
     DLOGD("color_metadata: ColorPrimaries: %d",
-            layer_buffer->color_metadata.colorPrimaries);
+            layer_buffer->dataspace.colorPrimaries);
     DLOGD("color_metadata: Transfer: %d is_skip:%d",
-            layer_buffer->color_metadata.transfer, is_skip);
+            layer_buffer->dataspace.transfer, is_skip);
 
     layer_buffer->flags.macro_tile = false;
     layer_buffer->flags.interlace = false;
@@ -960,10 +958,8 @@ int SdmDisplay::PrepareFbLayerGeometry(struct drm_output *output,
     fb_layer->height = output->base.current_mode->height;
     fb_layer->unaligned_width = output->base.current_mode->width;
     fb_layer->unaligned_height = output->base.current_mode->height;
-
-    fb_layer->format = GetMappedFormatFromGbm(output->gbm_format);
+    fb_layer->format = GetMappedFormatFromGbm(output->format->format);
     fb_layer->composition = SDM_COMPOSITION_FB_TARGET;
-
     fb_layer->src_rect.left = (float)0.0;
     fb_layer->src_rect.top = (float)0.0;
     fb_layer->src_rect.right = (float)output->base.current_mode->width;
@@ -998,7 +994,7 @@ int SdmDisplay::PrepareFbLayerGeometry(struct drm_output *output,
      * keep no transform for output.
      */
     fb_layer->transform = SDM_TRANSFORM_NORMAL;
-    fb_layer->plane_alpha = 0xFF;
+    fb_layer->plane_alpha = MAX_ALPHA;
 
     fb_layer->flags.skip = 0;
     fb_layer->flags.is_cursor = 0;
@@ -1059,7 +1055,8 @@ int SdmDisplay::PrepareNormalLayerGeometry(struct drm_output *output,
                          struct LayerGeometry **glayer,
                          struct sdm_layer *sdm_layer) {
     struct LayerGeometry *layer;
-    struct weston_view *ev = sdm_layer->view;
+    struct weston_paint_node *pnode = sdm_layer->pnode;
+    struct weston_view *ev = pnode->view;
     struct weston_surface *es = ev->surface;
     bool is_cursor = sdm_layer->is_cursor;
     uint32_t format = GBM_FORMAT_XBGR8888;
@@ -1115,7 +1112,7 @@ int SdmDisplay::PrepareNormalLayerGeometry(struct drm_output *output,
             layer->height = alignedHeight;
             layer->unaligned_width = width;
             layer->unaligned_height = height;
-            layer->ion_fd = sdm_layer->fb->ion_fd;
+            layer->dma_fd = sdm_layer->fb->dma_fd;
             layer->flags.secure_present = secure_status;
             layer->flags.has_ubwc_buf = ubwc_status;
 
@@ -1135,7 +1132,7 @@ int SdmDisplay::PrepareNormalLayerGeometry(struct drm_output *output,
     layer->format = GetMappedFormatFromGbm(format);
 
     /* Get src/dst rect */
-    ComputeSrcDstRect(output, ev, &layer->src_rect, &layer->dst_rect);
+    ComputeSrcDstRect(output, pnode, &layer->src_rect, &layer->dst_rect);
     /* Get visible rects */
     if (GetVisibleRegion(output, ev, &sdm_layer->overlap, &layer->visible_regions))
         return -1;
@@ -1159,7 +1156,7 @@ int SdmDisplay::PrepareNormalLayerGeometry(struct drm_output *output,
     pixman_region32_init_rect(&r, 0, 0, ev->surface->width, ev->surface->height);
     pixman_region32_subtract(&r, &r, &ev->surface->opaque);
 
-    if (!pixman_region32_not_empty(&r) && (layer->plane_alpha == 0xFF))
+    if (!pixman_region32_not_empty(&r) && (layer->plane_alpha == MAX_ALPHA))
         layer->blending = SDM_BLENDING_NONE;
     else
         layer->blending = SDM_BLENDING_COVERAGE;
@@ -1212,24 +1209,8 @@ DisplayError SdmDisplay::PrePrepareLayerStack(struct drm_output *output) {
                 return kErrorUndefined;
             }
             FreeLayerGeometry(glayer);
-
-            // Pass the wl_resource handle from sdm layer to layer stack
-            // to use it for egl image creation in tone mapping
-            layerBufferFlags = layer_stack_.layers.at(index)->input_buffer.flags;
-            if (layerBufferFlags.video && layerBufferFlags.hdr) {
-                layer_stack_.layers.at(index)->userdata =
-                        sdm_layer->view->surface->buffer_ref.buffer->resource;
-            }
-
-            //Acquire fence fd is not received for frame buffer target layer as gl-renderer is not
-            //sending it. Hence not adding acquire fence for frame buffer target
-            layer_stack_.layers.at(index)->input_buffer.acquire_fence =
-                               Fence::Create(dup(sdm_layer->acquire_fence_fd), "App_Layer_Fence");
-            DLOGD_IF(kTagNone, "Acquire fence fd: %s for layer index %d",
-                 Fence::GetStr(layer_stack_.layers.at(index)->input_buffer.acquire_fence).c_str(),
-                 index);
-
             index++;
+
             if (sdm_layer->is_skip)
                 layer_stack_.flags.skip_present = true;
         }
@@ -1291,7 +1272,7 @@ DisplayError SdmDisplay::PostPrepare(struct drm_output *output)
       index++;
     }
 
-    if (output->backend->use_pixman)
+    if (sdm_weston_is_pixman_render(output))
     {
         // Pixman uses double buffer,it would repaint FBT after prepare
         // So need wait pre-reitre_fence here to avoid tearing issue
@@ -1395,10 +1376,6 @@ DisplayError SdmDisplay::Prepare(struct drm_output *output)
         DLOGE("failed during Prepare error:%d\n",error);
     }
 
-#if SDM_DISPLAY_DUMP_LAYER_STACK
-    DumpInterface::GetDump(dump_buffer, sizeof(dump_buffer));
-#endif
-
     error = PostPrepare(output);
     if (error != kErrorNone)
 	DLOGE("function failed Error= %d\n", error);
@@ -1409,23 +1386,6 @@ DisplayError SdmDisplay::Prepare(struct drm_output *output)
 DisplayError SdmDisplay::PreCommit()
 {
     DisplayError error = kErrorNone;
-    if (layer_stack_.flags.hdr_present) {
-        int status = -1;
-        if (tone_mapper_) {
-            error = tone_mapper_->HandleToneMap(&layer_stack_);
-            if (error != kErrorNone) {
-                DLOGE("Error handling HDR in ToneMapper, status code = %d", status);
-            }
-        } else {
-            DLOGD("HandleToneMap failed due to invalid tone_mapper_ instance");
-        }
-    } else {
-        if (tone_mapper_) {
-            tone_mapper_->Terminate();
-        }
-        else
-            DLOGD("ToneMap Terminate failed due to invalid tone_mapper_ instance");
-    }
 
     return error;
 }
@@ -1440,10 +1400,6 @@ DisplayError SdmDisplay::PostCommit()
     DisplayError error = kErrorNone;
 
     HandleFrameOutput();
-
-    if (tone_mapper_ && tone_mapper_->IsActive()) {
-        tone_mapper_->PostCommit(&layer_stack_);
-    }
 
     for (int i = 0; i < layer_stack_.layers.size(); i++) {
       if (!layer_stack_.layers[i]->input_buffer.release_fence) {
@@ -1463,11 +1419,6 @@ DisplayError SdmDisplay::PostCommit()
     }
 
     prev_layer_stack_ = layer_stack_;
-    //Iterate through the layer buffer and close release fences
-    for (uint32_t i = 0; i < layer_stack_.layers.size(); i++) {
-        Layer *layer = layer_stack_.layers.at(i);
-        LayerBuffer *layer_buffer = &layer->input_buffer;
-    }
 
     return error;
 }
@@ -1492,11 +1443,11 @@ DisplayError SdmDisplay::Commit(struct drm_output *output)
     }
 
     GpuTargetlayer = layer_stack_.layers.at(GPUTarget_index);
-    GpuTargetlayer->input_buffer.planes[0].fd = output->next_fb->ion_fd;
+    GpuTargetlayer->input_buffer.planes[0].fd = output->next_fb->dma_fd;
 
     display_intf_->GetDisplayState(&state);
     DLOGI("state=%d commiting ion fd = %d, layer count=%d",
-                  state, output->next_fb->ion_fd, layer_count);
+                  state, output->next_fb->dma_fd, layer_count);
 
     ret = PreCommit();
     if (ret != kErrorNone) {
@@ -1778,27 +1729,25 @@ uint32_t SdmDisplay::ConvertToOpaqueGbmFormat(uint32_t format)
     return ret;
 }
 
-void SdmDisplay::ComputeSrcDstRect(struct drm_output *output, struct weston_view *ev,
+void SdmDisplay::ComputeSrcDstRect(struct drm_output *output, weston_paint_node *node,
                     struct Rect *src_ret, struct Rect *dst_ret)
 {
     pixman_region32_t src_rect, dest_rect;
     float sx1, sy1, sx2, sy2;
+    pixman_box32_t *box;
+    struct weston_view *ev = node->view;
 
     /* dst rect */
     pixman_region32_init(&dest_rect);
     pixman_region32_intersect(&dest_rect, &ev->transform.boundingbox, &output->base.region);
 
-    pixman_region32_translate(&dest_rect, -output->base.x, -output->base.y);
-
-    pixman_box32_t *box, tbox = {0};
+    sdm_weston_region_global_to_output(&dest_rect, output, &dest_rect);
     box = pixman_region32_extents(&dest_rect);
 
-    sdm_weston_transformed_rect(output, &tbox, *box);
-
-    dst_ret->left = tbox.x1;
-    dst_ret->right = tbox.x2;
-    dst_ret->top = tbox.y1;
-    dst_ret->bottom = tbox.y2;
+    dst_ret->left = box->x1;
+    dst_ret->right = box->x2;
+    dst_ret->top = box->y1;
+    dst_ret->bottom = box->y2;
 
     pixman_region32_fini(&dest_rect);
 
@@ -1808,7 +1757,7 @@ void SdmDisplay::ComputeSrcDstRect(struct drm_output *output, struct weston_view
                               &output->base.region);
     box = pixman_region32_extents(&src_rect);
 
-    sdm_weston_global_transform_rect(ev, box, &sx1, &sy1, &sx2, &sy2);
+    sdm_weston_global_transform_rect(node, box, &sx1, &sy1, &sx2, &sy2);
 
     pixman_region32_fini(&src_rect);
 
@@ -1865,14 +1814,14 @@ int SdmDisplay::ComputeDirtyRegion(struct weston_view *ev,
     return 0;
 }
 
-uint8_t SdmDisplay::GetGlobalAlpha(struct weston_view *ev)
+uint16_t SdmDisplay::GetGlobalAlpha(struct weston_view *ev)
 {
     if (ev->alpha > 1.0f)
-     return 0xFF;
+     return MAX_ALPHA;
     else if (ev->alpha < 0.0f)
      return 0;
     else
-     return (uint8_t)(0xFF * ev->alpha);
+     return (uint16_t)(MAX_ALPHA * ev->alpha);
 }
 
 int SdmDisplay::GetVisibleRegion(struct drm_output *output, struct weston_view *ev,
@@ -1887,7 +1836,7 @@ int SdmDisplay::GetVisibleRegion(struct drm_output *output, struct weston_view *
     pixman_region32_copy(&temp, &ev->transform.boundingbox);
     pixman_region32_subtract(&temp, &temp, aboved_opaque);
     pixman_region32_intersect(&temp, &output->base.region, &temp);
-    pixman_region32_translate(&temp, -output->base.x, -output->base.y);
+    pixman_region32_translate(&temp, -output->base.pos.c.x, -output->base.pos.c.y);
 
     rectangles = pixman_region32_rectangles(&temp, &n);
     if (!n) {
@@ -2128,7 +2077,7 @@ DisplayError SdmDisplay::SetColorModeFromClientApi(int32_t color_mode_id) {
 
   return status;
 }
-SdmNullDisplay::SdmNullDisplay(DisplayType type, CoreInterface *core_intf) {
+SdmNullDisplay::SdmNullDisplay(SDMDisplayType type, CoreInterface *core_intf) {
 }
 
 SdmNullDisplay::~SdmNullDisplay() {
@@ -2270,7 +2219,7 @@ DisplayError SdmNullDisplay::SetDetailEnhancerConfig(const DisplayDetailEnhancer
 DisplayError SdmNullDisplay::SetHWDetailedEnhancerConfig(void *params) {
   return kErrorNone;
 }
-SdmDisplayProxy::SdmDisplayProxy(DisplayType type, CoreInterface *core_intf,
+SdmDisplayProxy::SdmDisplayProxy(SDMDisplayType type, CoreInterface *core_intf,
                                  SdmDisplayBufferAllocator *buffer_allocator)
   : disp_type_(type), core_intf_(core_intf),
     sdm_disp_(type, core_intf, buffer_allocator), null_disp_(type, core_intf) {
@@ -2607,7 +2556,6 @@ uint64_t SdmFrameDumper::GetHandleID() {
 }
 
 void SdmFrameDumper::FreeReadbackBuffer(BufferInfo &output_buffer_info) {
-    int ret = 0;
     struct gbm_bo *bo = reinterpret_cast<struct gbm_bo *>(output_buffer_info.private_data);
 
     // Unmap and Free buffer
@@ -2648,7 +2596,6 @@ DisplayError SdmFrameDumper::CreateReadbackBuffer(BufferInfo &output_buffer_info
 
 SdmFrameDumper::SdmFrameDumper(int display_id, const char *display_string,
                                SdmDisplayBufferAllocator *buffer_allocator) {
-    int status =0 ;
     char dir_path[PATH_MAX] = "";
 
     snprintf(dir_path, sizeof(dir_path), "%s/frame_dump_disp_id_%02u_%s",

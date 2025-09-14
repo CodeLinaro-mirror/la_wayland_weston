@@ -41,6 +41,10 @@
 #include <cassert>
 #include <stdint.h>
 
+
+#ifdef ATRACE_TAG
+#undef ATRACE_TAG
+#endif
 #define ATRACE_TAG (ATRACE_TAG_ALWAYS)
 
 enum {

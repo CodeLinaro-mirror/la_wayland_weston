@@ -54,7 +54,6 @@
 #include "sdm-service/sdm_display_buffer_sync_handler.h"
 #include "sdm-service/sdm_display_socket_handler.h"
 #include "sdm-service/sdm_display_color_manager.h"
-#include "sdm-service/sdm_display_tonemapper.h"
 #include "sdm-internal.h"
 #include "drm_master.h"
 
@@ -75,9 +74,8 @@ enum SdmDisplayIntfType {null_disp, sdm_disp};
 
 typedef std::map<uint32_t, HWDisplayInfo> SdmDisplaysInfo;
 
-// map<display_id, sdm_display>
 typedef std::map<uint32_t, SdmDisplayProxy *> CreatedDisplaysInfo;
-typedef class SDMColorMode SDMColorMode;
+typedef class SDMColorModeMgr SDMColorModeMgr;
 
 enum DumpMode {
   INPUT_LAYER_DUMP = 1,
@@ -193,7 +191,7 @@ class SdmDisplayInterface {
 
 class SdmNullDisplay : public SdmDisplayInterface {
   public:
-    SdmNullDisplay(DisplayType type, CoreInterface *core_intf);
+    SdmNullDisplay(SDMDisplayType type, CoreInterface *core_intf);
     ~SdmNullDisplay();
 
     SdmDisplayIntfType GetDisplayIntfType() {
@@ -232,7 +230,7 @@ class SdmNullDisplay : public SdmDisplayInterface {
 class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDebugger {
 
  public:
-    SdmDisplay(DisplayType type, CoreInterface *core_intf,
+    SdmDisplay(SDMDisplayType type, CoreInterface *core_intf,
                                  SdmDisplayBufferAllocator *buffer_allocator);
     ~SdmDisplay();
 
@@ -333,10 +331,10 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     uint32_t GetMappedFormatFromShm(uint32_t fmt);
     bool NeedConvertGbmFormat(struct weston_view *ev, uint32_t format);
     uint32_t ConvertToOpaqueGbmFormat(uint32_t format);
-    void ComputeSrcDstRect(struct drm_output *output, struct weston_view *ev,
-                                  struct Rect *src_ret, struct Rect *dst_ret);
+    void ComputeSrcDstRect(struct drm_output *output, weston_paint_node *node,
+                    struct Rect *src_ret, struct Rect *dst_ret);
     int  ComputeDirtyRegion(struct weston_view *ev, struct RectArray *dirty);
-    uint8_t GetGlobalAlpha(struct weston_view *ev);
+    uint16_t GetGlobalAlpha(struct weston_view *ev);
     int GetVisibleRegion(struct drm_output *output, struct weston_view *ev,
                          pixman_region32_t *aboved_opaque, struct RectArray *visible);
     bool IsTransparentGbmFormat(uint32_t format);
@@ -348,7 +346,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     SdmDisplaySocketHandler socket_handler_;
     DisplayEventHandler *client_event_handler_ = NULL;
     DisplayInterface *display_intf_ = NULL;
-    DisplayType display_type_ = kDisplayMax;
+    SDMDisplayType display_type_ = kDisplayMax;
     DisplayConfigVariableInfo variable_info_;
     HWDisplayInterfaceInfo hw_disp_info_;
     bool shutdown_pending_ = false;
@@ -373,16 +371,15 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     bool dump_input_layers_ = false;
     SdmFrameDumper *frame_dumper_ = NULL;
 
-    SDMColorMode *display_colormode_ = NULL;
+    SDMColorModeMgr *display_colormode_ = NULL;
     bool hdr_supported_ = false;
     int disable_hdr_handling_ = 0;
     int disable_tone_mapper_ = 1;        /* To disable tone mapping functionality. */
-    SdmDisplayToneMapper *tone_mapper_ = NULL;
 };
 
 class SdmDisplayProxy {
   public:
-    SdmDisplayProxy(DisplayType type, CoreInterface *core_intf,
+    SdmDisplayProxy(SDMDisplayType type, CoreInterface *core_intf,
                     SdmDisplayBufferAllocator *buffer_allocator);
     ~SdmDisplayProxy();
 
@@ -494,7 +491,7 @@ class SdmDisplayProxy {
     void *UeventThreadHandler();
     shared_ptr<Fence> previous_release_fence_ = nullptr;
     SdmDisplayInterface *display_intf_;
-    DisplayType disp_type_;
+    SDMDisplayType disp_type_;
     CoreInterface *core_intf_;
     SdmNullDisplay null_disp_;
     SdmDisplayBufferAllocator *buffer_allocator_;

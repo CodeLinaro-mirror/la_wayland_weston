@@ -27,6 +27,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include "config.h"
 
@@ -2165,10 +2170,8 @@ drm_backend_output_configure(struct weston_output *output,
 	}
 
 	wet_output_set_scale(output, section, 1, 0);
-	if (wet_output_set_transform(output, section, transform,
-				     UINT32_MAX) < 0) {
+	if (wet_output_set_transform(output, section, transform, UINT32_MAX) < 0)
 		return -1;
-	}
 
 	if (wet_output_set_color_profile(output, section, NULL) < 0)
 		return -1;
@@ -3015,6 +3018,75 @@ wet_compositor_load_backend(struct weston_compositor *compositor,
 	return wb;
 }
 
+#ifdef QCOM_BSP
+static int
+load_sdm_backend(struct weston_compositor *c,
+		 int *argc, char **argv, struct weston_config *wc,
+		 enum weston_renderer_type renderer)
+{
+	struct weston_drm_backend_config config = {{ 0, }};
+	struct weston_config_section *section;
+	struct wet_compositor *wet = to_wet_compositor(c);
+	struct wet_backend *wb;
+	bool without_input = false;
+	bool force_pixman = false;
+
+	wet->drm_use_current_mode = false;
+
+	section = weston_config_get_section(wc, "core", NULL, NULL);
+	weston_config_section_get_bool(section, "use-pixman", &force_pixman,
+				       false);
+
+	const struct weston_option options[] = {
+		{ WESTON_OPTION_STRING, "seat", 0, &config.seat_id },
+		{ WESTON_OPTION_STRING, "drm-device", 0, &config.specific_device },
+		{ WESTON_OPTION_STRING, "additional-devices", 0, &config.additional_devices},
+		{ WESTON_OPTION_BOOLEAN, "current-mode", 0, &wet->drm_use_current_mode },
+		{ WESTON_OPTION_BOOLEAN, "use-pixman", 0, &force_pixman },
+		{ WESTON_OPTION_BOOLEAN, "continue-without-input", false, &without_input }
+	};
+
+	parse_options(options, ARRAY_LENGTH(options), argc, argv);
+
+	if (force_pixman && renderer != WESTON_RENDERER_AUTO) {
+		weston_log("error: conflicting renderer specification\n");
+		return -1;
+	} else if (force_pixman) {
+		config.renderer = WESTON_RENDERER_PIXMAN;
+	} else {
+		config.renderer = renderer;
+	}
+
+	section = weston_config_get_section(wc, "core", NULL, NULL);
+	weston_config_section_get_string(section,
+					 "gbm-format", &config.gbm_format,
+					 NULL);
+	weston_config_section_get_uint(section, "pageflip-timeout",
+	                               &config.pageflip_timeout, 0);
+	weston_config_section_get_bool(section, "pixman-shadow",
+				       &config.use_pixman_shadow, true);
+
+	if (without_input)
+		c->require_input = !without_input;
+
+	config.base.struct_version = WESTON_DRM_BACKEND_CONFIG_VERSION;
+	config.base.struct_size = sizeof(struct weston_drm_backend_config);
+	config.configure_device = configure_input_device;
+
+	wb = wet_compositor_load_backend(c, WESTON_BACKEND_SDM, &config.base,
+					 drm_heads_changed, NULL);
+
+	if (!wb)
+		return -1;
+
+	free(config.gbm_format);
+	free(config.seat_id);
+	free(config.specific_device);
+
+	return 0;
+}
+#endif
+
 static int
 load_drm_backend(struct weston_compositor *c, int *argc, char **argv,
 		 struct weston_config *wc, enum weston_renderer_type renderer)
@@ -3834,6 +3906,11 @@ load_backend(struct weston_compositor *compositor, const char *name,
 	case WESTON_BACKEND_DRM:
 		return load_drm_backend(compositor, argc, argv, config,
 					renderer);
+#ifdef QCOM_BSP
+	case WESTON_BACKEND_SDM:
+		return load_sdm_backend(compositor, argc, argv, config,
+                                        renderer);
+#endif
 	case WESTON_BACKEND_HEADLESS:
 		return load_headless_backend(compositor, argc, argv, config,
 					     renderer);

@@ -182,7 +182,7 @@ bool GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *disp
 
     @sa
 */
-bool SetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config);
+int SetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config);
 
 /*! @brief Method to obtain display's HDR information parameters for requested display_id.
     @details Client shall use this method to obtain display's HDR capability parameters
@@ -223,7 +223,7 @@ int RegisterCbs(uint32_t display_id, sdm_cbs_t *cbs);
 
     @sa
 */
-bool SetDisplayState(uint32_t display_id, int power_mode);
+int SetDisplayState(uint32_t display_id, int power_mode);
 
 /*! @brief Method to enable VSync State, i.e. whether to generate callback
     on next frame.
@@ -286,9 +286,15 @@ uint32_t GetConnectorId(uint32_t display_id);
 
 uint32_t GetConnectorType(uint32_t display_id);
 
-bool SetOutputBuffer(uint32_t display_id, void *gbm_bo);
+bool IsVirtualOutput(uint32_t display_id);
+
+int SetOutputBuffer(uint32_t display_id, void *gbm_bo);
 
 void ClearSDMLayers(struct drm_output *output);
+
+int GetConnectedDisplaysIds(int num_displays, uint32_t *connector_ids);
+
+bool IsDisplayCreated(uint32_t display_id);
 
 #ifdef __cplusplus
 }

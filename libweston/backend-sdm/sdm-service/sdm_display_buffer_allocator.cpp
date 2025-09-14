@@ -388,6 +388,15 @@ int SdmDisplayBufferAllocator::GetBufferLayout(const AllocatedBufferInfo &buf_in
     uint32_t format = gbm_bo_get_format(bo);
     uint32_t bpp = gbm_bo_get_bpp(bo);
 
+    int ret = gbm_perform(GBM_PERFORM_GET_PLANE_INFO, bo, &buf_layout);
+    if (ret == GBM_ERROR_NONE) {
+      *num_planes = buf_layout.num_planes;
+    } else {
+        DLOGE("Get Plane info fail");
+        gbm_bo_destroy(bo);
+        return kErrorParameters;
+    }
+
     if (IsFormatVideo(format) == false) {
       /* Importing bo from mesa-gbm requires stride value to be passed as part of
       gbm_import_fd_data structure. Our gbm implementation doesn't mandate this requirement.
@@ -401,7 +410,6 @@ int SdmDisplayBufferAllocator::GetBufferLayout(const AllocatedBufferInfo &buf_in
           stride[0] = gbm_bo_get_stride(bo);
       }
       offset[0] = 0;
-      *num_planes++;
       gbm_bo_destroy(bo);
       return kErrorNone;
     } else {

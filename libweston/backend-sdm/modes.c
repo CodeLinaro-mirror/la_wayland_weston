@@ -36,6 +36,7 @@
 #include "config.h"
 
 #include "sdm-internal.h"
+#include "sdm-service/sdm_display_connect.h"
 
 static const char *const aspect_ratio_as_string[] = {
 	[WESTON_MODE_PIC_AR_NONE] = "",
@@ -59,26 +60,26 @@ aspect_ratio_to_string(enum weston_mode_aspect_ratio ratio)
  * Destroys a mode, and removes it from the list.
  */
 static void
-drm_output_destroy_mode(struct drm_backend *backend, struct drm_mode *mode)
+drm_output_destroy_mode(struct drm_device *device, struct drm_mode *mode)
 {
 	if (mode->blob_id)
-		drmModeDestroyPropertyBlob(backend->drm.fd, mode->blob_id);
+		drmModeDestroyPropertyBlob(device->drm.fd, mode->blob_id);
 	wl_list_remove(&mode->base.link);
 	free(mode);
 }
 
 /** Destroy a list of drm_modes
  *
- * @param backend The backend for releasing mode property blobs.
+ * @param device The device for releasing mode property blobs.
  * @param mode_list The list linked by drm_mode::base.link.
  */
 void
-drm_mode_list_destroy(struct drm_backend *backend, struct wl_list *mode_list)
+drm_mode_list_destroy(struct drm_device *device, struct wl_list *mode_list)
 {
 	struct drm_mode *mode, *next;
 
 	wl_list_for_each_safe(mode, next, mode_list, base.link)
-		drm_output_destroy_mode(backend, mode);
+		drm_output_destroy_mode(device, mode);
 }
 
 void
@@ -121,16 +122,16 @@ drm_output_choose_mode(struct drm_output *output,
 	struct drm_mode *tmp_mode = NULL, *mode_fall_back = NULL, *mode;
 	enum weston_mode_aspect_ratio src_aspect = WESTON_MODE_PIC_AR_NONE;
 	enum weston_mode_aspect_ratio target_aspect = WESTON_MODE_PIC_AR_NONE;
-	struct drm_backend *b;
+	struct drm_device *device;
 
-	b = to_drm_backend(output->base.compositor);
+	device = output->device;
 	target_aspect = target_mode->aspect_ratio;
 	src_aspect = output->base.current_mode->aspect_ratio;
 	if (output->base.current_mode->width == target_mode->width &&
 	    output->base.current_mode->height == target_mode->height &&
 	    (output->base.current_mode->refresh == target_mode->refresh ||
 	     target_mode->refresh == 0)) {
-		if (!b->aspect_ratio_supported || src_aspect == target_aspect)
+		if (!device->aspect_ratio_supported || src_aspect == target_aspect)
 			return to_drm_mode(output->base.current_mode);
 	}
 
@@ -141,7 +142,7 @@ drm_output_choose_mode(struct drm_output *output,
 		    mode->mode_info.vdisplay == target_mode->height) {
 			if (mode->base.refresh == target_mode->refresh ||
 			    target_mode->refresh == 0) {
-				if (!b->aspect_ratio_supported ||
+				if (!device->aspect_ratio_supported ||
 				    src_aspect == target_aspect)
 					return mode;
 				else if (!mode_fall_back)
@@ -166,6 +167,7 @@ drm_output_set_mode(struct weston_output *base,
 	struct drm_output *output = to_drm_output(base);
 	struct drm_mode *current;
 	int width, height, refresh;
+	struct DisplayConfigInfo display_config;
 
 	struct drm_head *head = to_drm_head(weston_output_get_first_head(base));
 	output->display_id = head->connector_id;
@@ -173,25 +175,24 @@ drm_output_set_mode(struct weston_output *base,
 	if (output->virtual_output)
 		return -1;
 
-        struct DisplayConfigInfo display_config;
-        display_config.x_pixels        = 0;
-        display_config.y_pixels        = 0;
-        display_config.x_dpi           = 0.0f;
-        display_config.y_dpi           = 0.0f;
-        display_config.fps             = 0;
-        display_config.vsync_period_ns = 0;
-        display_config.is_yuv          = false;
+	display_config.x_pixels        = 0;
+	display_config.y_pixels        = 0;
+	display_config.x_dpi           = 0.0f;
+	display_config.y_dpi           = 0.0f;
+	display_config.fps             = 0;
+	display_config.vsync_period_ns = 0;
+	display_config.is_yuv          = false;
 
-        int rc = GetDisplayConfiguration(output->display_id, &display_config);
-        if (rc != 0) {
-            width   = display_config.x_pixels;
-            height  = display_config.y_pixels;
-            refresh = display_config.fps*1000;
-        } else { /* default 1080p, 60 fps */
-            width   = 1920;
-            height  = 1080;
-            refresh = 60*1000;
-        }
+	bool rc = GetDisplayConfiguration(output->display_id, &display_config);
+	if (rc != 0) {
+		width   = display_config.x_pixels;
+		height  = display_config.y_pixels;
+		refresh = display_config.fps*1000;
+	} else { /* default 1080p, 60 fps */
+		width   = 1920;
+		height  = 1080;
+		refresh = 60*1000;
+	}
 
 	current = zalloc(sizeof(struct drm_mode));
 	if (!current)

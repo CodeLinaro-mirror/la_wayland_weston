@@ -43,6 +43,10 @@ class SdmDisplayBufferSyncHandler : public BufferSyncHandler {
   void GetSyncInfo(int fd, std::ostringstream *os) {
     return;
   }
+
+  uint64_t GetSignalTime(int fd) {
+    return 0;
+  }
 };
 
 }  // namespace sdm

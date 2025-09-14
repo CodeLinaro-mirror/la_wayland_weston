@@ -142,7 +142,7 @@ struct LayerGeometry {
        uint32_t               unaligned_height;
        uint32_t               format;
        uint32_t               fb_id;
-       uint32_t               ion_fd;
+       uint32_t               dma_fd;
        /* Layer information */
        uint32_t               composition; /*GPU, Overlay, HWCursor*/
        struct Rect            src_rect; /* srouce rectangle */
@@ -151,7 +151,7 @@ struct LayerGeometry {
        struct RectArray       dirty_regions;
        uint32_t               blending;
        uint32_t               transform;
-       uint8_t                plane_alpha; /* global alpha */
+       uint16_t               plane_alpha; /* global alpha */
        struct LayerGeometryFlags        flags;
        ColorMetaData color_metadata;
 
@@ -225,6 +225,7 @@ struct DisplayConfigInfo {
   bool     is_connected;      //!< If the hdmi connector is plugged in.
 };
 
+struct drm_output;
 typedef void (*vblank_cb_t)(unsigned int display_id,
                             int64_t timestamp, struct drm_output *data);
 

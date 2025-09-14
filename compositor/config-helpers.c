@@ -22,6 +22,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include "config.h"
 
@@ -45,6 +50,9 @@ struct {
 	{ "vnc", "vnc-backend.so", WESTON_BACKEND_VNC },
 	{ "wayland", "wayland-backend.so", WESTON_BACKEND_WAYLAND },
 	{ "x11", "x11-backend.so", WESTON_BACKEND_X11 },
+#ifdef QCOM_BSP
+	{ "sdm", "sdm-backend.so", WESTON_BACKEND_SDM },
+#endif
 };
 
 bool

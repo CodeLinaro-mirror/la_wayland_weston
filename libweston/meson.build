@@ -179,26 +179,52 @@ pkgconfig.generate(
 	install_dir: dir_data_pc
 )
 
+deps_session_helper = [
+  dep_libweston_private_h,
+  dep_libweston_private,
+]
+
+srcs_session_helper = [
+]
+
 if get_option('backend-drm')
 	dep_libseat = dependency('libseat', version: '>= 0.4')
-	srcs_session_helper = [
+	deps_session_helper += [
+		dep_libdrm,
+		dep_libseat,
+	]
+	srcs_session_helper += [
 		'launcher-libseat.c',
 		'launcher-util.c',
 	]
-	deps_session_helper = [
-		dep_libseat,
-		dep_libweston_private_h,
-	]
-
-	lib_session_helper = static_library(
-		'session-helper',
-		srcs_session_helper,
-		include_directories: common_inc,
-		dependencies: deps_session_helper,
-		install: false
-	)
-	dep_session_helper = declare_dependency(link_with: lib_session_helper)
 endif
+
+if qcom_bsp_enabled
+if get_option('backend-sdm')
+	dep_libseat = dependency('libseat', version: '>= 0.4')
+	deps_session_helper += [
+		dep_libdrm,
+		dep_libseat,
+		dep_libsdmcore,
+		dep_libsdmutils,
+		dep_libsdmdal,
+	]
+	srcs_session_helper += [
+		'launcher-libseat.c',
+		'launcher-util.c',
+	]
+endif
+endif
+
+lib_session_helper = static_library(
+	'session-helper',
+	srcs_session_helper,
+	include_directories: [common_inc, ('backend-sdm')],
+	dependencies: deps_session_helper,
+	install: false
+)
+
+dep_session_helper = declare_dependency(link_with: lib_session_helper)
 
 lib_libinput_backend = static_library(
 	'libinput-backend',
@@ -245,6 +271,9 @@ dep_lib_gl_borders = declare_dependency(
 subdir('color-lcms')
 subdir('renderer-gl')
 subdir('backend-drm')
+if qcom_bsp_enabled
+subdir('backend-sdm')
+endif
 subdir('backend-headless')
 subdir('backend-pipewire')
 subdir('backend-rdp')
