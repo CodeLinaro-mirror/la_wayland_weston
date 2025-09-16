@@ -673,6 +673,9 @@ drm_output_init_pixman(struct drm_output *output, struct drm_backend *b)
 		.use_shadow = b->use_pixman_shadow,
 		.fb_size = { .width = w, .height = h },
 		.format = output->format,
+#ifdef QCOM_BSP
+		.gbm_handle = b->gbm
+#endif
 	};
 
 	assert(options.format);

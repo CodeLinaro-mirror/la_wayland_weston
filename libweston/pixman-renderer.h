@@ -40,6 +40,9 @@ struct pixman_renderer_output_options {
 	struct weston_size fb_size;
 	/** Initial pixel format */
 	const struct pixel_format_info *format;
+#ifdef QCOM_BSP
+	struct gbm_device *gbm_handle;
+#endif
 };
 
 struct pixman_renderer_interface {
