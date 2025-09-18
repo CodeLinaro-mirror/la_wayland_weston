@@ -2344,6 +2344,9 @@ enum weston_compositor_backend {
 	WESTON_BACKEND_VNC,
 	WESTON_BACKEND_WAYLAND,
 	WESTON_BACKEND_X11,
+#ifdef QCOM_BSP
+	WESTON_BACKEND_SDM,
+#endif
 };
 
 enum weston_renderer_type {

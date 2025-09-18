@@ -64,6 +64,27 @@ class SdmDisplayBufferAllocator : public BufferAllocator {
                       uint32_t stride[4], uint32_t offset[4],
                       uint32_t *num_planes);
   void GetGbmDeviceHandle(void **userdata);
+
+  int SetBufferInfo(LayerBufferFormat format, int *target, uint64_t *flags) {
+    return 0;
+  }
+  int GetAlignedWidthAndHeight(int width, int height, int format, uint32_t alloc_type,
+                               int *aligned_width, int *aligned_height) {
+    return 0;
+  }
+  bool GetSDMColorSpace(const int int_dataspace, QtiDataspace *dataspace) {
+    return true;
+  }
+  LayerBufferFormat GetSDMFormat(const int32_t &source, const int32_t flags,
+                                 const int64_t compression_type) {
+    return kFormatInvalid;
+  }
+  DisplayError ColorMetadataToDataspace(Dataspace ds, uint32_t *int_dataspace) {
+    return kErrorNone;
+  }
+  int32_t TranslateFromLegacyDataspace(const int32_t &legacy_ds) {
+    return 0;
+  }
  private:
   bool IsFormatVideo(uint32_t fmt);
   bool IsVideoFormatLinear(uint32_t fmt, uint32_t ubwc_status);

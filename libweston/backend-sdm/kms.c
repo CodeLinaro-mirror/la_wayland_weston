@@ -90,60 +90,61 @@ on_drm_input(int fd, uint32_t mask, void *data)
 }
 
 int
-init_kms_caps(struct drm_backend *b)
+init_kms_caps(struct drm_device *device)
 {
+	struct drm_backend *b = device->backend;
 	uint64_t cap;
 	int ret;
 	clockid_t clk_id;
 
-	weston_log("using %s\n", b->drm.filename);
+	weston_log("using %s\n", device->drm.filename);
 
-	ret = drmGetCap(b->drm.fd, DRM_CAP_TIMESTAMP_MONOTONIC, &cap);
+	ret = drmGetCap(device->drm.fd, DRM_CAP_TIMESTAMP_MONOTONIC, &cap);
 	if (ret == 0 && cap == 1)
 		clk_id = CLOCK_MONOTONIC;
 	else
 		clk_id = CLOCK_REALTIME;
 
-	if (weston_compositor_set_presentation_clock(b->compositor, clk_id) < 0) {
-		weston_log("Error: failed to set presentation clock %d.\n",
-			   clk_id);
+	weston_log("using clk %s\n", (clk_id == CLOCK_MONOTONIC)? "MONOTONIC":"REALTIME");
+	b->base.supported_presentation_clocks = 1 << clk_id;
+
+	ret = drmGetCap(device->drm.fd, DRM_CAP_CURSOR_WIDTH, &cap);
+	if (ret == 0)
+		device->cursor_width = cap;
+	else
+		device->cursor_width = 64;
+
+	ret = drmGetCap(device->drm.fd, DRM_CAP_CURSOR_HEIGHT, &cap);
+	if (ret == 0)
+		device->cursor_height = cap;
+	else
+		device->cursor_height = 64;
+
+	device->repaint_data = NULL;
+
+	ret = drmSetClientCap(device->drm.fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
+	if (ret) {
+		weston_log("Error: drm card doesn't support universal planes!\n");
 		return -1;
 	}
 
-	ret = drmGetCap(b->drm.fd, DRM_CAP_CURSOR_WIDTH, &cap);
-	if (ret == 0)
-		b->cursor_width = cap;
-	else
-		b->cursor_width = 64;
-
-	ret = drmGetCap(b->drm.fd, DRM_CAP_CURSOR_HEIGHT, &cap);
-	if (ret == 0)
-		b->cursor_height = cap;
-	else
-		b->cursor_height = 64;
-
-	if (!getenv("WESTON_DISABLE_UNIVERSAL_PLANES")) {
-		ret = drmSetClientCap(b->drm.fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
-		b->universal_planes = (ret == 0);
-	}
-	weston_log("DRM: %s universal planes\n",
-		   b->universal_planes ? "supports" : "does not support");
-
-	if (b->universal_planes && !getenv("WESTON_DISABLE_ATOMIC")) {
-		ret = drmGetCap(b->drm.fd, DRM_CAP_CRTC_IN_VBLANK_EVENT, &cap);
+	if (!getenv("WESTON_DISABLE_ATOMIC")) {
+		ret = drmGetCap(device->drm.fd, DRM_CAP_CRTC_IN_VBLANK_EVENT, &cap);
 		if (ret != 0)
 			cap = 0;
-		ret = drmSetClientCap(b->drm.fd, DRM_CLIENT_CAP_ATOMIC, 1);
-		b->atomic_modeset = ((ret == 0) && (cap == 1));
+		ret = drmSetClientCap(device->drm.fd, DRM_CLIENT_CAP_ATOMIC, 1);
+		device->atomic_modeset = ((ret == 0) && (cap == 1));
 	}
 	weston_log("DRM: %s atomic modesetting\n",
-		   b->atomic_modeset ? "supports" : "does not support");
+		   device->atomic_modeset ? "supports" : "does not support");
 
-	ret = drmGetCap(b->drm.fd, DRM_CAP_ADDFB2_MODIFIERS, &cap);
-	if (ret == 0)
-		b->fb_modifiers = cap;
-	else
-		b->fb_modifiers = 0;
+	if (!getenv("WESTON_DISABLE_GBM_MODIFIERS")) {
+		ret = drmGetCap(device->drm.fd, DRM_CAP_ADDFB2_MODIFIERS, &cap);
+		if (ret == 0)
+			device->fb_modifiers = cap;
+	}
+	weston_log("DRM: %s GBM modifiers\n",
+		   device->fb_modifiers ? "supports" : "does not support");
 
 	/*
 	 * KMS support for hardware planes cannot properly synchronize
@@ -153,13 +154,13 @@ init_kms_caps(struct drm_backend *b)
 	 * to a fraction. For cursors, it's not so bad, so they are
 	 * enabled.
 	 */
-	if (!b->atomic_modeset || getenv("WESTON_FORCE_RENDERER"))
-		b->sprites_are_broken = true;
+	if (!device->atomic_modeset || getenv("WESTON_FORCE_RENDERER"))
+		device->sprites_are_broken = true;
 
-	ret = drmSetClientCap(b->drm.fd, DRM_CLIENT_CAP_ASPECT_RATIO, 1);
-	b->aspect_ratio_supported = (ret == 0);
+	ret = drmSetClientCap(device->drm.fd, DRM_CLIENT_CAP_ASPECT_RATIO, 1);
+	device->aspect_ratio_supported = (ret == 0);
 	weston_log("DRM: %s picture aspect ratio\n",
-		   b->aspect_ratio_supported ? "supports" : "does not support");
+		   device->aspect_ratio_supported ? "supports" : "does not support");
 
 	return 0;
 }

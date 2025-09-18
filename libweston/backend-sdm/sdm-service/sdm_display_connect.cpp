@@ -32,7 +32,6 @@
 #include "sdm-service/sdm_display.h"
 #include "sdm-service/sdm_display_connect.h"
 #include "sdm-service/uevent.h"
-#include "sdm-service/sdm_display_qdcm_session.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -60,8 +59,6 @@ HWDisplaysInfo hw_displays_info_ = {};
 // ordered by output id
 SdmDisplaysInfo sdm_displays_info_ = {};
 
-static QDCMSession *qdcmsession_ = nullptr;
-
 SdmDisplayProxy *GetDisplayFromId(uint32_t display_id) {
     auto it = displays_.find(display_id);
     if (it == displays_.end()) {
@@ -74,7 +71,7 @@ SdmDisplayProxy *GetDisplayFromId(uint32_t display_id) {
 SdmDisplayProxy *GetDisplayFromIndex(uint32_t index) {
     auto it = displays_.begin();
     uint32_t i = 0;
-    for (it; it != displays_.end(); ++it) {
+    for (; it != displays_.end(); ++it) {
         if (i != index) {
             i++;
             continue;
@@ -104,7 +101,7 @@ int GetConnectedDisplaysIds(int num_displays, uint32_t *connector_ids) {
         return -1;
     }
 
-    for (iter; iter != sdm_displays_info_.end(); ++iter) {
+    for (; iter != sdm_displays_info_.end(); ++iter) {
         connector_ids[idx++] = iter->first;
     }
 
@@ -128,14 +125,6 @@ int CreateCore(bool use_pixman)
         return kErrorNone;
     }
     buffer_allocator_ = new SdmDisplayBufferAllocator(use_pixman);
-    if (!qdcmsession_) {
-      qdcmsession_ = new QDCMSession;
-      if (qdcmsession_) {
-        if (qdcmsession_->Init(buffer_allocator_) != kErrorNone) {
-          DLOGE("qdcmsession Init failed");
-        }
-      }
-    }
 
     // TODO: Check the requirement for this property
     std::shared_ptr<IPCIntf> ipc_intf = nullptr;
@@ -167,7 +156,7 @@ int DestroyCore()
     }
 
     auto it = displays_.begin();
-    for (it; it != displays_.end(); ++it) {
+    for (; it != displays_.end(); ++it) {
         uint32_t connector_id = it->first;
         delete displays_[connector_id];
         displays_[connector_id] = NULL;
@@ -238,7 +227,7 @@ int CreateDisplay(uint32_t display_id)
 
     SetProperty(DISABLE_SINGLE_LM_SPLIT_PROP, "1");
 
-    enum DisplayType display_type = hw_display_info.display_type;
+    SDMDisplayType display_type = hw_display_info.display_type;
 
     SdmDisplayProxy *sdm_display = new SdmDisplayProxy(display_type, core_intf_, buffer_allocator_);
 
@@ -333,7 +322,7 @@ bool GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *disp
     SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
     if (!dpy) {
         DLOGE("Failed as Display (%d) not created yet.", display_id);
-        return kErrorNotSupported;
+        return FAIL;
     }
 
     error = dpy->GetDisplayConfiguration(display_config);
@@ -350,7 +339,7 @@ bool GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *disp
     return SUCCESS;
 }
 
-bool SetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config)
+int SetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config)
 {
     DisplayError error = kErrorNone;
     SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
@@ -372,7 +361,7 @@ bool SetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *disp
     return kErrorNone;
 }
 
-bool SetOutputBuffer(uint32_t display_id, void *gbm_bo)
+int SetOutputBuffer(uint32_t display_id, void *gbm_bo)
 {
     DisplayError error = kErrorNone;
     shared_ptr<Fence> release_fence;
@@ -509,7 +498,6 @@ int SetVSyncState(uint32_t display_id, bool state, struct drm_output *output)
 
 int SetPanelBrightness(int display_id, float brightness)
 {
-    DisplayError error = kErrorNone;
     SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
     if (!dpy) {
         DLOGE("Failed as Display (%d) not created yet.", display_id);
@@ -521,7 +509,6 @@ int SetPanelBrightness(int display_id, float brightness)
 
 int GetPanelBrightness(int display_id, float *brightness)
 {
-    DisplayError error = kErrorNone;
     SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
     if (!dpy) {
         DLOGE("Failed as Display (%d) not created yet.", display_id);
@@ -543,7 +530,7 @@ void HandlePrimaryDisplayInfo() {
   HWDisplaysInfo::iterator iter = hw_displays_info_.begin();
   sdm_displays_info_.clear();
 
-  for (iter; iter != hw_displays_info_.end(); ++iter) {
+  for (; iter != hw_displays_info_.end(); ++iter) {
     if (!iter->second.is_primary)
       continue;
     if (iter->second.display_type == sdm::kVirtual)
@@ -560,7 +547,7 @@ void HandlePrimaryDisplayInfo() {
 void HandleNonPrimaryDisplayInfos() {
   HWDisplaysInfo::iterator iter = hw_displays_info_.begin();
 
-  for (iter; iter != hw_displays_info_.end(); ++iter) {
+  for (; iter != hw_displays_info_.end(); ++iter) {
     if (iter->second.is_primary)
       continue;
 
@@ -626,10 +613,15 @@ uint32_t GetConnectorId(uint32_t display_id) {
 }
 
 uint32_t GetConnectorType(uint32_t display_id) {
-  const char *type_name = NULL;
   auto iter = sdm_displays_info_.find(display_id);
 
   return (iter->second.display_type);
+}
+
+bool IsVirtualOutput(uint32_t display_id) {
+    uint32_t type = GetConnectorType(display_id);
+
+    return (type == kVirtual);
 }
 
 static HWDisplayInfo GetSdmDisplayInfo(int display_id) {
