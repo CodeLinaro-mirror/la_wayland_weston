@@ -78,6 +78,7 @@ enum colorop_object_type {
 	COLOROP_OBJECT_TYPE_CURVE = 0,
 	COLOROP_OBJECT_TYPE_MATRIX,
 	COLOROP_OBJECT_TYPE_3x1D_LUT,
+	COLOROP_OBJECT_TYPE_3D_LUT,
 };
 
 struct drm_colorop_state_object {
@@ -87,6 +88,7 @@ struct drm_colorop_state_object {
 	uint64_t curve_type_prop_val;
 	uint32_t matrix_blob_id;
 	uint32_t lut_3x1d_blob_id;
+	uint32_t lut_3d_blob_id;
 };
 
 struct drm_colorop_state {

@@ -4162,6 +4162,7 @@ drm_device_destroy(struct drm_device *device)
 		drm_writeback_destroy(writeback);
 
 	weston_assert_list_empty(ec, &device->drm_colorop_3x1d_lut_blob_list);
+	weston_assert_list_empty(ec, &device->drm_colorop_clut_blob_list);
 	weston_assert_list_empty(ec, &device->drm_colorop_matrix_blob_list);
 
 	if (device->drm_event_source)
@@ -4503,6 +4504,7 @@ drm_device_create(struct drm_backend *backend,
 	create_planes(device);
 
 	wl_list_init(&device->drm_colorop_3x1d_lut_blob_list);
+	wl_list_init(&device->drm_colorop_clut_blob_list);
 	wl_list_init(&device->drm_colorop_matrix_blob_list);
 
 	wl_list_init(&device->writeback_connector_list);

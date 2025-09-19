@@ -253,6 +253,8 @@ struct drm_device {
 
 	/* struct drm_colorop_3x1d_lut_blob::link  */
 	struct wl_list drm_colorop_3x1d_lut_blob_list;
+	/* struct drm_colorop_clut_blob::link */
+	struct wl_list drm_colorop_clut_blob_list;
 	/* struct drm_colorop_matrix_blob::link */
 	struct wl_list drm_colorop_matrix_blob_list;
 

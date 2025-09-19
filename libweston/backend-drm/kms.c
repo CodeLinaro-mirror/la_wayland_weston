@@ -1455,6 +1455,14 @@ drm_colorop_program(drmModeAtomicReq *req, struct drm_colorop_state *colorop_sta
 		colorop_prop = WDRM_COLOROP_DATA;
 		prop_val = colorop_state->object.lut_3x1d_blob_id;
 		return colorop_program(req, colorop, colorop_prop, prop_val, err_msg);
+	case COLOROP_OBJECT_TYPE_3D_LUT:
+		if (!set_interp(req, colorop, WDRM_COLOROP_LUT3D_INTERPOLATION,
+				WDRM_COLOROP_LUT3D_INTERPOLATION_TETRAHEDRAL))
+			drm_debug(b, "%s[colorop] tetrahedral LUT3D interpolation not supported or failed to set;\n"
+				     "%susing current value set on driver\n", indent, indent);
+		colorop_prop = WDRM_COLOROP_DATA;
+		prop_val = colorop_state->object.lut_3d_blob_id;
+		return colorop_program(req, colorop, colorop_prop, prop_val, err_msg);
 	}
 	weston_assert_not_reached(compositor,
 				  "unknown drm_colorop_state object type");
