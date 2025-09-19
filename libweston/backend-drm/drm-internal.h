@@ -393,6 +393,20 @@ struct drm_output_state {
 	bool planes_enabled;
 };
 
+struct drm_colorop_3x1d_lut {
+	/* drm_device::drm_colorop_3x1d_lut_list */
+	struct wl_list link;
+	struct drm_device *device;
+
+	/* Lifetime matches the xform. */
+	struct weston_color_transform *xform;
+	struct wl_listener destroy_listener;
+
+	uint32_t lut_len;
+
+	uint32_t blob_id;
+};
+
 /**
  * Plane state holds the dynamic state for a plane: where it is positioned,
  * and which buffer it is currently displaying.
@@ -546,19 +560,6 @@ struct drm_writeback {
 	struct drm_connector connector;
 
 	struct weston_drm_format_array formats;
-};
-
-struct drm_colorop_3x1d_lut {
-	/* drm_device::drm_colorop_3x1d_lut_list */
-	struct wl_list link;
-	struct drm_device *device;
-
-	uint64_t lut_size;
-
-	struct weston_color_transform *xform;
-	struct wl_listener destroy_listener;
-
-	uint32_t blob_id;
 };
 
 struct drm_head {

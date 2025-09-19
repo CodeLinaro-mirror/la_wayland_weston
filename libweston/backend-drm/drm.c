@@ -2254,21 +2254,21 @@ drm_colorop_3x1d_lut_destroy_handler(struct wl_listener *l, void *data)
 static struct drm_colorop_3x1d_lut *
 drm_colorop_3x1d_lut_search(struct drm_device *device,
 			    struct weston_color_transform *xform,
-			    uint64_t lut_size)
+			    uint32_t lut_len)
 {
-	struct drm_colorop_3x1d_lut *colorop_lut;
+	struct drm_colorop_3x1d_lut *lut;
 
-	wl_list_for_each(colorop_lut, &device->drm_colorop_3x1d_lut_list, link)
-		if (colorop_lut->xform == xform && colorop_lut->lut_size == lut_size)
-			return colorop_lut;
+	wl_list_for_each(lut, &device->drm_colorop_3x1d_lut_list, link)
+		if (lut->xform == xform && lut->lut_len == lut_len)
+			return lut;
 
 	return NULL;
 }
 
 static struct drm_colorop_3x1d_lut *
-drm_colorop_3x1d_lut_create(struct weston_color_transform *xform,
-			    struct drm_device *device, uint64_t lut_size,
-			    uint32_t blob_id)
+drm_colorop_3x1d_lut_create(struct drm_device *device,
+			    struct weston_color_transform *xform,
+			    uint32_t lut_len, uint32_t blob_id)
 {
 	struct drm_colorop_3x1d_lut *lut;
 
@@ -2277,7 +2277,7 @@ drm_colorop_3x1d_lut_create(struct weston_color_transform *xform,
 	lut->device = device;
 	lut->blob_id = blob_id;
 	lut->xform = xform;
-	lut->lut_size = lut_size;
+	lut->lut_len = lut_len;
 
 	wl_list_insert(&device->drm_colorop_3x1d_lut_list, &lut->link);
 
@@ -2336,7 +2336,7 @@ drm_output_pick_blend_to_output(struct drm_output *output)
 	struct drm_colorop_3x1d_lut *colorop_lut;
 	struct weston_color_transform *xform;
 	struct drm_color_lut *drm_lut;
-	size_t lut_size;
+	size_t lut_len;
 	uint32_t gamma_lut_blob_id;
 	struct weston_vec3f *cm_lut;
 	char *err_msg;
@@ -2349,8 +2349,8 @@ drm_output_pick_blend_to_output(struct drm_output *output)
 	if (!xform)
 		return 0;
 
-	lut_size = output->crtc->lut_size;
-	if (lut_size == 0) {
+	lut_len = output->crtc->lut_size;
+	if (lut_len == 0) {
 		drm_debug(b, "[output] can't offload blend-to-output: GAMMA_LUT_SIZE unsupported\n");
 		return -1;
 	}
@@ -2359,13 +2359,13 @@ drm_output_pick_blend_to_output(struct drm_output *output)
 	 * First let's check if the xform has already been cached. If that's the
 	 * case, we make use of it.
 	 */
-	colorop_lut = drm_colorop_3x1d_lut_search(device, xform, lut_size);
+	colorop_lut = drm_colorop_3x1d_lut_search(device, xform, lut_len);
 	if (colorop_lut) {
 		output->blend_to_output_xform = colorop_lut;
 		return 0;
 	}
 
-	cm_lut = lut_3x1d_from_blend_to_output(compositor, xform, lut_size, &err_msg);
+	cm_lut = lut_3x1d_from_blend_to_output(compositor, xform, lut_len, &err_msg);
 	if (!cm_lut) {
 		drm_debug(b, "[output] failed to create 3x1D LUT for blend-to-output: %s\n",
 			     err_msg);
@@ -2373,14 +2373,14 @@ drm_output_pick_blend_to_output(struct drm_output *output)
 		return -1;
 	}
 
-	drm_lut = xzalloc(lut_size * sizeof(*drm_lut));
-	for (i = 0; i < lut_size; i++) {
+	drm_lut = xzalloc(lut_len * sizeof(*drm_lut));
+	for (i = 0; i < lut_len; i++) {
 		drm_lut[i].red   = cm_lut[i].r * 0xffff;
 		drm_lut[i].green = cm_lut[i].g * 0xffff;
 		drm_lut[i].blue  = cm_lut[i].b * 0xffff;
 	}
 	free(cm_lut);
-	ret = drmModeCreatePropertyBlob(device->kms_device->fd, drm_lut, lut_size * sizeof(*drm_lut),
+	ret = drmModeCreatePropertyBlob(device->kms_device->fd, drm_lut, lut_len * sizeof(*drm_lut),
 					&gamma_lut_blob_id);
 	free(drm_lut);
 	if (ret < 0) {
@@ -2389,7 +2389,7 @@ drm_output_pick_blend_to_output(struct drm_output *output)
 	}
 
 	output->blend_to_output_xform =
-		drm_colorop_3x1d_lut_create(xform, device, lut_size,
+		drm_colorop_3x1d_lut_create(device, xform, lut_len,
 					    gamma_lut_blob_id);
 	return 0;
 }
