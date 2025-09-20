@@ -1463,6 +1463,10 @@ drm_colorop_program(drmModeAtomicReq *req, struct drm_colorop_state *colorop_sta
 		colorop_prop = WDRM_COLOROP_DATA;
 		prop_val = colorop_state->object.lut_3d_blob_id;
 		return colorop_program(req, colorop, colorop_prop, prop_val, err_msg);
+ 	case COLOROP_OBJECT_TYPE_MULTIPLIER:
+		colorop_prop = WDRM_COLOROP_MULTIPLIER;
+		prop_val = colorop_state->object.multiplier;
+		return colorop_program(req, colorop, colorop_prop, prop_val, err_msg);
 	}
 	weston_assert_not_reached(compositor,
 				  "unknown drm_colorop_state object type");

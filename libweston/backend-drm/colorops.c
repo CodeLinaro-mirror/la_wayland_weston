@@ -511,10 +511,42 @@ drm_colorop_matrix_blob_from_mapping(struct drm_device *device,
 	return colorop_mat;
 }
 
+struct colorop_curve_scaler {
+	float factor;
+	/* placement wrt the curve colorop in the chain */
+	enum {
+		PLACEMENT_NONE = 0,
+		PLACEMENT_BEFORE,
+		PLACEMENT_AFTER,
+	} placement;
+};
+
 static enum wdrm_colorop_curve_1d
 weston_tf_to_colorop_curve(const struct weston_color_tf_info *tf_info,
-			   enum weston_tf_direction tf_direction)
+			   enum weston_tf_direction tf_direction,
+			   struct colorop_curve_scaler *scaler)
 {
+	/**
+	 * wdrm_colorop_curve_1d only supports PQ EOTF (and its inverse) scaled
+	 * by 125. We don't have a tf_info that corresponds to this specific
+	 * scaled curve, but we handle it as a special case. A multiplier
+	 * colorop is needed to scale values up or down, depending if we have
+	 * the EOTF or its inverse. See curve_create_colorop_state().
+	 */
+	if (tf_info->tf == WESTON_TF_ST2084_PQ) {
+		if (tf_direction == WESTON_INVERSE_TF) {
+			scaler->factor = 125.0f;
+			scaler->placement = PLACEMENT_BEFORE;
+			return WDRM_COLOROP_CURVE_1D_PQ_125_INV_EOTF;
+		} else {
+			scaler->factor = 1.0f / 125.0f;
+			scaler->placement = PLACEMENT_AFTER;
+			return WDRM_COLOROP_CURVE_1D_PQ_125_EOTF;
+		}
+	}
+
+	scaler->factor = 1.0f;
+	scaler->placement = PLACEMENT_NONE;
 	return (tf_direction == WESTON_INVERSE_TF) ?
 		tf_info->kms_colorop_inverse : tf_info->kms_colorop;
 }
@@ -618,6 +650,7 @@ is_colorop_compatible_with_curve(struct weston_compositor *compositor,
 	struct weston_color_curve_parametric param;
 	struct drm_property_info *prop_info;
 	enum wdrm_colorop_curve_1d curve_type;
+	struct colorop_curve_scaler scaler;
 	bool ret;
 
 	if (colorop->type == WDRM_COLOROP_TYPE_1D_CURVE) {
@@ -625,7 +658,8 @@ is_colorop_compatible_with_curve(struct weston_compositor *compositor,
 			return false;
 
 		curve_type = weston_tf_to_colorop_curve(curve->u.enumerated.tf.info,
-							curve->u.enumerated.tf_direction);
+							curve->u.enumerated.tf_direction,
+							&scaler);
 		if (curve_type == WDRM_COLOROP_CURVE_1D__COUNT)
 			return false;
 
@@ -794,12 +828,14 @@ prop_val_from_curve(struct drm_device *device, struct drm_colorop *colorop,
 	struct weston_compositor *compositor = device->backend->compositor;
 	enum wdrm_colorop_curve_1d curve_type;
 	struct drm_property_enum_info *prop_info;
+	struct colorop_curve_scaler scaler;
 
 	weston_assert_u32_eq(compositor, curve->type,
 			     WESTON_COLOR_CURVE_TYPE_ENUM);
 
 	curve_type = weston_tf_to_colorop_curve(curve->u.enumerated.tf.info,
-						curve->u.enumerated.tf_direction);
+						curve->u.enumerated.tf_direction,
+						&scaler);
 	weston_assert_u32_ne(compositor, curve_type,
 			     WDRM_COLOROP_CURVE_1D__COUNT);
 
@@ -807,6 +843,40 @@ prop_val_from_curve(struct drm_device *device, struct drm_colorop *colorop,
 	weston_assert_true(compositor, prop_info->valid);
 
 	return prop_info->value;
+}
+
+static struct drm_colorop_state *
+multiplier_create_colorop_state(struct drm_color_pipeline_state *pipeline_state,
+				struct drm_colorop *first_colorop,
+				struct drm_colorop *last_colorop,
+				float multiplier)
+{
+	struct drm_color_pipeline *pipeline = pipeline_state->pipeline;
+	struct drm_colorop_state_object so = { 0 };
+	struct drm_colorop *colorop;
+	bool found = false;
+
+	/**
+	 * The multiplier colorop must be between first_colorop and
+	 * last_colorop (excluding both).
+	 */
+	colorop = first_colorop;
+	while ((colorop = drm_colorop_iterate(pipeline, colorop))) {
+		if (colorop == last_colorop)
+			break;
+
+		if (colorop->type == WDRM_COLOROP_TYPE_MULTIPLIER) {
+			found = true;
+			break;
+		}
+	}
+	if (!found)
+		return NULL;
+
+	so.type = COLOROP_OBJECT_TYPE_MULTIPLIER;
+	so.multiplier = (double) multiplier * (1ULL << 32);
+
+	return drm_colorop_state_create(pipeline_state, colorop, so);
 }
 
 static struct drm_colorop_state *
@@ -822,24 +892,35 @@ curve_create_colorop_state(struct drm_color_pipeline_state *pipeline_state,
 	struct drm_colorop_3x1d_lut_blob *lut_blob;
 	struct weston_color_curve *curve;
 	struct drm_colorop_state_object so = { 0 };
-	struct drm_colorop *colorop;
+	struct drm_colorop *colorop_curve;
+	struct drm_colorop_state *cs_curve;
+	struct drm_colorop_state *cs_multiplier = NULL;
 	uint32_t lut_len;
+	struct colorop_curve_scaler scaler = (struct colorop_curve_scaler) {
+		.factor = 1.0f,
+		.placement = PLACEMENT_NONE,
+	};
 
 	curve = (curve_step == WESTON_COLOR_CURVE_STEP_PRE) ? &xform->pre_curve :
 							      &xform->post_curve;
 
-	colorop = search_colorop_compatible_curve(pipeline, previous_colorop,
-						  curve, policy);
-	if (!colorop)
+	if (curve->type == WESTON_COLOR_CURVE_TYPE_ENUM)
+		(void) weston_tf_to_colorop_curve(curve->u.enumerated.tf.info,
+						  curve->u.enumerated.tf_direction,
+						  &scaler);
+
+	colorop_curve = search_colorop_compatible_curve(pipeline, previous_colorop,
+							curve, policy);
+	if (!colorop_curve)
 		return NULL;
 
-	switch (colorop->type) {
+	switch (colorop_curve->type) {
 	case WDRM_COLOROP_TYPE_1D_CURVE:
 		so.type = COLOROP_OBJECT_TYPE_CURVE;
-		so.curve_type_prop_val = prop_val_from_curve(device, colorop, curve);
+		so.curve_type_prop_val = prop_val_from_curve(device, colorop_curve, curve);
 		break;
 	case WDRM_COLOROP_TYPE_1D_LUT:
-		lut_len = colorop->size;
+		lut_len = colorop_curve->size;
 		lut_blob = drm_colorop_3x1d_lut_blob_from_curve(device, xform,
 								curve_step, lut_len);
 		if (!lut_blob)
@@ -852,7 +933,31 @@ curve_create_colorop_state(struct drm_color_pipeline_state *pipeline_state,
 					  "curve colorop should be 1D curve or 1D LUT");
 	}
 
-	return drm_colorop_state_create(pipeline_state, colorop, so);
+	/**
+	 * Curve may require a multiplier colorop before or after it.
+	 */
+
+	if (scaler.placement == PLACEMENT_BEFORE)
+		cs_multiplier = multiplier_create_colorop_state(pipeline_state,
+								previous_colorop, /* first colorop */
+								colorop_curve, /* last colorop */
+								scaler.factor);
+
+	cs_curve = drm_colorop_state_create(pipeline_state, colorop_curve, so);
+
+	if (scaler.placement == PLACEMENT_AFTER)
+		cs_multiplier = multiplier_create_colorop_state(pipeline_state,
+								colorop_curve, /* first colorop */
+								NULL, /* last colorop */
+								scaler.factor);
+
+	if (scaler.placement != PLACEMENT_NONE && !cs_multiplier) {
+		drm_colorop_state_destroy(cs_curve);
+		return NULL;
+	}
+
+	/* Return the colorop state of the colorop that comes later in the chain. */
+	return (scaler.placement == PLACEMENT_AFTER) ? cs_multiplier : cs_curve;
 }
 
 static struct drm_colorop_state *
