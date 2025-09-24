@@ -67,6 +67,9 @@
 #include "gbm-buffer-backend.h"
 #include "gbm-buffer-backend-server-protocol.h"
 #include "libweston-internal.h"
+#include <drm_fourcc.h>
+#include <display/drm/sde_drm.h>
+#include "pixel-formats.h"
 
 static void
 gbm_buffer_destroy_params(struct wl_resource *params_resource);
@@ -230,6 +233,35 @@ gbm_buf_info_get(struct wl_resource *resource, struct gbm_buf_info *gbo_info)
         return -1;
 
     return 0;
+}
+
+WL_EXPORT void
+configure_buffer_format_from_gbm(uint32_t format, struct weston_buffer *buffer)
+{
+    if (!buffer) {
+        return;
+    }
+
+    switch (format) {
+    case GBM_FORMAT_YCbCr_420_TP10_UBWC:
+    case GBM_FORMAT_YCbCr_420_P010_UBWC:
+        buffer->pixel_format = pixel_format_get_info(DRM_FORMAT_NV12);
+        buffer->format_modifier = DRM_FORMAT_MOD_QCOM_COMPRESSED |
+                                  DRM_FORMAT_MOD_QCOM_DX |
+                                  DRM_FORMAT_MOD_QCOM_TIGHT;
+        break;
+
+    case GBM_FORMAT_YCbCr_420_P010_VENUS:
+    case GBM_FORMAT_P010:
+        buffer->pixel_format = pixel_format_get_info(DRM_FORMAT_NV12);
+        buffer->format_modifier = DRM_FORMAT_MOD_QCOM_DX;
+        break;
+
+    default:
+        buffer->pixel_format = pixel_format_get_info(format);
+        buffer->format_modifier = DRM_FORMAT_MOD_LINEAR;
+        break;
+    }
 }
 
 static void

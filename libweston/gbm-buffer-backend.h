@@ -68,6 +68,7 @@ extern "C" {
 #include <stdlib.h>
 #include "gbm_priv.h"
 #include <stdio.h>
+#include <libweston/libweston.h>
 
 #define GBM_BUFFER_BACKEND_PROTOCOL
 
@@ -161,6 +162,8 @@ struct gbm_buffer *gbm_buffer_get(struct wl_resource *resource);
  * \return Zero on success, -1 on failure.
  */
 int gbm_buf_info_get(struct wl_resource *resource, struct gbm_buf_info *gbo_info);
+
+void configure_buffer_format_from_gbm(uint32_t format, struct weston_buffer *buffer);
 
 void *gbm_buffer_backend_get_user_data(struct gbm_buffer *buffer);
 
