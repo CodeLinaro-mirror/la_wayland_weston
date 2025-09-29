@@ -1443,7 +1443,6 @@ drm_shutdown(struct weston_backend *backend)
 	udev_input_destroy(&b->input);
 
 	wl_event_source_remove(b->udev_drm_source);
-	wl_event_source_remove(b->drm_source);
 
 	weston_log_scope_destroy(b->debug);
 	b->debug = NULL;
@@ -1954,7 +1953,7 @@ drm_backend_create(struct weston_compositor *compositor,
 	b->udev_monitor = udev_monitor_new_from_netlink(b->udev, "udev");
 	if (b->udev_monitor == NULL) {
 		weston_log("failed to initialize udev monitor\n");
-		goto err_drm_source;
+		goto err_udev_dev;
 	}
 	udev_monitor_filter_add_match_subsystem_devtype(b->udev_monitor,
 							"drm", NULL);
@@ -2030,8 +2029,6 @@ drm_backend_create(struct weston_compositor *compositor,
 err_udev_monitor:
 	wl_event_source_remove(b->udev_drm_source);
 	udev_monitor_unref(b->udev_monitor);
-err_drm_source:
-	wl_event_source_remove(b->drm_source);
 err_udev_input:
 	udev_input_destroy(&b->input);
 err_udev_dev:
