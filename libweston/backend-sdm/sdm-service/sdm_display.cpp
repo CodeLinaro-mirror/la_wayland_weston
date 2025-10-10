@@ -189,6 +189,15 @@ DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
 
     frame_dumper_ = new SdmFrameDumper(display_id, GetDisplayString(), buffer_allocator_);
 
+    std::bitset<kClientCapabilityMax> client_capabilities =
+                                 std::bitset<kClientCapabilityMax>().set();
+    client_capabilities.reset(kPunchholeSupported);
+
+    error = display_intf_->SetClientTargetCapability(client_capabilities);
+    if (error != kErrorNone) {
+        DLOGW("Failed to populate client capabilities");
+    }
+
     return kErrorNone;
 }
 
