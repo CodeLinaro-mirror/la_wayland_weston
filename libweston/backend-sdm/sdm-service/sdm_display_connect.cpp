@@ -32,6 +32,7 @@
 #include "sdm-service/sdm_display.h"
 #include "sdm-service/sdm_display_connect.h"
 #include "sdm-service/uevent.h"
+#include "sdm-service/sdm_display_qdcm_session.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,6 +59,8 @@ CreatedDisplaysInfo displays_;
 HWDisplaysInfo hw_displays_info_ = {};
 // ordered by output id
 SdmDisplaysInfo sdm_displays_info_ = {};
+
+static QDCMSession *qdcmsession_ = nullptr;
 
 SdmDisplayProxy *GetDisplayFromId(uint32_t display_id) {
     auto it = displays_.find(display_id);
@@ -117,7 +120,7 @@ SetProperty(const char *property_name, const char *value)
   return kErrorNotSupported;
 }
 
-int CreateCore(bool use_pixman)
+DisplayError CreateCore(bool use_pixman)
 {
     DisplayError error = kErrorNone;
     if (core_intf_) {
@@ -125,6 +128,16 @@ int CreateCore(bool use_pixman)
         return kErrorNone;
     }
     buffer_allocator_ = new SdmDisplayBufferAllocator(use_pixman);
+    if (!qdcmsession_) {
+      qdcmsession_ = new QDCMSession;
+      if (qdcmsession_) {
+        if (qdcmsession_->Init(buffer_allocator_) != kErrorNone) {
+          DLOGE("qdcmsession Init failed");
+          delete qdcmsession_;
+          qdcmsession_ = nullptr;
+        }
+      }
+    }
 
     // TODO: Check the requirement for this property
     std::shared_ptr<IPCIntf> ipc_intf = nullptr;
@@ -146,7 +159,7 @@ int CreateCore(bool use_pixman)
     return kErrorNone;
 }
 
-int DestroyCore()
+DisplayError DestroyCore()
 {
     DisplayError error = kErrorNone;
 
@@ -178,7 +191,7 @@ int DestroyCore()
     return kErrorNone;
 }
 
-int GetFirstDisplayType(int *display_id)
+DisplayError GetFirstDisplayType(int *display_id)
 {
     DisplayError error = kErrorNone;
 
@@ -203,7 +216,7 @@ int GetFirstDisplayType(int *display_id)
     return kErrorNone;
 }
 
-int CreateDisplay(uint32_t display_id)
+DisplayError CreateDisplay(uint32_t display_id)
 {
     DisplayError error = kErrorNone;
     HWDisplayInfo hw_display_info;
@@ -248,7 +261,7 @@ int CreateDisplay(uint32_t display_id)
     return kErrorNone;
 }
 
-int Prepare(uint32_t display_id, struct drm_output *output)
+DisplayError Prepare(uint32_t display_id, struct drm_output *output)
 {
     DisplayError error = kErrorNone;
     SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
@@ -270,7 +283,7 @@ int Prepare(uint32_t display_id, struct drm_output *output)
     return kErrorNone;
 }
 
-int Commit(uint32_t display_id, struct drm_output *output)
+DisplayError Commit(uint32_t display_id, struct drm_output *output)
 {
     DisplayError error = kErrorNone;
     SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
@@ -290,7 +303,7 @@ int Commit(uint32_t display_id, struct drm_output *output)
     return kErrorNone;
 }
 
-int DestroyDisplay(uint32_t display_id)
+DisplayError DestroyDisplay(uint32_t display_id)
 {
     DisplayError error = kErrorNone;
     SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
@@ -308,6 +321,12 @@ int DestroyDisplay(uint32_t display_id)
     delete displays_[display_id];
     displays_[display_id] = NULL;
     displays_.erase(display_id);
+
+    if (qdcmsession_) {
+        qdcmsession_->Deinit();
+        delete qdcmsession_;
+        qdcmsession_ = nullptr;
+    }
 
     #if SDM_DISPLAY_DEBUG
     DLOGD("function successful.");
@@ -339,7 +358,8 @@ bool GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *disp
     return SUCCESS;
 }
 
-int SetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config)
+DisplayError SetDisplayConfiguration(uint32_t display_id,
+                                     struct DisplayConfigInfo *display_config)
 {
     DisplayError error = kErrorNone;
     SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
@@ -361,7 +381,7 @@ int SetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *displ
     return kErrorNone;
 }
 
-int SetOutputBuffer(uint32_t display_id, void *gbm_bo)
+DisplayError SetOutputBuffer(uint32_t display_id, void *gbm_bo)
 {
     DisplayError error = kErrorNone;
     shared_ptr<Fence> release_fence;
@@ -407,7 +427,7 @@ bool GetDisplayHdrInfo(uint32_t display_id, struct DisplayHdrInfo *display_hdr_i
     return SUCCESS;
 }
 
-int RegisterCbs(uint32_t display_id, sdm_cbs *cbs) {
+DisplayError RegisterCbs(uint32_t display_id, sdm_cbs *cbs) {
     DisplayError error = kErrorNone;
     SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
     if (!dpy) {
@@ -436,7 +456,7 @@ int get_drm_master_fd(void) {
     return fd;
 }
 
-int SetDisplayState(uint32_t display_id, int power_mode) {
+DisplayError SetDisplayState(uint32_t display_id, int power_mode) {
     DisplayError error = kErrorNone;
     bool teardown;
     shared_ptr<Fence> release_fence;
@@ -472,7 +492,7 @@ int SetDisplayState(uint32_t display_id, int power_mode) {
     return kErrorNone;
 }
 
-int SetVSyncState(uint32_t display_id, bool state, struct drm_output *output)
+DisplayError SetVSyncState(uint32_t display_id, bool state, struct drm_output *output)
 {
     DisplayError error = kErrorNone;
     int type = kDisplayTypeMax;
@@ -496,7 +516,7 @@ int SetVSyncState(uint32_t display_id, bool state, struct drm_output *output)
     return kErrorNone;
 }
 
-int SetPanelBrightness(int display_id, float brightness)
+DisplayError SetPanelBrightness(int display_id, float brightness)
 {
     SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
     if (!dpy) {
@@ -507,7 +527,7 @@ int SetPanelBrightness(int display_id, float brightness)
     return dpy->SetPanelBrightness(brightness);
 }
 
-int GetPanelBrightness(int display_id, float *brightness)
+DisplayError GetPanelBrightness(int display_id, float *brightness)
 {
     SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
     if (!dpy) {

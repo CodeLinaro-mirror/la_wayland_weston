@@ -32,6 +32,44 @@
 
 #include "sdm-service/sdm_display_interface.h"
 
+/*! @brief This enum represents different error codes that display interfaces may return.
+*/
+typedef enum {
+  kErrorNone,             //!< Call executed successfully.
+  kErrorUndefined,        //!< An unspecified error has occured.
+  kErrorNotSupported,     //!< Requested operation is not supported.
+  kErrorPermission,       //!< Operation is not permitted in current state.
+  kErrorVersion,          //!< Client is using advanced version of interfaces and calling into an
+                          //!< older version of display library.
+  kErrorDataAlignment,    //!< Client data structures are not aligned on naturual boundaries.
+  kErrorInstructionSet,   //!< 32-bit client is calling into 64-bit library or vice versa.
+  kErrorParameters,       //!< Invalid parameters passed to a method.
+  kErrorFileDescriptor,   //!< Invalid file descriptor.
+  kErrorMemory,           //!< System is running low on memory.
+  kErrorResources,        //!< Not enough hardware resources available to execute call.
+  kErrorHardware,         //!< A hardware error has occured.
+  kErrorTimeOut,          //!< The operation has timed out to prevent client from waiting forever.
+  kErrorShutDown,         //!< Driver is processing shutdown sequence
+  kErrorPerfValidation,   //!< Bandwidth or Clock requirement validation failure.
+  kErrorNoAppLayers,      //!< No App layer(s) in the draw cycle.
+  kErrorRotatorValidation,  //!< Rotator configuration validation failure.
+  kErrorNotValidated,     //!< Draw cycle has not been validated.
+  kErrorCriticalResource,   //!< Critical resource allocation has failed.
+  kErrorDeviceRemoved,    //!< A device was removed unexpectedly.
+  kErrorDriverData,       //!< Expected information from the driver is missing.
+  kErrorDeferred,         //!< Call's intended action is being deferred to a later time.
+  kErrorNeedsCommit,      //!< Display is expecting a Commit() to be issued.
+  kErrorNeedsValidate,    //!< Validate Phase is needed for this draw cycle.
+  kErrorNeedsLutRegen,    //!< Tonemapping LUT regen is needed for this draw cycle.
+  kErrorNeedsQosRecalc,   //!< QoS data recalculation is needed for this draw cycle.
+  kErrorNeedsQosRecalcAndLutRegen,  //!< QoS data recalculation and Tonemapping LUT regen is needed
+                                    //   for this draw cycle.
+  kSeamlessNotAllowed,    //!< Seemless switch between configs not allowed.
+  kErrorDeviceBusy,       //!< Device is currently busy with other tasks.
+  kErrorTryAgain,         //!< Try the task again.
+  kErrorConfigMismatch,   //!< Inform client when config index between SDM and DAL are different
+}  DisplayError;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -52,7 +90,7 @@ extern "C" {
 
     @sa DestroyCore
 */
-int CreateCore(bool use_pixman);
+DisplayError CreateCore(bool use_pixman);
 
 /*! @brief Method to release internally stored handle to display core interface.
 
@@ -68,7 +106,7 @@ int CreateCore(bool use_pixman);
 
     @sa CreateCore
 */
-int DestroyCore();
+DisplayError DestroyCore();
 
 /*! @brief Method to get characteristics of the first display.
 
@@ -79,7 +117,7 @@ int DestroyCore();
     @return \link DisplayError \endlink
 
 */
-int GetFirstDisplayType(int *display_id);
+DisplayError GetFirstDisplayType(int *display_id);
 
 /*! @brief Method to create a display device for a given display id.
 
@@ -91,7 +129,7 @@ int GetFirstDisplayType(int *display_id);
 
     @sa DestroyDisplay
 */
-int CreateDisplay(uint32_t display_id);
+DisplayError CreateDisplay(uint32_t display_id);
 
 /*! @brief Method to destroy a display device.
 
@@ -104,7 +142,7 @@ int CreateDisplay(uint32_t display_id);
 
     @sa CreateDisplay
 */
-int DestroyDisplay(uint32_t display_id);
+DisplayError DestroyDisplay(uint32_t display_id);
 
 /*! @brief Method to create a display device for a given display id even if
     display was already created. This method forces the display to be re-created
@@ -136,7 +174,7 @@ int ReconfigureDisplay(uint32_t display_id);
 
     @sa Commit
 */
-int Prepare(uint32_t display_id, struct drm_output *output);
+DisplayError Prepare(uint32_t display_id, struct drm_output *output);
 
 /*! @brief Method to commit layers of a frame submitted in a former call to Prepare().
 
@@ -156,7 +194,7 @@ int Prepare(uint32_t display_id, struct drm_output *output);
 
     @sa Prepare
 */
-int Commit(uint32_t display_id, struct drm_output *output);
+DisplayError Commit(uint32_t display_id, struct drm_output *output);
 
 /*! @brief Method to obtain display property for a display_id requested.
     @details Client shall use this method to display properties of requested
@@ -182,7 +220,8 @@ bool GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *disp
 
     @sa
 */
-int SetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config);
+DisplayError SetDisplayConfiguration(uint32_t display_id,
+                                     struct DisplayConfigInfo *display_config);
 
 /*! @brief Method to obtain display's HDR information parameters for requested display_id.
     @details Client shall use this method to obtain display's HDR capability parameters
@@ -208,7 +247,7 @@ bool GetDisplayHdrInfo(uint32_t display_id, struct DisplayHdrInfo *display_hdr_i
 
     @sa
 */
-int RegisterCbs(uint32_t display_id, sdm_cbs_t *cbs);
+DisplayError RegisterCbs(uint32_t display_id, sdm_cbs_t *cbs);
 
 /*! @brief Method to turn on power of display
 
@@ -223,7 +262,7 @@ int RegisterCbs(uint32_t display_id, sdm_cbs_t *cbs);
 
     @sa
 */
-int SetDisplayState(uint32_t display_id, int power_mode);
+DisplayError SetDisplayState(uint32_t display_id, int power_mode);
 
 /*! @brief Method to enable VSync State, i.e. whether to generate callback
     on next frame.
@@ -238,7 +277,7 @@ int SetDisplayState(uint32_t display_id, int power_mode);
 
     @sa
 */
-int SetVSyncState(uint32_t display_id, bool enable, struct drm_output *output);
+DisplayError SetVSyncState(uint32_t display_id, bool enable, struct drm_output *output);
 
 /*! @brief Method to set panel brightness..
 
@@ -251,7 +290,7 @@ int SetVSyncState(uint32_t display_id, bool enable, struct drm_output *output);
 
     @sa
 */
-int SetPanelBrightness(int display_id, float brightness);
+DisplayError SetPanelBrightness(int display_id, float brightness);
 
 /*! @brief Method to get panel brightness
 
@@ -264,7 +303,7 @@ int SetPanelBrightness(int display_id, float brightness);
 
     @sa
 */
-int GetPanelBrightness(int display_id, float *brightness);
+DisplayError GetPanelBrightness(int display_id, float *brightness);
 
 /*! @brief Method for obtaining master fd.
 
@@ -288,7 +327,7 @@ uint32_t GetConnectorType(uint32_t display_id);
 
 bool IsVirtualOutput(uint32_t display_id);
 
-int SetOutputBuffer(uint32_t display_id, void *gbm_bo);
+DisplayError SetOutputBuffer(uint32_t display_id, void *gbm_bo);
 
 void ClearSDMLayers(struct drm_output *output);
 

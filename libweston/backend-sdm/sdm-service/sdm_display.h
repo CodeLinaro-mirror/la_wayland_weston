@@ -171,9 +171,9 @@ class SdmDisplayInterface {
     virtual SdmDisplayIntfType GetDisplayIntfType() = 0;
     virtual DisplayError SetPanelBrightness(float brightness) = 0;
     virtual DisplayError GetPanelBrightness(float *brightness) = 0;
-    virtual int ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
-                                     PPDisplayAPIPayload *out_payload,
-                                     PPPendingParams *pending_action) = 0;
+    virtual DisplayError ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
+                                              PPDisplayAPIPayload *out_payload,
+                                              PPPendingParams *pending_action) = 0;
     virtual void RefreshWithCachedLayerstack() = 0;
     virtual void RefreshCallback() = 0;
     virtual DisplayError SetHWDetailedEnhancerConfig(void *params) = 0;
@@ -215,9 +215,9 @@ class SdmNullDisplay : public SdmDisplayInterface {
     DisplayError GetPanelBrightness(float *brightness);
     void RefreshWithCachedLayerstack();
     void RefreshCallback();
-    int ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
-                             PPDisplayAPIPayload *out_payload,
-                             PPPendingParams *pending_action);
+    DisplayError ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
+                                      PPDisplayAPIPayload *out_payload,
+                                      PPPendingParams *pending_action);
     void SetIdleTimeoutMs(uint32_t timeout_ms, uint32_t inactive_ms);
     DisplayError SetHWDetailedEnhancerConfig(void *params);
     DisplayError SetDetailEnhancerConfig(const DisplayDetailEnhancerData &de_data);
@@ -256,9 +256,9 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     DisplayError GetPanelBrightness(float *brightness);
     DisplayError GetHdrInfo(struct DisplayHdrInfo *display_hdr_info);
 
-    int ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
-                             PPDisplayAPIPayload *out_payload,
-                             PPPendingParams *pending_action);
+    DisplayError ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
+                                      PPDisplayAPIPayload *out_payload,
+                                      PPPendingParams *pending_action);
 
     void SetIdleTimeoutMs(uint32_t timeout_ms, uint32_t inactive_ms);
     DisplayError SetHWDetailedEnhancerConfig(void *params);
@@ -443,9 +443,9 @@ class SdmDisplayProxy {
       display_intf_->RefreshCallback();
     }
 
-    int ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
-                             PPDisplayAPIPayload *out_payload,
-                             PPPendingParams *pending_action) {
+    DisplayError ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
+                                      PPDisplayAPIPayload *out_payload,
+                                      PPPendingParams *pending_action) {
       return display_intf_->ColorSVCRequestRoute(in_payload, out_payload, pending_action);
     }
 

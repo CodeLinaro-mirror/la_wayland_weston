@@ -369,7 +369,7 @@ DisplayError SdmDisplay::SetVSyncState(bool VSyncState, struct drm_output *outpu
 }
 
 DisplayError SdmDisplay::SetPanelBrightness(float brightness) {
-    return display_intf_->SetPanelBrightness(brightness);
+    return display_intf_->SetPanelBrightness(brightness, true);
 }
 
 DisplayError SdmDisplay::GetPanelBrightness(float *brightness) {
@@ -1879,15 +1879,15 @@ const char *SdmDisplay::GetDisplayString() {
   }
 }
 
-int SdmDisplay::ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
-                                     PPDisplayAPIPayload *out_payload,
-                                     PPPendingParams *pending_action) {
-  int ret = 0;
+DisplayError SdmDisplay::ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
+                                              PPDisplayAPIPayload *out_payload,
+                                              PPPendingParams *pending_action) {
+  DisplayError ret = kErrorNone;
 
   if (display_intf_) {
     ret = display_intf_->ColorSVCRequestRoute(in_payload, out_payload, pending_action);
   } else {
-    ret = -EINVAL;
+    ret = kErrorNotSupported;
   }
 
   return ret;
@@ -2113,7 +2113,8 @@ DisplayError SdmNullDisplay::GetPanelBrightness(float *brightness) {
   return kErrorNone;
 }
 
-int SdmNullDisplay::ColorSVCRequestRoute(const PPDisplayAPIPayload &in_payload,
+DisplayError SdmNullDisplay::ColorSVCRequestRoute(
+                                         const PPDisplayAPIPayload &in_payload,
                                          PPDisplayAPIPayload *out_payload,
                                          PPPendingParams *pending_action) {
   return kErrorNone;

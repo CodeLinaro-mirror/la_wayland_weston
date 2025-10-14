@@ -2658,9 +2658,8 @@ weston_buffer_from_resource(struct weston_compositor *ec,
 		buffer->direct_display = false;
 		buffer->width = gbmbuf->width;
 		buffer->height = gbmbuf->height;
-		buffer->pixel_format = pixel_format_get_info(gbmbuf->format);
+		configure_buffer_format_from_gbm(gbmbuf->format, buffer);
 		assert(buffer->pixel_format && !buffer->pixel_format->hide_from_clients);
-		buffer->format_modifier = DRM_FORMAT_MOD_LINEAR;
 		buffer->buffer_origin = ORIGIN_TOP_LEFT;
 #endif
 	} else if ((solid = single_pixel_buffer_get(buffer->resource))) {
