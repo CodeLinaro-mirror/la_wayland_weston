@@ -41,6 +41,7 @@
 #include <assert.h>
 #include <sys/mman.h>
 #include <time.h>
+#include <display/drm/msm_drm_pp.h>
 
 
 #include <xf86drm.h>
@@ -265,6 +266,7 @@ enum wdrm_crtc_property {
 	WDRM_CRTC_GAMMA_LUT,
 	WDRM_CRTC_GAMMA_LUT_SIZE,
 	WDRM_CRTC_VRR_ENABLED,
+        WDRM_CRTC_PCC,
 	WDRM_CRTC__COUNT
 };
 
@@ -695,6 +697,12 @@ struct drm_output {
 	submit_frame_cb virtual_submit_frame;
 
 	enum wdrm_content_type content_type;
+
+	/* PCC (Post Color Correction), per-CRTC persistent state */
+	bool pcc_enabled;        /* true: PCC is active on this output */
+	bool pcc_needs_update;   /* true: new values pending, must re-submit */
+	struct drm_msm_pcc pcc_conf;
+	uint32_t pcc_blob_id;    /* cached DRM blob; 0 = needs (re)creation */
 };
 
 void

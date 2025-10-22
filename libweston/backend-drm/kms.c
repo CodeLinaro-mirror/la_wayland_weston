@@ -201,6 +201,7 @@ const struct drm_property_info crtc_props[] = {
 	[WDRM_CRTC_GAMMA_LUT] = { .name = "GAMMA_LUT", },
 	[WDRM_CRTC_GAMMA_LUT_SIZE] = { .name = "GAMMA_LUT_SIZE", },
 	[WDRM_CRTC_VRR_ENABLED] = { .name = "VRR_ENABLED", },
+	[WDRM_CRTC_PCC] = { .name = "SDE_DSPP_PCC_V4", },
 };
 
 
@@ -1182,6 +1183,27 @@ drm_output_apply_state_atomic(struct drm_output_state *state,
 		ret |= crtc_add_prop(req, crtc, WDRM_CRTC_MODE_ID,
 				     current_mode->blob_id);
 		ret |= crtc_add_prop(req, crtc, WDRM_CRTC_ACTIVE, 1);
+
+		if (output->pcc_enabled &&
+		    (output->pcc_needs_update || device->state_invalid)) {
+			if (output->pcc_blob_id == 0) {
+				int blob_ret = drmModeCreatePropertyBlob(
+					device->drm.fd,
+					&output->pcc_conf,
+					sizeof(output->pcc_conf),
+					&output->pcc_blob_id);
+				if (blob_ret != 0) {
+					weston_log("DRM: failed to create PCC blob: %s\n",
+						   strerror(errno));
+					output->pcc_blob_id = 0;
+				}
+			}
+			if (output->pcc_blob_id != 0)
+				ret |= crtc_add_prop(req, crtc, WDRM_CRTC_PCC,
+						     output->pcc_blob_id);
+			if (!(*flags & DRM_MODE_ATOMIC_TEST_ONLY))
+				output->pcc_needs_update = false;
+		}
 
 		if (!output->deprecated_gamma_is_set) {
 			ret |= crtc_add_prop_zero_ok(req, crtc,
