@@ -267,6 +267,14 @@ void SdmDisplayBufferAllocator::GetGbmDeviceHandle(void **userdata) {
   *userdata = (void *) gbm_;
 }
 
+bool SdmDisplayBufferAllocator::GetIsPixmaniAvailable() {
+  return is_pixman_available_;
+}
+
+bool SdmDisplayBufferAllocator::GetIsGpuAvailable() {
+  return is_gpu_available_;
+}
+
 int SdmDisplayBufferAllocator::GetAllocatedBufferInfo(const BufferConfig \
                                                       &buffer_config,
                                                       AllocatedBufferInfo \
