@@ -133,6 +133,13 @@ option(
 )
 
 option(
+	'deprecated-xdg-shell-v6-unstable',
+	type: 'boolean',
+	value: false,
+	description: 'DEPRECATED: xdg-shell v6 unstable support. Use xdg-shell stable'
+)
+
+option(
 	'color-management-lcms',
 	type: 'boolean',
 	value: true,
