@@ -112,7 +112,10 @@ int SdmDisplayBufferAllocator::AllocateBuffer(BufferInfo *buffer_info) {
   int metadata_fd = -1;
   uint64_t alloc_flags = 0;
   uint32_t ubwc_status;
-  int error = SetBufferInfo(buffer_config.format, &format, &alloc_flags);
+  uint64_t pixel_fmt_mod = 0;
+
+  int error = SetBufferInfo(buffer_config.format, &format, &alloc_flags,
+                            &pixel_fmt_mod);
   if (error != 0) {
     return kErrorParameters;
   }
@@ -184,8 +187,9 @@ uint32_t SdmDisplayBufferAllocator::GetBufferSize(BufferInfo *buffer_info) {
   uint64_t usageFlags = 0;
   uint32_t gbmFormat = 0;
   struct gbm_buf_info bufInfo;
+  uint64_t pixel_fmt_mod = 0;
 
-  if (SetBufferInfo(bufferConfig.format, &gbmFormat, &usageFlags) < 0) {
+  if (SetBufferInfo(bufferConfig.format, &gbmFormat, &usageFlags, &pixel_fmt_mod) < 0) {
      return 0;
   }
   if (bufferConfig.secure) {
@@ -204,7 +208,8 @@ uint32_t SdmDisplayBufferAllocator::GetBufferSize(BufferInfo *buffer_info) {
   return size;
 }
 
-int SdmDisplayBufferAllocator::SetBufferInfo(LayerBufferFormat format, uint32_t *target, uint64_t *flags) {
+int SdmDisplayBufferAllocator::SetBufferInfo(LayerBufferFormat format, uint32_t *target, uint64_t *flags,
+                                             uint64_t *pixel_format_modifier) {
   switch (format) {
   case kFormatRGBA8888:                 *target = GBM_FORMAT_ABGR8888;
                                         break;
@@ -273,8 +278,9 @@ int SdmDisplayBufferAllocator::GetAllocatedBufferInfo(const BufferConfig \
   uint32_t alignedWidth = 0;
   uint32_t alignedHeight = 0;
   uint32_t size = 0;
+  uint64_t pixel_fmt_mod = 0;
 
-  if (SetBufferInfo(buffer_config.format, &gbmFormat, &usageFlags) < 0) {
+  if (SetBufferInfo(buffer_config.format, &gbmFormat, &usageFlags, &pixel_fmt_mod) < 0) {
      return kErrorParameters;
   }
   if (buffer_config.secure) {
@@ -369,8 +375,9 @@ int SdmDisplayBufferAllocator::GetBufferLayout(const AllocatedBufferInfo &buf_in
     uint32_t ubwc_status = 0;
     generic_buf_layout_t buf_layout;
     uint32_t aligned_width = 0;
+    uint64_t pixel_fmt_mod = 0;
 
-    SetBufferInfo(buf_info.format, &format1, &flags);
+    SetBufferInfo(buf_info.format, &format1, &flags, &pixel_fmt_mod);
 
     import_fd_data.fd = buf_info.fd;
     import_fd_data.format = format1;
