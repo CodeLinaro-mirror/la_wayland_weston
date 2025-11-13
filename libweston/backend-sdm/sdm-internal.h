@@ -54,7 +54,7 @@
 #include <xf86drmMode.h>
 #include <drm_fourcc.h>
 
-#ifdef BUILD_DRM_GBM
+#ifdef BUILD_SDM_GBM
 #include <gbm.h>
 #endif
 #include <libudev.h>
@@ -462,7 +462,7 @@ struct drm_fb *
 drm_fb_get_from_bo(struct gbm_bo *bo, struct drm_device *device,
 		   bool is_opaque, enum drm_fb_type type);
 
-#ifdef BUILD_DRM_GBM
+#ifdef BUILD_SDM_GBM
 extern struct drm_fb *
 drm_fb_get_from_paint_node(struct drm_output *output,
 			   struct weston_paint_node *pnode);
@@ -474,7 +474,7 @@ static inline struct drm_fb *
 drm_fb_get_from_paint_node(struct drm_output *output,
 			   struct weston_paint_node *pnode)
 {
-	weston_log("Not built with BUILD_DRM_GBM set\n");
+	weston_log("Not built with BUILD_SDM_GBM set\n");
 	return NULL;
 }
 
@@ -514,7 +514,7 @@ drm_backend_init_virtual_output_api(struct weston_compositor *compositor)
 }
 #endif
 
-#ifdef BUILD_DRM_GBM
+#ifdef BUILD_SDM_GBM
 int
 init_egl(struct drm_backend *b);
 

@@ -1228,7 +1228,7 @@ drm_output_create(struct weston_backend *backend, const char *name)
 	output->device = device;
 
 	output->max_bpc = 16;
-#ifdef BUILD_DRM_GBM
+#ifdef BUILD_SDM_GBM
 	output->gbm_bo_flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
 #endif
 
@@ -1487,7 +1487,7 @@ drm_destroy(struct weston_backend *backend)
 
 	DestroyCore();
 
-#ifdef BUILD_DRM_GBM
+#ifdef BUILD_SDM_GBM
 	if (b->gbm)
 		gbm_device_destroy(b->gbm);
 #endif
@@ -1923,7 +1923,7 @@ drm_backend_create(struct weston_compositor *compositor,
 		open_additional_devices(b, config->additional_devices);
 
 	if (config->renderer == WESTON_RENDERER_AUTO) {
-#ifdef BUILD_DRM_GBM
+#ifdef BUILD_SDM_GBM
 		config->renderer = WESTON_RENDERER_GL;
 #else
 		config->renderer = WESTON_RENDERER_PIXMAN;
@@ -2061,7 +2061,7 @@ err_launcher:
 	weston_launcher_destroy(compositor->launcher);
 err_compositor:
 	wl_list_remove(&b->base.link);
-#ifdef BUILD_DRM_GBM
+#ifdef BUILD_SDM_GBM
 	if (b->gbm)
 		gbm_device_destroy(b->gbm);
 #endif
