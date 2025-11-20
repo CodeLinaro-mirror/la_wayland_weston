@@ -377,8 +377,8 @@ gl_renderer_color_transform_create_3dlut(struct gl_renderer *gr,
 	struct gl_renderer_color_transform *gl_xform = NULL;
 	float *shaper = NULL;
 	float *lut3d = NULL;
-	float len_shaper;
-	float len_lut3d;
+	uint32_t len_shaper;
+	uint32_t len_lut3d;
 	bool ok;
 
 	/**
