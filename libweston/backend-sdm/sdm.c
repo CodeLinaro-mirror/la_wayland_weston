@@ -132,12 +132,25 @@ sdm_weston_global_transform_rect(struct weston_paint_node *node,
 	/* Now calculate the source rectangle, by transforming the destination
 	 * rectangle by the output to buffer matrix. */
 	if (node->transform) {
+		pixman_box32_t corners_box = {0};
 		corners[0] = weston_matrix_transform_coord(
 			&node->view->transform.inverse,
 			weston_coord(box->x1, box->y1));
 		corners[1] = weston_matrix_transform_coord(
 			&node->view->transform.inverse,
 			weston_coord(box->x2, box->y2));
+		pixman_box32_t surf_box = {
+			.x1 = corners[0].x,
+			.y1 = corners[0].y,
+			.x2 = corners[1].x,
+			.y2 = corners[1].y,
+		};
+		/* Convert from surface coordinates to buffer coordinates */
+		corners_box = weston_surface_to_buffer_rect(node->view->surface, surf_box);
+		*x1 = corners_box.x1;
+		*y1 = corners_box.y1;
+		*x2 = corners_box.x2;
+		*y2 = corners_box.y2;
 	} else {
 		corners[0] = weston_matrix_transform_coord(
 			&node->output_to_buffer_matrix,
@@ -145,11 +158,11 @@ sdm_weston_global_transform_rect(struct weston_paint_node *node,
 		corners[1] = weston_matrix_transform_coord(
 			&node->output_to_buffer_matrix,
 			weston_coord(box->x2, box->y2));
+		*x1 = corners[0].x;
+		*y1 = corners[0].y;
+		*x2 = corners[1].x;
+		*y2 = corners[1].y;
 	}
-	*x1 = corners[0].x;
-	*y1 = corners[0].y;
-	*x2 = corners[1].x;
-	*y2 = corners[1].y;
 }
 
 int
@@ -1452,7 +1465,6 @@ drm_shutdown(struct weston_backend *backend)
 	udev_input_destroy(&b->input);
 
 	wl_event_source_remove(b->udev_drm_source);
-	wl_event_source_remove(b->drm_source);
 
 	weston_log_scope_destroy(b->debug);
 	b->debug = NULL;
@@ -1963,7 +1975,7 @@ drm_backend_create(struct weston_compositor *compositor,
 	b->udev_monitor = udev_monitor_new_from_netlink(b->udev, "udev");
 	if (b->udev_monitor == NULL) {
 		weston_log("failed to initialize udev monitor\n");
-		goto err_drm_source;
+		goto err_udev_dev;
 	}
 	udev_monitor_filter_add_match_subsystem_devtype(b->udev_monitor,
 							"drm", NULL);
@@ -2039,8 +2051,6 @@ drm_backend_create(struct weston_compositor *compositor,
 err_udev_monitor:
 	wl_event_source_remove(b->udev_drm_source);
 	udev_monitor_unref(b->udev_monitor);
-err_drm_source:
-	wl_event_source_remove(b->drm_source);
 err_udev_input:
 	udev_input_destroy(&b->input);
 err_udev_dev:

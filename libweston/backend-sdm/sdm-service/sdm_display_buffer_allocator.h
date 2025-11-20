@@ -59,13 +59,15 @@ class SdmDisplayBufferAllocator : public BufferAllocator {
 
   int GetAllocatedBufferInfo(const BufferConfig &buffer_config,
                              AllocatedBufferInfo *allocated_buffer_info);
-  int SetBufferInfo(LayerBufferFormat format, uint32_t *target, uint64_t *flags);
+  int SetBufferInfo(LayerBufferFormat format, uint32_t *target, uint64_t *flags,
+                    uint64_t *pixel_format_modifier);
   int GetBufferLayout(const AllocatedBufferInfo &buf_info,
                       uint32_t stride[4], uint32_t offset[4],
                       uint32_t *num_planes);
   void GetGbmDeviceHandle(void **userdata);
 
-  int SetBufferInfo(LayerBufferFormat format, int *target, uint64_t *flags) {
+  int SetBufferInfo(LayerBufferFormat format, int *target, uint64_t *flags,
+                    uint64_t *pixel_format_modifier) {
     return 0;
   }
   int GetAlignedWidthAndHeight(int width, int height, int format, uint32_t alloc_type,
@@ -76,7 +78,8 @@ class SdmDisplayBufferAllocator : public BufferAllocator {
     return true;
   }
   LayerBufferFormat GetSDMFormat(const int32_t &source, const int32_t flags,
-                                 const int64_t compression_type) {
+                                 const int64_t compression_type,
+                                 uint64_t pixel_format_modifier) {
     return kFormatInvalid;
   }
   DisplayError ColorMetadataToDataspace(Dataspace ds, uint32_t *int_dataspace) {
