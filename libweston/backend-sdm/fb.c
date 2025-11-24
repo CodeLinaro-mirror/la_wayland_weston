@@ -76,7 +76,7 @@ drm_fb_destroy_dumb(struct drm_fb *fb)
 	drm_fb_destroy(fb);
 }
 
-#ifdef BUILD_DRM_GBM
+#ifdef BUILD_SDM_GBM
 static int gem_handle_get(struct drm_device *device, int handle)
 {
 	unsigned int *ref_count;
@@ -283,7 +283,7 @@ drm_fb_ref(struct drm_fb *fb)
 	return fb;
 }
 
-#ifdef BUILD_DRM_GBM
+#ifdef BUILD_SDM_GBM
 static void
 drm_fb_destroy_gbm(struct gbm_bo *bo, void *data)
 {
@@ -587,7 +587,7 @@ drm_fb_unref(struct drm_fb *fb)
 		break;
 	case BUFFER_PIXMAN_GBM:
 		break;
-#ifdef BUILD_DRM_GBM
+#ifdef BUILD_SDM_GBM
 	case BUFFER_CURSOR:
 	case BUFFER_CLIENT:
 		gbm_bo_destroy(fb->bo);
@@ -605,7 +605,7 @@ drm_fb_unref(struct drm_fb *fb)
 	}
 }
 
-#ifdef BUILD_DRM_GBM
+#ifdef BUILD_SDM_GBM
 bool
 drm_can_scanout_dmabuf(struct weston_backend *backend,
 		       struct linux_dmabuf_buffer *dmabuf)

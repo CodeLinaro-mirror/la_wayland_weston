@@ -55,7 +55,7 @@ endif
 #endif
 deps_drm += dep_gbm
 srcs_drm += 'sdm-gbm.c'
-config_h.set('BUILD_DRM_GBM', '1')
+config_h.set('BUILD_SDM_GBM', '1')
 
 if get_option('disable-power-key')
 	config_h.set('DISABLE_POWER_KEY', '1')
