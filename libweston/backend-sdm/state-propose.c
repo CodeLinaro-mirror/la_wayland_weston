@@ -47,9 +47,9 @@ void
 destroy_sdm_layer(struct sdm_layer *layer)
 {
 	pixman_region32_fini(&layer->overlap);
-	weston_buffer_reference(&layer->buffer_ref, NULL, BUFFER_WILL_NOT_BE_ACCESSED);
 	wl_list_remove(&layer->link);
 	if (layer->fb) {
+		weston_buffer_reference(&layer->buffer_ref, NULL, BUFFER_WILL_NOT_BE_ACCESSED);
 		drm_fb_unref(layer->fb);
 	}
 	free(layer);
@@ -75,9 +75,16 @@ create_sdm_layer(struct drm_output *output, struct weston_paint_node *pnode,
 
 	pixman_region32_init(&layer->overlap);
 	pixman_region32_copy(&layer->overlap, overlap);
-	weston_buffer_reference(&layer->buffer_ref,
-                                ev->surface->buffer_ref.buffer,
-                                BUFFER_MAY_BE_ACCESSED);
+
+	if (!layer->fb) {
+		/* SHM ref count should be managed in the rendering process. */
+		weston_buffer_reference(&layer->buffer_ref, NULL,
+					BUFFER_WILL_NOT_BE_ACCESSED);
+	} else {
+		weston_buffer_reference(&layer->buffer_ref,
+					ev->surface->buffer_ref.buffer,
+					BUFFER_MAY_BE_ACCESSED);
+	}
 
 	return layer;
 }
@@ -163,7 +170,7 @@ drm_assign_planes(struct weston_output *output_base)
 		ev = sdm_layer->pnode->view;
 		/* Move to primary plane if Strategy set it to GPU composition */
 		if (sdm_layer->composition_type == SDM_COMPOSITION_GPU) {
-			weston_paint_node_move_to_plane(pnode, next_plane);
+			weston_paint_node_move_to_plane(sdm_layer->pnode, next_plane);
 			pixman_region32_union(&overlap, &overlap, &ev->transform.boundingbox);
 			ev->psf_flags = 0;
 			destroy_sdm_layer(sdm_layer);
