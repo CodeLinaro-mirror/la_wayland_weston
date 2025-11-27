@@ -152,12 +152,21 @@ sdm_weston_global_transform_rect(struct weston_paint_node *node,
 		*x2 = corners_box.x2;
 		*y2 = corners_box.y2;
 	} else {
+		struct weston_output *output = node->output;
+	        //Convert global box -> output-local physical coordinates
+	        pixman_box32_t output_box = {
+	            .x1 = box->x1 - output->pos.c.x,
+	            .y1 = box->y1 - output->pos.c.y,
+	            .x2 = box->x2 - output->pos.c.x,
+	            .y2 = box->y2 - output->pos.c.y,
+	        };
+	        //Convert output -> buffer coordinates
 		corners[0] = weston_matrix_transform_coord(
 			&node->output_to_buffer_matrix,
-			weston_coord(box->x1, box->y1));
+			weston_coord(output_box.x1, output_box.y1));
 		corners[1] = weston_matrix_transform_coord(
 			&node->output_to_buffer_matrix,
-			weston_coord(box->x2, box->y2));
+			weston_coord(output_box.x2, output_box.y2));
 		*x1 = corners[0].x;
 		*y1 = corners[0].y;
 		*x2 = corners[1].x;
