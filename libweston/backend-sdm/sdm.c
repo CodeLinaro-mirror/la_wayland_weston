@@ -128,11 +128,11 @@ sdm_weston_global_transform_rect(struct weston_paint_node *node,
 				float *x2, float *y2)
 {
 	struct weston_coord corners[2];
+	pixman_box32_t corners_box = {0};
 
 	/* Now calculate the source rectangle, by transforming the destination
 	 * rectangle by the output to buffer matrix. */
 	if (node->transform) {
-		pixman_box32_t corners_box = {0};
 		corners[0] = weston_matrix_transform_coord(
 			&node->view->transform.inverse,
 			weston_coord(box->x1, box->y1));
@@ -152,16 +152,11 @@ sdm_weston_global_transform_rect(struct weston_paint_node *node,
 		*x2 = corners_box.x2;
 		*y2 = corners_box.y2;
 	} else {
-		corners[0] = weston_matrix_transform_coord(
-			&node->output_to_buffer_matrix,
-			weston_coord(box->x1, box->y1));
-		corners[1] = weston_matrix_transform_coord(
-			&node->output_to_buffer_matrix,
-			weston_coord(box->x2, box->y2));
-		*x1 = corners[0].x;
-		*y1 = corners[0].y;
-		*x2 = corners[1].x;
-		*y2 = corners[1].y;
+		corners_box = weston_surface_to_buffer_rect(node->view->surface, *box);
+		*x1 = 0.0;
+		*y1 = 0.0;
+		*x2 = corners_box.x2 - corners_box.x1;
+		*y2 = corners_box.y2 - corners_box.y1;
 	}
 }
 
