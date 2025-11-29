@@ -65,6 +65,8 @@ class SdmDisplayBufferAllocator : public BufferAllocator {
                       uint32_t stride[4], uint32_t offset[4],
                       uint32_t *num_planes);
   void GetGbmDeviceHandle(void **userdata);
+  bool GetIsPixmaniAvailable();
+  bool GetIsGpuAvailable();
 
   int SetBufferInfo(LayerBufferFormat format, int *target, uint64_t *flags,
                     uint64_t *pixel_format_modifier) {

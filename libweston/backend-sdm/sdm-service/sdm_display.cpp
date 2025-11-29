@@ -145,6 +145,7 @@ DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
     DisplayError error = kErrorNone;
     char property[MAX_PROP_STR_SIZE] = {0};
     struct DisplayHdrInfo display_hdr_info = {};
+    bool is_pixman, is_gpu;
 
     error = core_intf_->CreateDisplay(display_type_, this, &display_intf_);
 
@@ -189,13 +190,17 @@ DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
 
     frame_dumper_ = new SdmFrameDumper(display_id, GetDisplayString(), buffer_allocator_);
 
-    std::bitset<kClientCapabilityMax> client_capabilities =
+    is_pixman = buffer_allocator_->GetIsPixmaniAvailable();
+    is_gpu = buffer_allocator_->GetIsGpuAvailable();
+    if (!is_pixman && is_gpu) {
+        std::bitset<kClientCapabilityMax> client_capabilities =
                                  std::bitset<kClientCapabilityMax>().set();
-    client_capabilities.reset(kPunchholeSupported);
+        client_capabilities.reset(kPunchholeSupported);
 
-    error = display_intf_->SetClientTargetCapability(client_capabilities);
-    if (error != kErrorNone) {
-        DLOGW("Failed to populate client capabilities");
+        error = display_intf_->SetClientTargetCapability(client_capabilities);
+        if (error != kErrorNone) {
+            DLOGW("Failed to populate client capabilities");
+        }
     }
 
     return kErrorNone;
