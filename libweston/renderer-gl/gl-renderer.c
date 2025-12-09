@@ -46,6 +46,7 @@
 #include <assert.h>
 #include <linux/input.h>
 #include <unistd.h>
+#include <syslog.h>
 
 #include "linux-sync-file.h"
 #include "timeline.h"
@@ -3642,6 +3643,9 @@ gl_renderer_create_window_surface(struct gl_renderer *gr,
 	if (firstCreateWin) {
 		weston_place_marker("G - first create window start");
 		weston_log("GL - first create window start \n");
+	    openlog("weston", LOG_PID | LOG_CONS, LOG_USER);
+	    syslog(LOG_INFO, "G - first create window start");
+	    closelog();
 	}
 
 	EGLSurface egl_surface = EGL_NO_SURFACE;
@@ -3666,6 +3670,9 @@ gl_renderer_create_window_surface(struct gl_renderer *gr,
 
 	if (firstCreateWin) {
 		weston_place_marker("G - first create window end");
+	    openlog("weston", LOG_PID | LOG_CONS, LOG_USER);
+	    syslog(LOG_INFO, "G - first create window end");
+	    closelog();
 		firstCreateWin = false;
 	}
 
@@ -3977,6 +3984,9 @@ gl_renderer_display_create(struct weston_compositor *ec,
 	if (firstCreateDisplay) {
 		weston_place_marker("G - setup egl start");
 		weston_log("GL - setup egl start \n");
+	    openlog("weston", LOG_PID | LOG_CONS, LOG_USER);
+	    syslog(LOG_INFO, "G - setup egl start");
+	    closelog();
 	}
 
 	gr = zalloc(sizeof *gr);
@@ -4039,6 +4049,9 @@ gl_renderer_display_create(struct weston_compositor *ec,
 	if (firstCreateDisplay) {
 		weston_place_marker("G - setup egl end");
 		weston_log("GL - setup egl end \n");
+	    openlog("weston", LOG_PID | LOG_CONS, LOG_USER);
+	    syslog(LOG_INFO, "G - setup egl end");
+	    closelog();
 		firstCreateDisplay = false;
 	}
 

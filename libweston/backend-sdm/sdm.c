@@ -50,6 +50,7 @@
 
 #include "sdm-service/sdm_display_connect.h"
 #include "screen-capture.h"
+#include <syslog.h>
 
 
 static const char default_seat[] = "seat0";
@@ -128,6 +129,9 @@ on_vblank(int fd, uint32_t mask, void *data)
 	if (first_displayed) {
 		first_displayed = false;
 		weston_place_marker("W - first frame have been displayed");
+		openlog("weston", LOG_PID | LOG_CONS, LOG_USER);
+		syslog(LOG_INFO, "W - first frame have been displayed");
+		closelog();
 	}
 
 	read(fd, &v, sizeof(v));
@@ -531,6 +535,9 @@ drm_repaint_flush(struct weston_compositor *compositor, void *repaint_data)
 		if (!commit) {
 			commit = true;
 			weston_place_marker("W - first commit submitted");
+			openlog("weston", LOG_PID | LOG_CONS, LOG_USER);
+			syslog(LOG_INFO, "W - first commit submitted");
+			closelog();
 		}
 
 		if (is_virtual_output(drm_output->display_id)) {
@@ -1915,6 +1922,9 @@ drm_backend_create(struct weston_compositor *compositor,
 	}
 
 	weston_place_marker("W - backend full ready");
+	openlog("weston", LOG_PID | LOG_CONS, LOG_USER);
+	syslog(LOG_INFO, "W - backend full ready");
+	closelog();
 	return b;
 
 err_udev_monitor:
