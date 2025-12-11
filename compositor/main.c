@@ -51,7 +51,6 @@
 #include <linux/limits.h>
 #include <log/log.h>
 #include <stdarg.h>
-#include <syslog.h>
 
 #include "weston.h"
 #include <libweston/libweston.h>
@@ -255,7 +254,7 @@ logcat_log(const char *fmt, va_list argp)
 	char buffer[1024] = {0};
 	int ret = vsnprintf(buffer, 1024, fmt, argp);
 
-	//ALOGI("%s", buffer);
+	ALOGI("%s", buffer);
 
 	return ret;
 }
@@ -3420,10 +3419,6 @@ wet_main(int argc, char *argv[], const struct weston_testsuite_data *test_data)
 	};
 
 	weston_place_marker("W - weston main begin");
-
-	openlog("weston", LOG_PID | LOG_CONS, LOG_USER);
-	syslog(LOG_INFO, "W - weston main begin");
-	closelog();
 
 	wl_list_init(&wet.layoutput_list);
 
