@@ -169,6 +169,15 @@ simple_clients = [
 		'dep_objs': [ dep_wayland_client, dep_libshared, dep_libm ],
 		'deps': [ 'egl', 'wayland-egl', 'glesv2', 'wayland-cursor' ],
 	},
+	{
+		'name': 'qti-extn-test',
+		'sources': [
+			'weston-qti-extn-test.c',
+			weston_qti_extn_client_protocol_h,
+			weston_qti_extn_protocol_c,
+		],
+		'dep_objs': [ dep_wayland_client, dep_libshared ]
+	},
 	# weston-simple-im is handled specially separately due to install_dir and odd window.h usage
 	{
 		'name': 'shm',
