@@ -813,6 +813,141 @@ static void SetRect(sdm::LayerRect *dst, struct Rect *src)
     dst->bottom = src->bottom;
 }
 
+// Helper function to compare mastering display info
+static inline bool IsMasteringDisplayInfoEqual(const QtiMasteringDisplay& a,
+                                               const QtiMasteringDisplay& b) {
+    if (a.colorVolumeSEIEnabled != b.colorVolumeSEIEnabled) return false;
+
+    // Both disabled, consider equal
+    if (!a.colorVolumeSEIEnabled) return true;
+
+    return (a.primaryRed.x == b.primaryRed.x &&
+            a.primaryRed.y == b.primaryRed.y &&
+            a.primaryGreen.x == b.primaryGreen.x &&
+            a.primaryGreen.y == b.primaryGreen.y &&
+            a.primaryBlue.x == b.primaryBlue.x &&
+            a.primaryBlue.y == b.primaryBlue.y &&
+            a.whitePoint.x == b.whitePoint.x &&
+            a.whitePoint.y == b.whitePoint.y &&
+            a.maxDisplayLuminance == b.maxDisplayLuminance &&
+            a.minDisplayLuminance == b.minDisplayLuminance);
+}
+
+DisplayError SdmDisplay::UpdateMetaData(sdm::Layer *layer, struct LayerGeometry *src)
+{
+    if (!layer || !src) {
+        DLOGE("UpdateMetaData called with null parameters");
+        return kErrorParameters;
+    }
+
+    LayerBuffer *dst = &layer->input_buffer;
+
+    dst->dataspace.colorPrimaries =
+        static_cast<vendor_qti_hardware_display_common_QtiColorPrimaries>(
+            src->color_metadata.colorPrimaries);
+    dst->dataspace.transfer =
+        static_cast<vendor_qti_hardware_display_common_QtiGammaTransfer>(
+            src->color_metadata.transfer);
+    dst->dataspace.range =
+        static_cast<vendor_qti_hardware_display_common_QtiColorRange>(
+            src->color_metadata.range);
+
+    if (dst->dataspace.colorPrimaries == 0 &&
+        dst->dataspace.transfer == 0) {
+        dst->dataspace.colorPrimaries = QtiColorPrimaries_BT709_5;
+        dst->dataspace.transfer = QtiTransfer_sRGB;
+        DLOGD("Invalid dataspace, reset to default");
+    }
+
+    // Only process extended metadata for BT2020 content
+    if (dst->dataspace.colorPrimaries == QtiColorPrimaries_BT2020) {
+        bool metadata_changed = false;
+
+        // Check and update matrix coefficients
+        QtiMatrixCoEfficients new_matrix_coeff =
+            static_cast<vendor_qti_hardware_display_common_QtiMatrixCoEfficients>(
+                src->color_metadata.matrixCoefficients);
+
+        if (dst->matrixCoefficients != new_matrix_coeff) {
+            dst->matrixCoefficients = new_matrix_coeff;
+            metadata_changed = true;
+            DLOGD("BT2020: Matrix coefficients updated to %d", new_matrix_coeff);
+        }
+
+        // Check and update mastering display info
+        if (src->color_metadata.masteringDisplayInfo.colorVolumeSEIEnabled) {
+            QtiMasteringDisplay new_mastering = {};
+
+            new_mastering.colorVolumeSEIEnabled = true;
+
+            // RGB primaries - QtiMasteringDisplay uses separate XyColor fields
+            new_mastering.primaryRed.x =
+                src->color_metadata.masteringDisplayInfo.primaries.rgbPrimaries[0][0];
+            new_mastering.primaryRed.y =
+                src->color_metadata.masteringDisplayInfo.primaries.rgbPrimaries[0][1];
+            new_mastering.primaryGreen.x =
+                src->color_metadata.masteringDisplayInfo.primaries.rgbPrimaries[1][0];
+            new_mastering.primaryGreen.y =
+                src->color_metadata.masteringDisplayInfo.primaries.rgbPrimaries[1][1];
+            new_mastering.primaryBlue.x =
+                src->color_metadata.masteringDisplayInfo.primaries.rgbPrimaries[2][0];
+            new_mastering.primaryBlue.y =
+                src->color_metadata.masteringDisplayInfo.primaries.rgbPrimaries[2][1];
+
+            // white point
+            new_mastering.whitePoint.x =
+                src->color_metadata.masteringDisplayInfo.primaries.whitePoint[0];
+            new_mastering.whitePoint.y =
+                src->color_metadata.masteringDisplayInfo.primaries.whitePoint[1];
+
+            // Copy luminance values
+            new_mastering.maxDisplayLuminance =
+                src->color_metadata.masteringDisplayInfo.maxDisplayLuminance;
+            new_mastering.minDisplayLuminance =
+                src->color_metadata.masteringDisplayInfo.minDisplayLuminance;
+
+            // Check if mastering display info has changed
+            if (!IsMasteringDisplayInfoEqual(dst->masteringDisplayInfo, new_mastering)) {
+                dst->masteringDisplayInfo = new_mastering;
+                metadata_changed = true;
+                DLOGD("BT2020: Mastering display info updated: maxLum=%u, minLum=%u",
+                      new_mastering.maxDisplayLuminance, new_mastering.minDisplayLuminance);
+            }
+        }
+
+        // Check and update content light level
+        if (src->color_metadata.contentLightLevel.lightLevelSEIEnabled) {
+            QtiContentLightLevel new_light_level = {};
+            const auto& old = dst->contentLightLevel;
+
+            new_light_level.lightLevelSEIEnabled = true;
+            new_light_level.maxContentLightLevel =
+                src->color_metadata.contentLightLevel.maxContentLightLevel;
+            new_light_level.maxFrameAverageLightLevel =
+                src->color_metadata.contentLightLevel.maxPicAverageLightLevel;
+
+            // Check if content light level has changed
+            if (old.lightLevelSEIEnabled != new_light_level.lightLevelSEIEnabled ||
+                old.maxContentLightLevel != new_light_level.maxContentLightLevel ||
+                old.maxFrameAverageLightLevel != new_light_level.maxFrameAverageLightLevel) {
+                dst->contentLightLevel = new_light_level;
+                metadata_changed = true;
+                DLOGD("BT2020: Content light level updated: maxCLL=%u, maxFrameAvg=%u",
+                      new_light_level.maxContentLightLevel,
+                      new_light_level.maxFrameAverageLightLevel);
+            }
+        }
+
+        // Set update flag if content metadata has changed
+        if (metadata_changed) {
+            layer->update_mask.set(kContentMetadata);
+            DLOGD("BT2020 content metadata changed");
+        }
+    }
+
+    return kErrorNone;
+}
+
 DisplayError SdmDisplay::PopulateLayerGeometryOnToLayerStack(struct drm_output *output,
                                                              uint32_t index,
                                                              struct LayerGeometry *glayer,
@@ -842,21 +977,10 @@ DisplayError SdmDisplay::PopulateLayerGeometryOnToLayerStack(struct drm_output *
     layer_buffer->flags.video = layer_geometry->flags.video_present;
     layer_buffer->flags.hdr = layer_geometry->flags.hdr_present;
 
-    layer_buffer->dataspace.colorPrimaries =
-        static_cast<vendor_qti_hardware_display_common_QtiColorPrimaries>(
-            layer_geometry->color_metadata.colorPrimaries);
-    layer_buffer->dataspace.transfer =
-        static_cast<vendor_qti_hardware_display_common_QtiGammaTransfer>(
-            layer_geometry->color_metadata.transfer);
-    layer_buffer->dataspace.range =
-        static_cast<vendor_qti_hardware_display_common_QtiColorRange>(
-            layer_geometry->color_metadata.range);
-
-    if (layer_buffer->dataspace.colorPrimaries == 0 &&
-        layer_buffer->dataspace.transfer == 0) {
-        DLOGD("Invalid dataspace, reset to default");
-        layer_buffer->dataspace.colorPrimaries = QtiColorPrimaries_BT709_5;
-        layer_buffer->dataspace.transfer = QtiTransfer_sRGB;
+    error = UpdateMetaData(layer, layer_geometry);
+    if (error != kErrorNone) {
+        DLOGE("UpdateMetaData update fail!");
+        return error;
     }
 
     DLOGD("color_metadata: ColorPrimaries: %d",
@@ -2234,6 +2358,7 @@ DisplayError SdmNullDisplay::SetDetailEnhancerConfig(const DisplayDetailEnhancer
 DisplayError SdmNullDisplay::SetHWDetailedEnhancerConfig(void *params) {
   return kErrorNone;
 }
+
 SdmDisplayProxy::SdmDisplayProxy(SDMDisplayType type, CoreInterface *core_intf,
                                  SdmDisplayBufferAllocator *buffer_allocator)
   : disp_type_(type), core_intf_(core_intf),
