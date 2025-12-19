@@ -166,11 +166,11 @@ weston_log_continue(const char *fmt, ...)
 WL_EXPORT void
 weston_place_marker(const char *name)
 {
-	int fd = open("/sys/kernel/boot_kpi/kpi_values", O_WRONLY);
+	struct timespec ts;
 
-	if (fd > 0) {
-		write(fd, name, strlen(name));
-		close(fd);
-	}
+	setvbuf(stdout, NULL, _IOLBF, 0);
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	fprintf(stdout, "%s: monotime=[%ld.%09ld] ",
+			name, ts.tv_sec, ts.tv_nsec);
+	fprintf(stdout, "\n");
 }
-
