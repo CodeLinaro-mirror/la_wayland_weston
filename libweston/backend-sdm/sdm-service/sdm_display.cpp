@@ -589,7 +589,7 @@ DisplayError SdmDisplay::SetReadbackBuffer(void *gbm_buf, shared_ptr<Fence> acqu
         return error;
     }
 
-    error = display_intf_->CaptureCwb(output_buffer_, cwb_config);
+    error = display_intf_->CaptureCwb(output_buffer_, cwb_config, kCWBClientFrameDump);
     if (error != kErrorNone) {
         DLOGE("Failed to captureCwb");
         return error;
