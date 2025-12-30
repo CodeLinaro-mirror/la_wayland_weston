@@ -678,6 +678,12 @@ drm_set_dpms(struct weston_output *output_base, enum dpms_enum level)
 		if (output->dpms_off_pending)
 			output->dpms_off_pending = false;
 
+		if (output_base->repaint_status == REPAINT_AWAITING_COMPLETION &&
+				output->vblank_ev_fd >= 0 && output->vblank_ev_source &&
+				!output->disable_pending && !output->destroy_pending &&
+				!output->page_flip_pending && !output->mode_switch_pending)
+			virtual_vblank(output_base);
+
 		weston_output_schedule_repaint(output_base);
 		return;
 	}
@@ -2027,6 +2033,9 @@ drm_backend_create(struct weston_compositor *compositor,
 				   "support failed.\n");
 	}
 
+	if (weston_qti_extn_setup(compositor) < 0)
+		weston_log("Error: weston_qti_extn_setup failed\n");
+
 	if (compositor->capabilities & WESTON_CAP_EXPLICIT_SYNC) {
 		if (linux_explicit_synchronization_setup(compositor) < 0)
 			weston_log("Error: initializing explicit "
@@ -2114,4 +2123,50 @@ void NotifyOnQdcmRefresh(struct drm_output *output) {
 	weston_output_damage(&output->base);
 }
 
+void
+virtual_vblank(struct weston_output *base)
+{
+	struct drm_output *output = to_drm_output(base);
+	struct timespec ts;
+	uint64_t v = 1;
+	int ret;
 
+	if (!output || output->vblank_ev_fd < 0) {
+		weston_log("[virtual_vblank] invalid output or vblank fd\n");
+		return;
+	}
+
+	/* Validate output is in operational state */
+	if (!base->enabled || output->dpms != WESTON_DPMS_ON) {
+		weston_log("[virtual_vblank] output not enabled or DPMS off\n");
+		return;
+	}
+
+	/* Additional safety check before proceeding */
+	if (output->disable_pending || output->destroy_pending) {
+		weston_log("[virtual_vblank] output has pending disable/destroy\n");
+		return;
+	}
+
+	weston_compositor_read_presentation_clock(base->compositor, &ts);
+
+	output->last_vblank.sec = ts.tv_sec;
+	output->last_vblank.usec = ts.tv_nsec / 1000;
+
+	ret = write(output->vblank_ev_fd, &v, sizeof v);
+	if (ret != sizeof(v)) {
+		weston_log("[virtual_vblank] write failed: %s\n", strerror(errno));
+
+		/* Reset pending flags to prevent state machine deadlock */
+		if (output->atomic_complete_pending) {
+			output->atomic_complete_pending = false;
+		}
+
+		/* Only finish frame if we were actually awaiting completion */
+		if (base->repaint_status == REPAINT_AWAITING_COMPLETION) {
+			weston_output_finish_frame(&output->base, NULL, WP_PRESENTATION_FEEDBACK_INVALID);
+		}
+
+		return;
+	}
+}

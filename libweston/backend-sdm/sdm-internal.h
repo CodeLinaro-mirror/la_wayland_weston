@@ -496,6 +496,9 @@ int
 parse_gbm_format(const char *s, const struct pixel_format_info *default_format,
 		 const struct pixel_format_info **format);
 
+void
+virtual_vblank(struct weston_output *base);
+
 bool
 is_virtual_output(int display_id);
 
