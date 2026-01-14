@@ -12,6 +12,7 @@ xml_files = [
         'weston-debug.xml',
         'weston-direct-display.xml',
         'weston-output-capture.xml',
+        'weston-qti-extn.xml',
 ]
 
 if qcom_bsp_enabled
@@ -48,6 +49,7 @@ generated_protocols = [
 	[ 'weston-test', 'internal' ],
 	[ 'weston-touch-calibration', 'internal' ],
 	[ 'weston-direct-display', 'internal' ],
+	[ 'weston-qti-extn', 'internal' ],
 	[ 'xdg-output', 'unstable', 'v1' ],
 	[ 'xdg-shell', 'unstable', 'v6' ],
 	[ 'xdg-shell', 'stable' ],

@@ -42,6 +42,7 @@ srcs_libweston = [
 	'weston-log-flight-rec.c',
 	'weston-log.c',
 	'weston-direct-display.c',
+	'weston-qti-extn.c',
 	linux_dmabuf_unstable_v1_protocol_c,
 	linux_dmabuf_unstable_v1_server_protocol_h,
 	linux_explicit_synchronization_unstable_v1_protocol_c,
@@ -80,6 +81,8 @@ srcs_libweston = [
 	weston_output_capture_server_protocol_h,
 	tablet_unstable_v2_protocol_c,
 	tablet_unstable_v2_server_protocol_h,
+	weston_qti_extn_protocol_c,
+	weston_qti_extn_server_protocol_h,
 ]
 
 if qcom_bsp_enabled

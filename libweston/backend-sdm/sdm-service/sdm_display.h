@@ -341,6 +341,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     void HandlePanelDead();
     void RefreshWithCachedLayerstack();
     void RefreshCallback();
+    DisplayError UpdateMetaData(sdm::Layer *layer, struct LayerGeometry *src);
     CoreInterface *core_intf_ = NULL;
     SdmDisplayBufferAllocator *buffer_allocator_;
     SdmDisplaySocketHandler socket_handler_;

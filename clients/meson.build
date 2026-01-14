@@ -169,6 +169,15 @@ simple_clients = [
 		'dep_objs': [ dep_wayland_client, dep_libshared, dep_libm ],
 		'deps': [ 'egl', 'wayland-egl', 'glesv2', 'wayland-cursor' ],
 	},
+	{
+		'name': 'qti-extn-test',
+		'sources': [
+			'weston-qti-extn-test.c',
+			weston_qti_extn_client_protocol_h,
+			weston_qti_extn_protocol_c,
+		],
+		'dep_objs': [ dep_wayland_client, dep_libshared ]
+	},
 	# weston-simple-im is handled specially separately due to install_dir and odd window.h usage
 	{
 		'name': 'shm',
@@ -214,6 +223,17 @@ if qcom_bsp_enabled
                   'dep_objs': [ dep_wayland_client, dep_libshared, dep_gbm ]
         }
     ]
+endif
+
+if not get_option('renderer-gl')
+	simple_build_all = false
+	foreach t : simple_clients
+		t_name = t.get('name')
+		deps = t.get('deps', [])
+		if not deps.contains('glesv2') and not deps.contains('egl')
+			simple_clients_enabled += t_name
+		endif
+	endforeach
 endif
 
 foreach t : simple_clients
@@ -393,20 +413,29 @@ if get_option('demo-clients')
 		t_name = 'weston-' + t.get('basename')
 		t_srcs = [ t.get('basename') + '.c' ] + t.get('add_sources', [])
 		t_deps = [ dep_toytoolkit, t.get('dep_objs', []) ]
+		should_install = true
 		foreach depname : t.get('deps', [])
 			dep = dependency(depname, required: false)
 			if not dep.found()
+			    if not get_option('renderer-gl')
+					if depname.contains('egl') or depname.contains('glesv2')
+						warning('@0@ requires \'@1@\' which was not found. Skip build.'.format(t_name, depname))
+						should_install = false
+						break
+					endif
+				endif
 				error('@0@ requires \'@1@\' which was not found. If you rather not build this, set \'-Ddemo-clients=false\'.'.format(t_name, depname))
 			endif
 			t_deps += dep
 		endforeach
-
-		executable(
-			t_name, t_srcs,
-			include_directories: common_inc,
-			dependencies: t_deps,
-			install: true
-		)
+		if should_install
+			executable(
+				t_name, t_srcs,
+				include_directories: common_inc,
+				dependencies: t_deps,
+				install: should_install
+			)
+		endif
 	endforeach
 endif
 
