@@ -308,6 +308,29 @@ int Commit(uint32_t display_id, struct drm_output *output)
     return kErrorNone;
 }
 
+int Flush(uint32_t display_id)
+{
+    DisplayError error = kErrorNone;
+    SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
+    if (!dpy) {
+        DLOGE("Failed as Display (%d) not created yet.", display_id);
+        return kErrorNotSupported;
+    }
+
+    error = dpy->Flush();
+    if (error != kErrorNone) {
+        DLOGE("function failed with error = %d", error);
+        return error;
+    }
+
+    #if SDM_DISPLAY_DEBUG
+    DLOGD("function successful.");
+    #endif
+
+    return kErrorNone;
+
+}
+
 int DestroyDisplay(uint32_t display_id)
 {
     DisplayError error = kErrorNone;

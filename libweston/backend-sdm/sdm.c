@@ -521,16 +521,28 @@ drm_repaint_flush(struct weston_compositor *compositor, void *repaint_data)
 			return -1;
 		}
 
-		ret = Commit(drm_output->display_id, drm_output);
+		if (drm_output->prev_layer_none_commit && drm_output->layer_none_commit)
+			weston_log("skip commit if two consecutive frames have no layers\n");
+		else if (drm_output->layer_none_commit) {
+			ret = Flush(drm_output->display_id);
 
-		if (ret != 0) {
-			weston_log("%s : commit failed err = %d\n", __func__, ret);
-			return -2;
-		}
+			if (ret != 0) {
+				weston_log("%s Flush failed err = %d\n", __func__, ret);
+				return -1;
+			}
 
-		if (!commit) {
-			commit = true;
-			weston_place_marker("W - first commit submitted");
+		} else {
+			ret = Commit(drm_output->display_id, drm_output);
+
+			if (ret != 0) {
+				weston_log("%s : commit failed err = %d\n", __func__, ret);
+				return -2;
+			}
+
+			if (!commit) {
+				commit = true;
+				weston_place_marker("W - first commit submitted");
+			}
 		}
 
 		if (is_virtual_output(drm_output->display_id)) {

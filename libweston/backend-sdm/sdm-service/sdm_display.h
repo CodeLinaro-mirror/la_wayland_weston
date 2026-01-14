@@ -155,6 +155,7 @@ class SdmDisplayInterface {
     virtual DisplayError DestroyDisplay() = 0;
     virtual DisplayError Prepare(struct drm_output *output) = 0;
     virtual DisplayError Commit(struct drm_output *output) = 0;
+    virtual DisplayError Flush() = 0;
     virtual DisplayError SetDisplayState(DisplayState state, bool teardown,
                                          shared_ptr<Fence> *release_fence) = 0;
     virtual DisplayError SetVSyncState(bool enable, struct drm_output *output) = 0;
@@ -199,6 +200,7 @@ class SdmNullDisplay : public SdmDisplayInterface {
     DisplayError DestroyDisplay();
     DisplayError Prepare(struct drm_output *output);
     DisplayError Commit(struct drm_output *output);
+    DisplayError Flush();
     DisplayError SetDisplayState(DisplayState state, bool teardown,
                                  shared_ptr<Fence> *release_fence);
     DisplayError SetVSyncState(bool enable, struct drm_output *output);
@@ -240,6 +242,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     DisplayError DestroyDisplay();
     DisplayError Prepare(struct drm_output *output);
     DisplayError Commit(struct drm_output *output);
+    DisplayError Flush();
     DisplayError SetDisplayState(DisplayState state, bool teardown,
                                  shared_ptr<Fence> *release_fence);
     DisplayError SetVSyncState(bool enable, struct drm_output *output);
@@ -394,6 +397,9 @@ class SdmDisplayProxy {
     }
     DisplayError Commit(struct drm_output *output) {
       return display_intf_->Commit(output);
+    }
+    DisplayError Flush() {
+      return display_intf_->Flush();
     }
     DisplayError SetDisplayState(DisplayState state, bool teardown,
                                  shared_ptr<Fence> *release_fence) {

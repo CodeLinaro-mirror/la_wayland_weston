@@ -158,6 +158,25 @@ int Prepare(uint32_t display_id, struct drm_output *output);
 */
 int Commit(uint32_t display_id, struct drm_output *output);
 
+/*! @brief Method to flush one frame if none applayers happen in this frame and previous
+* frame have applayers.
+
+    @details Client shall call this method to reset the crtc and pipes' state for previous
+    frame.
+
+    This method shall be called only once for each frame.
+
+    In the event of an error as well, this call will close any fences returned in the
+    previous call to Commit(), so the client's wait on fences can be released to prevent deadlocks.
+
+    @param[in] display_id \link int \endlink
+
+    @return \link DisplayError \endlink
+
+    @sa Prepare
+*/
+int Flush(uint32_t display_id);
+
 /*! @brief Method to obtain display property for a display_id requested.
     @details Client shall use this method to display properties of requested
     display id.

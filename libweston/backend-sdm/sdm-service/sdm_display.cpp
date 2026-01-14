@@ -1391,9 +1391,14 @@ DisplayError SdmDisplay::Prepare(struct drm_output *output)
     ParseAndSetDumpConfig();
 
     error = display_intf_->Prepare(&layer_stack_);
+    output->prev_layer_none_commit = output->layer_none_commit;
     if (error != kErrorNone) {
         DLOGE("failed during Prepare error:%d\n",error);
     }
+    if (error == kErrorNoAppLayers)
+        output->layer_none_commit = true;
+    else
+        output->layer_none_commit = false;
 
 #if SDM_DISPLAY_DUMP_LAYER_STACK
     DumpInterface::GetDump(dump_buffer, sizeof(dump_buffer));
@@ -1514,6 +1519,15 @@ DisplayError SdmDisplay::Commit(struct drm_output *output)
     PostCommit();
 
     DLOGV("success");
+    return ret;
+}
+
+DisplayError SdmDisplay::Flush()
+{
+    DisplayError ret = kErrorNone;
+
+    ret = display_intf_->Flush(&layer_stack_);
+
     return ret;
 }
 
@@ -2137,6 +2151,9 @@ DisplayError SdmNullDisplay::Commit(struct drm_output *output) {
    * not displayed. This will be done at a later point of time.
    */
   return kErrorNone;
+}
+DisplayError SdmNullDisplay::Flush() {
+    return kErrorNone;
 }
 DisplayError SdmNullDisplay::SetDisplayState(DisplayState state, bool teardown,
                                              shared_ptr<Fence> *release_fence) {
