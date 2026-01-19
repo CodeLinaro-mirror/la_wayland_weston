@@ -247,8 +247,8 @@ struct drm_device {
 	/* drm_backend::kms_list */
 	struct wl_list link;
 
-	/* struct drm_colorop_3x1d_lut::link  */
-	struct wl_list drm_colorop_3x1d_lut_list;
+	/* struct drm_colorop_3x1d_lut_blob::link  */
+	struct wl_list drm_colorop_3x1d_lut_blob_list;
 
 	int reused_state_failures;
 };
@@ -393,8 +393,8 @@ struct drm_output_state {
 	bool planes_enabled;
 };
 
-struct drm_colorop_3x1d_lut {
-	/* drm_device::drm_colorop_3x1d_lut_list */
+struct drm_colorop_3x1d_lut_blob {
+	/* drm_device::drm_colorop_3x1d_lut_blob_list */
 	struct wl_list link;
 	struct drm_device *device;
 
@@ -644,7 +644,7 @@ struct drm_output {
 
 	bool legacy_gamma_not_supported;
 	uint16_t legacy_gamma_size;
-	struct drm_colorop_3x1d_lut *blend_to_output_xform;
+	struct drm_colorop_3x1d_lut_blob *blend_to_output_xform;
 
 	/* Plane being displayed directly on the CRTC */
 	struct drm_plane_handle *scanout_handle;
