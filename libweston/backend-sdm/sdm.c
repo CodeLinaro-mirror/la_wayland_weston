@@ -625,12 +625,6 @@ drm_output_apply_mode(struct drm_output *output)
 	struct drm_backend *b = device->backend;
 	struct weston_size fb_size;
 
-	/* XXX: This drops our current buffer too early, before we've started
-	 *      displaying it. Ideally this should be much more atomic and
-	 *      integrated with a full repaint cycle, rather than doing a
-	 *      sledgehammer modeswitch first, and only later showing new
-	 *      content.
-	 */
 	device->state_invalid = true;
 
 	fb_size.width = output->base.current_mode->width;
@@ -655,6 +649,31 @@ drm_output_apply_mode(struct drm_output *output)
 	}
 
 	return 0;
+}
+
+static int
+drm_set_fps(struct weston_output *output_base, int target_fps)
+{
+	struct drm_output *output = to_drm_output(output_base);
+	struct drm_mode *mode = NULL;
+
+	wl_list_for_each(mode, &output->base.mode_list, base.link) {
+		if (mode->base.width == output_base->current_mode->width &&
+		    mode->base.height == output_base->current_mode->height &&
+		    mode->base.refresh == (target_fps * 1000)) {
+
+			int ret = drm_output_switch_mode(output_base, &mode->base);
+			if (ret == 0) {
+				weston_output_damage(output_base);
+			} else {
+				weston_log("Failed to switch to %d FPS\n", target_fps);
+			}
+			return ret;
+		}
+	}
+
+	weston_log("No matching mode found for %d FPS\n", target_fps);
+	return -1;
 }
 
 static int
@@ -996,6 +1015,7 @@ drm_output_enable(struct weston_output *base)
 	output->base.set_qsync_mode = drm_set_qsync_mode;
 	output->base.switch_mode = drm_output_switch_mode;
 	output->base.set_backlight = drm_set_backlight;
+	output->base.set_fps = drm_set_fps;
 	output->base.backlight_current = drm_get_backlight(output->display_id);
 	output->base.set_gamma = NULL;
 
@@ -1157,9 +1177,9 @@ drm_head_create(struct drm_backend *backend, struct udev_device *drm_device, int
 	display_config.vsync_period_ns = 0;
 	display_config.is_yuv          = false;
 
-	bool rc = GetDisplayConfiguration(display_id, &display_config);
+	DisplayError rc = GetDisplayConfiguration(display_id, &display_config);
 
-	if (rc != 0) {
+	if (rc == kErrorNone) {
 		width   = display_config.x_pixels;
 		height  = display_config.y_pixels;
 		weston_log("Display configuration w*h:%d %d\n", width, height);

@@ -50,6 +50,7 @@ static enum ops_index {
 	OPS_SET_OUTPUT_STATE,
 	OPS_SET_OUTPUT_BRIGHTNESS,
 	OPS_SET_OUTPUT_QSYNC_MODE,
+	OPS_SET_OUTPUT_FPS,
 	OPS_EXIT
 };
 
@@ -207,6 +208,42 @@ ops_set_output_brightness(void)
 }
 
 static void
+ops_set_output_fps(void)
+{
+	char output_name[MAX_STRING_SIZE] = {};
+	size_t len = 0;
+	int fps = 0;
+
+	printf("Enter your output name: ");
+	if (fgets(output_name, sizeof(output_name), stdin) == NULL) {
+		printf("ERR: failed to get output name\n");
+		clearerr(stdin);
+		return;
+	}
+
+	len = strlen(output_name);
+	if (len > 0 && output_name[len - 1] == '\n') {
+		output_name[len - 1] = '\0';
+		len--;
+	}
+
+	if (len == 0 || len >= sizeof(output_name) - 1) {
+		printf("ERR: invalid output name length\n");
+		return;
+	}
+
+	printf("Enter fps value: ");
+	fps = ops_get_input_num();
+	if (fps < 0) {
+		printf("ERR: invalid fps. Please try again.\n");
+		return;
+	}
+
+	weston_qti_extn_set_output_fps(display.qti_extn, (const char *)output_name, (uint32_t)fps);
+	printf("INFO: set output(%s) fps to %u\n", output_name, (uint32_t)fps);
+}
+
+static void
 ops_set_output_qsync_mode(void)
 {
 	char output_name[MAX_STRING_SIZE] = "";
@@ -253,7 +290,8 @@ print_menu(void)
 		"  3. Set Output State\n"
 		"  4. Set Brightness\n"
 		"  5. Set Qsync mode\n"
-		"  6. Exit\n"
+		"  6. Set Output FPS\n"
+		"  7. Exit\n"
 		"Enter your choice: ");
 }
 
@@ -306,6 +344,9 @@ main(int argc, char **argv)
 			break;
 		case OPS_SET_OUTPUT_QSYNC_MODE:
 			ops_set_output_qsync_mode();
+			break;
+		case OPS_SET_OUTPUT_FPS:
+			ops_set_output_fps();
 			break;
 		case OPS_EXIT:
 			loop = false;

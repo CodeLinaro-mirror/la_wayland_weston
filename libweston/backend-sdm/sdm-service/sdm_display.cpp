@@ -404,6 +404,57 @@ DisplayError SdmDisplay::GetPanelBrightness(float *brightness) {
     return display_intf_->GetPanelBrightness(brightness);
 }
 
+DisplayError SdmDisplay::GetDisplayConfigCount(uint32_t *count) {
+  return display_intf_->GetNumVariableInfoConfigs(count);
+}
+
+DisplayError SdmDisplay::SetDisplayConfigurationByIndex(uint32_t index) {
+    DisplayError error = kErrorNone;
+    DisplayConfigVariableInfo disp_config = {};
+
+    error = display_intf_->SetActiveConfig(index);
+
+    if (error != kErrorNone) {
+        DLOGE("Active Index not found. Error = %d", error);
+        return error;
+    }
+
+    error = display_intf_->GetConfig(index, &disp_config);
+
+    if (error != kErrorNone) {
+        DLOGE("Display Configuration failed. Error = %d", error);
+        return error;
+    }
+
+    fps_  = disp_config.fps;
+
+    return kErrorNone;
+}
+
+DisplayError SdmDisplay::GetDisplayConfigurationByIndex(uint32_t index,
+                        struct DisplayConfigInfo *display_config) {
+    DisplayError error = kErrorNone;
+    DisplayConfigVariableInfo disp_config = {};
+
+    error = display_intf_->GetConfig(index, &disp_config);
+
+    if (error != kErrorNone) {
+        DLOGE("Display Configuration failed. Error = %d", error);
+        return error;
+    }
+
+    display_config->x_pixels     = disp_config.x_pixels;
+    display_config->y_pixels     = disp_config.y_pixels;
+    display_config->x_dpi        = disp_config.x_dpi;
+    display_config->y_dpi        = disp_config.y_dpi;
+    display_config->fps          = disp_config.fps;
+    display_config->vsync_period_ns = disp_config.vsync_period_ns;
+    display_config->is_yuv       = disp_config.is_yuv;
+    display_config->is_connected = true;
+
+    return kErrorNone;
+}
+
 DisplayError SdmDisplay::GetDisplayConfiguration(struct DisplayConfigInfo *display_config) {
     DisplayError error = kErrorNone;
     DisplayConfigVariableInfo disp_config;
@@ -2305,6 +2356,19 @@ DisplayError SdmNullDisplay::SetVSyncState(bool enable, struct drm_output *outpu
    *       the recent Weston release updates.
    */
   drm_output_ = output;
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::GetDisplayConfigurationByIndex(uint32_t index,
+                                                            struct DisplayConfigInfo *display_config) {
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::GetDisplayConfigCount(uint32_t *count) {
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::SetDisplayConfigurationByIndex(uint32_t index) {
   return kErrorNone;
 }
 
