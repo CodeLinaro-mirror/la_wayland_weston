@@ -50,6 +50,9 @@ void power_off(struct wl_client *client, struct wl_resource *resource);
 void set_brightness(struct wl_client *client, struct wl_resource *resource,
                     const char* output_name, unsigned int brightness_value);
 
+void set_output_qsync_mode(struct wl_client *client, struct wl_resource *resource,
+                           const char* output_name, uint32_t mode);
+
 void set_output_state(struct wl_client *client, struct wl_resource *resource,
                       const char* output_name, unsigned int state);
 
