@@ -676,7 +676,7 @@ drm_set_dpms(struct weston_output *output_base, enum dpms_enum level)
 		if (output_base->repaint_status == REPAINT_AWAITING_COMPLETION &&
 				output->vblank_ev_fd >= 0 && output->vblank_ev_source &&
 				!output->disable_pending && !output->destroy_pending &&
-				!output->page_flip_pending && !output->mode_switch_pending)
+				!output->mode_switch_pending)
 			virtual_vblank(output_base);
 
 		weston_output_schedule_repaint(output_base);
