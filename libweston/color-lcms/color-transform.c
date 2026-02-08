@@ -2058,10 +2058,10 @@ cmlcms_color_transform_recipe_string(const struct cmlcms_color_transform_recipe 
 }
 
 static bool
-build_3d_lut(struct weston_compositor *compositor,
-	     const struct cmlcms_color_transformer *transformer,
-	     unsigned int len_shaper, const float *shaper,
-	     unsigned int len_lut3d, float *lut3d)
+build_clut(struct weston_compositor *compositor,
+	   const struct cmlcms_color_transformer *transformer,
+	   unsigned int len_shaper, const float *shaper,
+	   unsigned int len_clut, float *clut)
 {
 	const float *const red_curve = &shaper[0];
 	const float *const green_curve = &shaper[len_shaper];
@@ -2077,27 +2077,26 @@ build_3d_lut(struct weston_compositor *compositor,
 	 * Ensure the indices and byte counts cannot overflow,
 	 * and memory usage does not get ridiculous. Arbitrary limit.
 	 */
-	weston_assert_u32_lt(compositor, len_lut3d, 100);
+	weston_assert_u32_lt(compositor, len_clut, 100);
 
 	/*
-	 * A temporary allocation that holds two 1D LUTs of length len_lut3d
-	 * and one scratch array of vec3f of length len_lut3d.
+	 * A temporary allocation that holds two 1D LUTs of length len_clut
+	 * and one scratch array of vec3f of length len_clut.
 	 */
 	const uint32_t bytes_per_elem = 2 * sizeof (float) + sizeof *rgb_in;
-	tmp = malloc(len_lut3d * bytes_per_elem);
+	tmp = malloc(len_clut * bytes_per_elem);
 
 	inverse_r = &tmp[0];
-	inverse_g = &tmp[len_lut3d];
-	rgb_in = (struct weston_vec3f *)&tmp[2 * len_lut3d];
-
+	inverse_g = &tmp[len_clut];
+	rgb_in = (struct weston_vec3f *)&tmp[2 * len_clut];
 	/*
 	 * For each channel, use the shaper to compute the value x such that
 	 * y(x) = index / (len - 1). As the shaper is a LUT, we find the closest
 	 * neighbors of such point (x, y) and then use linear interpolation to
 	 * estimate x.
 	 */
-	for (i = 0; i < len_lut3d; i++) {
-		float y = (float)i / (len_lut3d - 1);
+	for (i = 0; i < len_clut; i++) {
+		float y = (float)i / (len_clut - 1);
 		inverse_r[i] = weston_inverse_evaluate_lut1d(compositor,
 							     len_shaper,
 							     red_curve,
@@ -2109,9 +2108,9 @@ build_3d_lut(struct weston_compositor *compositor,
 	}
 
 	/*
-	 * Fill in the 3D LUT: LUT(Rin, Gin, Bin) = { Rout, Gout, Bout }
+	 * Fill in the 3D cLUT: LUT(Rin, Gin, Bin) = { Rout, Gout, Bout }
 	 * Each of Rin, Gin and Bin varies from 0.0 to 1.0. The range [0.0, 1.0]
-	 * is evenly divided into len_lut3d number of sampling points. The
+	 * is evenly divided into len_clut number of sampling points. The
 	 * indices of the sampling points are index_r, index_g, index_b.
 	 *
 	 * To compute { Rout, Gout, Bout }, first Rin, Gin, Bin must go through
@@ -2121,29 +2120,29 @@ build_3d_lut(struct weston_compositor *compositor,
 	 * separable.
 	 *
 	 * The next step is not separable, so we iterate through all points in
-	 * the 3D volume. The points are transformed len_lut3d points at a time
+	 * the 3D volume. The points are transformed len_clut points at a time
 	 * (rgb_in array) to strike a balance between the number of function
 	 * calls and the memory requirements.
 	 */
-	for (index_b = 0; index_b < len_lut3d; index_b++) {
+	for (index_b = 0; index_b < len_clut; index_b++) {
 		float inverse_b = weston_inverse_evaluate_lut1d(compositor,
 								len_shaper,
 								blue_curve,
-								(float)index_b / (len_lut3d - 1));
-		for (i = 0; i < len_lut3d; i++)
+								(float)index_b / (len_clut - 1));
+		for (i = 0; i < len_clut; i++)
 			rgb_in[i].b = inverse_b;
 
-		for (index_g = 0; index_g < len_lut3d; index_g++) {
-			for (index_r = 0; index_r < len_lut3d; index_r++) {
+		for (index_g = 0; index_g < len_clut; index_g++) {
+			for (index_r = 0; index_r < len_clut; index_r++) {
 				rgb_in[index_r].g = inverse_g[index_g];
 				rgb_in[index_r].r = inverse_r[index_r];
 			}
 
 			index_r = 0;
-			i = 3 * (index_r + len_lut3d * (index_g + len_lut3d * index_b));
+			i = 3 * (index_r + len_clut * (index_g + len_clut * index_b));
 			cmlcms_color_transformer_eval(compositor, transformer,
-						      (struct weston_vec3f *)&lut3d[i],
-						      rgb_in, len_lut3d);
+						      (struct weston_vec3f *)&clut[i],
+						      rgb_in, len_clut);
 		}
 	}
 
@@ -2256,16 +2255,16 @@ out:
 
 /**
  * Based on [1]. We get the transformer and decompose into a shaper
- * (3x1D LUT) + 3D LUT. With that, we can reduce the 3D LUT dimension size
+ * (3x1D LUT) + 3D cLUT. With that, we can reduce the 3D LUT dimension size
  * without losing precision. 3D LUT dimension size is problematic because it
  * demands n³ memory.
  *
  * [1] https://www.littlecms.com/ASICprelinerization_CGIV08.pdf
  */
 static bool
-xform_to_shaper_plus_3dlut(struct weston_color_transform *xform_base,
-			   uint32_t len_shaper, float *shaper,
-			   uint32_t len_lut3d, float *lut3d)
+xform_to_clut(struct weston_color_transform *xform_base,
+	      uint32_t len_shaper, float *shaper,
+	      uint32_t len_clut, float *clut)
 {
 	struct cmlcms_color_transform *xform = to_cmlcms_xform(xform_base);
 	struct weston_compositor *compositor = xform_base->cm->compositor;
@@ -2276,8 +2275,8 @@ xform_to_shaper_plus_3dlut(struct weston_color_transform *xform_base,
 	if (!ret)
 		return false;
 
-	ret = build_3d_lut(compositor, &xform->transformer,
-			   len_shaper, shaper, len_lut3d, lut3d);
+	ret = build_clut(compositor, &xform->transformer,
+			 len_shaper, shaper, len_clut, clut);
 	if (!ret)
 		return false;
 
@@ -2306,7 +2305,7 @@ cmlcms_color_transform_create(struct weston_color_manager_lcms *cm,
 	xform = xzalloc(sizeof *xform);
 	weston_color_transform_init(&xform->base, &cm->base);
 	wl_list_init(&xform->link);
-	xform->base.to_shaper_plus_3dlut = xform_to_shaper_plus_3dlut;
+	xform->base.to_clut = xform_to_clut;
 	cmlcms_color_transform_recipe_copy(&xform->search_key, recipe);
 
 	weston_log_scope_printf(cm->transforms_scope,

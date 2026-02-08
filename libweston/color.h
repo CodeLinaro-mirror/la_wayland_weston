@@ -383,8 +383,8 @@ struct weston_color_transform {
 	/**
 	 * When this is true, users are allowed to use the steps described below
 	 * (pre curve, color mapping and post curve) and implement the color
-	 * transformation themselves. Otherwise this is forbidden and
-	 * to_shaper_plus_3dlut() must be used.
+	 * transformation themselves. Otherwise this is forbidden and to_clut()
+	 * must be used.
 	 */
 	bool steps_valid;
 
@@ -403,23 +403,23 @@ struct weston_color_transform {
 	struct weston_color_curve post_curve;
 
 	/**
-	 * Decompose the color transformation into a shaper (3x1D LUT) and a 3D
-	 * LUT.
+	 * Decompose the color transformation into a shaper (3x1D LUT) followed
+	 * by a 3D cLUT.
 	 *
 	 * \param xform_base The color transformation to decompose.
 	 * \param len_shaper Number of taps in each of the 1D LUT.
 	 * \param shaper Where the shaper is saved, caller's responsibility to
 	 * allocate.
-	 * \param len_lut3d The 3D LUT's length for each dimension.
-	 * \param lut3d Where the 3D LUT is saved, caller's responsibility to
-	 * allocate. Its layout on memory is: lut3d[B][G][R], i.e. R is the
+	 * \param len_clut The 3D cLUT's length for each dimension.
+	 * \param clut Where the 3D cLUT is saved, caller's responsibility to
+	 * allocate. Its layout on memory is: clut[B][G][R], i.e. R is the
 	 * innermost and its index grow faster, followed by G and then B.
 	 * \return True on success, false otherwise.
 	 */
 	bool
-	(*to_shaper_plus_3dlut)(struct weston_color_transform *xform_base,
-				uint32_t len_shaper, float *shaper,
-				uint32_t len_lut3d, float *lut3d);
+	(*to_clut)(struct weston_color_transform *xform_base,
+		   uint32_t len_shaper, float *shaper,
+		   uint32_t len_clut, float *clut);
 };
 
 struct weston_cvd_correction {

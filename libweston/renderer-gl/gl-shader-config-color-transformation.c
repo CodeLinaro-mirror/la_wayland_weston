@@ -376,9 +376,9 @@ gl_renderer_color_transform_create_3dlut(struct gl_renderer *gr,
 {
 	struct gl_renderer_color_transform *gl_xform = NULL;
 	float *shaper = NULL;
-	float *lut3d = NULL;
+	float *clut = NULL;
 	uint32_t len_shaper;
-	uint32_t len_lut3d;
+	uint32_t len_clut;
 	bool ok;
 
 	/**
@@ -386,22 +386,21 @@ gl_renderer_color_transform_create_3dlut(struct gl_renderer *gr,
 	 * excessive memory consumption.
 	 */
 	len_shaper = 1024;
-	len_lut3d = 33;
+	len_clut = 33;
 
 	shaper = zalloc(len_shaper * 3 * sizeof(*shaper));
 	if (!shaper)
 		goto err;
 
-	lut3d = zalloc(3 * len_lut3d * len_lut3d * len_lut3d * sizeof(*lut3d));
-	if (!lut3d)
+	clut = zalloc(3 * len_clut * len_clut * len_clut * sizeof(*clut));
+	if (!clut)
 		goto err;
 
 	gl_xform = gl_renderer_color_transform_create(xform);
 	if (!gl_xform)
 		goto err;
 
-	ok = xform->to_shaper_plus_3dlut(xform, len_shaper, shaper,
-					 len_lut3d, lut3d);
+	ok = xform->to_clut(xform, len_shaper, shaper, len_clut, clut);
 	if (!ok)
 		goto err;
 
@@ -411,18 +410,18 @@ gl_renderer_color_transform_create_3dlut(struct gl_renderer *gr,
 		goto err;
 
 	gl_color_mapping_lut_3d_init(gr, &gl_xform->mapping,
-				     len_lut3d, lut3d);
+				     len_clut, clut);
 
 	free(shaper);
-	free(lut3d);
+	free(clut);
 
 	return gl_xform;
 
 err:
 	if (shaper)
 		free(shaper);
-	if (lut3d)
-		free(lut3d);
+	if (clut)
+		free(clut);
 	if (gl_xform)
 		gl_renderer_color_transform_destroy(gl_xform);
 	return NULL;

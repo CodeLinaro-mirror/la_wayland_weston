@@ -2243,8 +2243,8 @@ lut_3x1d_from_blend_to_output(struct weston_compositor *compositor,
 	/**
 	 * We expect steps to be valid for blend-to-output, as LittleCMS is
 	 * always able to optimize such xform. If that's invalid, we'd need to
-	 * use to_shaper_plus_3dlut() to offload the xform, but the DRM API
-	 * currently only supports us programming a LUT after blending.
+	 * use to_clut() to offload the xform, but the DRM API currently only
+	 * supports us programming a LUT after blending.
 	 */
 	if (!xform->steps_valid) {
 		str_printf(err_msg, "xform color steps are invalid");
