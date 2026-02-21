@@ -223,6 +223,19 @@ bool GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *disp
 DisplayError SetDisplayConfiguration(uint32_t display_id,
                                      struct DisplayConfigInfo *display_config);
 
+/*! @brief Method to set display Qsync for a display_id requested by mode.
+    @details Client shall use this method to set display Qsync of requested
+    display id by mode.
+
+    @param[in] display_id \link int \endlink
+    @param[in] mode \link uint \endlink
+
+    @return \link DisplayError \endlink
+
+    @sa
+*/
+DisplayError SetDisplayQsyncMode(uint32_t display_id, uint32_t mode);
+
 /*! @brief Method to obtain display's HDR information parameters for requested display_id.
     @details Client shall use this method to obtain display's HDR capability parameters
     for requested display_id.

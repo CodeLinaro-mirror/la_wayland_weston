@@ -556,6 +556,7 @@ struct weston_output {
 	int (*repaint)(struct weston_output *output);
 	void (*destroy)(struct weston_output *output);
 	void (*assign_planes)(struct weston_output *output);
+	uint32_t (*set_qsync_mode)(struct weston_output *output_base, uint32_t qsyncmode);
 	int (*switch_mode)(struct weston_output *output, struct weston_mode *mode);
 
 	/* backlight values are on 0-255 range, where higher is brighter */

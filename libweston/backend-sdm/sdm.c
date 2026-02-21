@@ -565,6 +565,22 @@ drm_repaint_cancel(struct weston_backend *backend)
 	}
 }
 
+static uint32_t
+drm_set_qsync_mode(struct weston_output *output_base, uint32_t qsync_mode)
+{
+    DisplayError error = kErrorNone;
+	struct drm_output *output = to_drm_output(output_base);
+
+	error = SetDisplayQsyncMode(output->display_id, qsync_mode);
+	if (error != kErrorNone) {
+		weston_log("Failed %s with error = %d\n", __func__, error);
+	} else {
+		weston_log("%s to mode = %d\n", __func__, qsync_mode);
+	}
+
+	return (uint32_t)error;
+}
+
 static int
 drm_output_init_pixman(struct drm_output *output, struct drm_backend *b);
 static void
@@ -977,6 +993,7 @@ drm_output_enable(struct weston_output *base)
 	output->base.repaint = drm_output_repaint;
 	output->base.assign_planes = drm_assign_planes;
 	output->base.set_dpms = drm_set_dpms;
+	output->base.set_qsync_mode = drm_set_qsync_mode;
 	output->base.switch_mode = drm_output_switch_mode;
 	output->base.set_backlight = drm_set_backlight;
 	output->base.backlight_current = drm_get_backlight(output->display_id);

@@ -49,6 +49,7 @@ static enum ops_index {
 	OPS_POWER_OFF,
 	OPS_SET_OUTPUT_STATE,
 	OPS_SET_OUTPUT_BRIGHTNESS,
+	OPS_SET_OUTPUT_QSYNC_MODE,
 	OPS_EXIT
 };
 
@@ -206,6 +207,44 @@ ops_set_output_brightness(void)
 }
 
 static void
+ops_set_output_qsync_mode(void)
+{
+	char output_name[MAX_STRING_SIZE] = "";
+
+	printf("enter your output name : ");
+	if (fgets(output_name, MAX_STRING_SIZE, stdin) == NULL) {
+		printf("Failed to read output name\n");
+		clearerr(stdin);
+		return;
+	}
+
+	int len = strlen(output_name);
+	if (len > 0 && output_name[len - 1] == '\n') {
+		output_name[len - 1] = '\0';
+		len--;
+	}
+
+	if (len == 0 || len >= MAX_STRING_SIZE - 1) {
+		printf("Invalid output name length\n");
+		return;
+	}
+
+	printf("Enter output qsync mode: \n \
+	      0. Qsync mode off\n \
+	      1. Qsync mode continuous \n ");
+	printf("enter your value : ");
+	uint32_t mode = (uint32_t)ops_get_input_num();
+	if (mode != 0 && mode != 1) {
+		printf("Invalid input. Please try again.\n");
+		return;
+	}
+
+	weston_qti_extn_set_output_qsync_mode(display.qti_extn,
+	                              (const char *)output_name, mode);
+	printf("INFO: set output(%s) qsync mode to %u\n", output_name, mode);
+}
+
+static void
 print_menu(void)
 {
 	printf("\n=== Weston QTI Extension Test ===\n"
@@ -213,7 +252,8 @@ print_menu(void)
 		"  2. Power Off\n"
 		"  3. Set Output State\n"
 		"  4. Set Brightness\n"
-		"  5. Exit\n"
+		"  5. Set Qsync mode\n"
+		"  6. Exit\n"
 		"Enter your choice: ");
 }
 
@@ -263,6 +303,9 @@ main(int argc, char **argv)
 			break;
 		case OPS_SET_OUTPUT_BRIGHTNESS:
 			ops_set_output_brightness();
+			break;
+		case OPS_SET_OUTPUT_QSYNC_MODE:
+			ops_set_output_qsync_mode();
 			break;
 		case OPS_EXIT:
 			loop = false;
