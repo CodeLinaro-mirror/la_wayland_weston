@@ -31,6 +31,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
+#include <fcntl.h>
 
 #include <wayland-util.h>
 
@@ -252,4 +253,16 @@ weston_log_continue(const char *fmt, ...)
 	va_end(argp);
 
 	return l;
+}
+
+WL_EXPORT void
+weston_place_marker(const char *name)
+{
+	struct timespec ts;
+
+	setvbuf(stdout, NULL, _IOLBF, 0);
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	fprintf(stdout, "%s: monotime=[%ld.%09ld] ",
+			name, ts.tv_sec, ts.tv_nsec);
+	fprintf(stdout, "\n");
 }

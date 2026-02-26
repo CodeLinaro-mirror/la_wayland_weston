@@ -3971,7 +3971,13 @@ gl_renderer_create_window_surface(struct gl_renderer *gr,
 {
 	EGLSurface egl_surface = EGL_NO_SURFACE;
 	EGLConfig egl_config;
-
+	static bool firstCreateWin = true;
+#ifdef QCOM_BSP
+	if (firstCreateWin)
+	{
+		weston_place_marker("G - first create window start");
+	}
+#endif
 	egl_config = gl_renderer_get_egl_config(gr, EGL_WINDOW_BIT,
 						formats, formats_count);
 	if (egl_config == EGL_NO_CONFIG_KHR)
@@ -3988,7 +3994,13 @@ gl_renderer_create_window_surface(struct gl_renderer *gr,
 		egl_surface = eglCreateWindowSurface(gr->egl_display,
 						     egl_config,
 						     window_for_legacy, NULL);
-
+#ifdef QCOM_BSP
+	if (firstCreateWin)
+	{
+		weston_place_marker("G - first create window end");
+		firstCreateWin = false;
+	}
+#endif
 	return egl_surface;
 }
 
@@ -4214,7 +4226,7 @@ gl_renderer_display_create(struct weston_compositor *ec,
 #ifdef QCOM_BSP
 	static bool firstCreateDisplay = true;
 	if (firstCreateDisplay) {
-		weston_log("GL - setup egl start \n");
+		weston_place_marker("G - setup egl start");
 	}
 #endif
 	gr = zalloc(sizeof *gr);
@@ -4284,7 +4296,7 @@ gl_renderer_display_create(struct weston_compositor *ec,
 	}
 #ifdef QCOM_BSP
 	if (firstCreateDisplay) {
-		weston_log("GL - setup egl end \n");
+		weston_place_marker("G - setup egl end");
 		firstCreateDisplay = false;
 	}
 #endif

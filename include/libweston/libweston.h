@@ -2395,6 +2395,9 @@ weston_log_paced(struct weston_log_pacer *pacer, unsigned int max_burst,
 		 unsigned int reset_ms, const char *fmt, ...)
 	__attribute__ ((format (printf, 4, 5)));
 
+void
+weston_place_marker(const char *name);
+
 enum weston_screenshooter_outcome {
 	WESTON_SCREENSHOOTER_SUCCESS,
 	WESTON_SCREENSHOOTER_NO_MEMORY,
