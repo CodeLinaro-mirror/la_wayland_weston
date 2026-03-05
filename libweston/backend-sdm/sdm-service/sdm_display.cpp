@@ -2533,7 +2533,11 @@ void SdmFrameDumper::HandleInputDump(struct drm_output *output, uint32_t frame_i
     std::vector<shared_ptr<DumpInputData>> dump_input_data = {};
 
     wl_list_for_each_reverse(sdm_layer, &output->sdm_layer_list, link) {
-        struct weston_buffer *buffer = sdm_layer->buffer_ref.buffer;
+        /* For SHM layers, buffer_ref is intentionally NULL (gl-renderer owns
+         * SHM lifetime). Read the buffer directly from the surface instead. */
+        struct weston_buffer *buffer = sdm_layer->fb ?
+            sdm_layer->buffer_ref.buffer :
+            sdm_layer->pnode->view->surface->buffer_ref.buffer;
 
         layer_index++;
 
