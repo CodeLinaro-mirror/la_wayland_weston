@@ -209,5 +209,7 @@ drm_output_set_mode(struct weston_output *base,
 	output->base.native_mode = output->base.current_mode;
 	output->base.native_scale = output->base.current_scale;
 
+	output->prev_layer_none_commit = true;
+	output->layer_none_commit = false;
 	return 0;
 }

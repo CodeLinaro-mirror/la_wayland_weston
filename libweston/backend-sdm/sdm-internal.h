@@ -328,6 +328,11 @@ struct drm_output {
 	enum dpms_enum dpms; //tracks dpms level of output
 	int display_id;
 	int retire_fence_fd;
+
+	//Indicate whether commit layers or not
+	bool layer_none_commit;
+	//Indicate previous frame whether commit layers or not, record previous layer_none_commit
+	bool prev_layer_none_commit;
 };
 
 static inline struct drm_head *
