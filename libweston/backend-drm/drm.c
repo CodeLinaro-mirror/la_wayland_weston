@@ -4185,5 +4185,7 @@ weston_backend_init(struct weston_compositor *compositor,
 	if (b == NULL)
 		return -1;
 
+	weston_place_marker("W - backend full ready");
+
 	return 0;
 }

@@ -1353,6 +1353,7 @@ drm_pending_state_apply_atomic(struct drm_pending_state *pending_state,
 	uint32_t flags, tear_flag = 0;
 	bool may_tear = true;
 	int ret = 0;
+	static bool first_commit = true;
 
 	if (!req)
 		return -1;
@@ -1475,6 +1476,12 @@ drm_pending_state_apply_atomic(struct drm_pending_state *pending_state,
 	ret = drmModeAtomicCommit(device->drm.fd, req, flags | tear_flag,
 				  device);
 	drm_debug(b, "[atomic] drmModeAtomicCommit\n");
+
+	if (first_commit) {
+		first_commit = false;
+		weston_place_marker("W - first commit submitted");
+	}
+
 	if (ret != 0 && may_tear && mode == DRM_STATE_TEST_ONLY) {
 		/* If we failed trying to set up a tearing commit, try again
 		 * without tearing. If that succeeds, knock the tearing flag
@@ -1717,6 +1724,7 @@ atomic_flip_handler(int fd, unsigned int frame, unsigned int sec,
 	uint32_t flags = WP_PRESENTATION_FEEDBACK_KIND_VSYNC |
 			 WP_PRESENTATION_FEEDBACK_KIND_HW_COMPLETION |
 			 WP_PRESENTATION_FEEDBACK_KIND_HW_CLOCK;
+	static bool first_vsync = true;
 
 	crtc = drm_crtc_find(device, crtc_id);
 	assert(crtc);
@@ -1740,6 +1748,11 @@ atomic_flip_handler(int fd, unsigned int frame, unsigned int sec,
 		weston_compositor_read_presentation_clock(ec, &now);
 		sec = now.tv_sec;
 		usec = now.tv_nsec / 1000;
+	}
+
+	if (first_vsync) {
+		first_vsync = false;
+		weston_place_marker("W - first frame have been displayed");
 	}
 
 	drm_debug(b, "[atomic][CRTC:%u] flip processing started\n", crtc_id);
