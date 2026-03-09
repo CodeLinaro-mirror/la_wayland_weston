@@ -110,6 +110,10 @@ struct weston_color_tf_info {
         /** CM&HDR protocol extension value representing the tf. */
         uint32_t protocol_tf;
 
+	/** KMS 1D curve colorop value representing the tf. */
+	uint32_t kms_colorop;
+	uint32_t kms_colorop_inverse;
+
 	/* The protocol also has support for parameterized functions, i.e.
 	 * certain known functions that clients can define passing arbitrary
 	 * parameters. */
