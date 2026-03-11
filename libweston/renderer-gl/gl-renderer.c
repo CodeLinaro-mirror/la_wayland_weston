@@ -730,13 +730,11 @@ timeline_render_point_handler(int fd, uint32_t mask, void *data)
 			 TLP_GPU(&end), TLP_OUTPUT(trp->output), TLP_END);
 
 	       weston_log_scope_printf(gr->paint_node_scope,
-			       "\tGPU Timeline:\n\t\tbegin: %" PRId64 ".%09ld"
-			       " - end: %" PRId64 ".%09ld - elapsed: %.2f us\n",
+			       "\tGPU activity:\n\t\tbegin: %" PRId64 ".%09ld"
+			       " - end: %" PRId64 ".%09ld - active: %.2f us\n",
 			       (int64_t) begin.tv_sec, begin.tv_nsec,
 			       (int64_t) end.tv_sec, end.tv_nsec,
 			       (float) (elapsed / 1000.0f));
-
-
 	}
 
 	timeline_render_point_destroy(trp);
