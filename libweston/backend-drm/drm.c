@@ -4200,6 +4200,7 @@ drm_kms_device_destroy(struct drm_kms_device *kms_device)
 static void
 drm_device_destroy(struct drm_device *device)
 {
+	struct weston_compositor *ec = device->backend->compositor;
 	struct drm_crtc *crtc, *crtc_tmp;
 	struct drm_writeback *writeback, *writeback_tmp;
 

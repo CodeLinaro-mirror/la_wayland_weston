@@ -53,24 +53,24 @@ weston_assert_fail_(const struct weston_compositor *compositor, const char *fmt,
 
 #define weston_assert_(compositor, a, b, val_type, val_fmt, cmp)		\
 ({										\
-	struct weston_compositor *ec = compositor;				\
+	struct weston_compositor *wc_ = compositor;				\
 	val_type a_ = (a);							\
 	val_type b_ = (b);							\
 	bool cond = a_ cmp b_;							\
 	if (!cond)								\
-		custom_assert_fail_(ec, "%s:%u: Assertion %s %s %s (" val_fmt " %s " val_fmt ") failed!\n",	\
+		custom_assert_fail_(wc_, "%s:%u: Assertion %s %s %s (" val_fmt " %s " val_fmt ") failed!\n",	\
 				    __FILE__, __LINE__, #a, #cmp, #b, a_, #cmp, b_);				\
 	cond;									\
 })
 
 #define weston_assert_fn_(compositor, fn, a, b, val_type, val_fmt, cmp)		\
 ({										\
-	struct weston_compositor *ec = compositor;				\
+	struct weston_compositor *wc_ = compositor;				\
 	val_type a_ = (a);							\
 	val_type b_ = (b);							\
 	bool cond = fn(a_, b_) cmp 0;						\
 	if (!cond)								\
-		custom_assert_fail_(ec, "%s:%u: Assertion %s %s %s (" val_fmt " %s " val_fmt ") failed!\n",	\
+		custom_assert_fail_(wc_, "%s:%u: Assertion %s %s %s (" val_fmt " %s " val_fmt ") failed!\n",	\
 				    __FILE__, __LINE__, #a, #cmp, #b, a_, #cmp, b_);				\
 	cond;									\
 })
@@ -185,39 +185,39 @@ weston_assert_fail_(const struct weston_compositor *compositor, const char *fmt,
 
 #define weston_assert_bit_set(compositor, value, bit)				\
 ({										\
-	struct weston_compositor *ec = compositor;				\
+	struct weston_compositor *wc_ = compositor;				\
 	uint64_t v = (value);							\
 	uint64_t b = (bit);							\
 	bool cond = (v & b) == b;						\
 	weston_assert_true(compositor, is_pow2_64(bit));			\
 	if (!cond)								\
-		custom_assert_fail_(ec, "%s:%u: Assertion failed! Bit \"%s\" (%" PRIu64 ") of \"%s\" (0x%" PRIx64 ") is not set.\n",	\
+		custom_assert_fail_(wc_, "%s:%u: Assertion failed! Bit \"%s\" (%" PRIu64 ") of \"%s\" (0x%" PRIx64 ") is not set.\n",	\
 				    __FILE__, __LINE__, #bit, b, #value, v);	\
 	cond;									\
 })
 
 #define weston_assert_bit_not_set(compositor, value, bit)			\
 ({										\
-	struct weston_compositor *ec = compositor;				\
+	struct weston_compositor *wc_ = compositor;				\
 	uint64_t v = (value);							\
 	uint64_t b = (bit);							\
 	bool cond = (v & b) == 0;						\
 	weston_assert_true(compositor, is_pow2_64(bit));			\
 	if (!cond)								\
-		custom_assert_fail_(ec, "%s:%u: Assertion failed! Bit \"%s\" (%" PRIu64 ") of \"%s\" (0x%" PRIx64 ") is set.\n",	\
+		custom_assert_fail_(wc_, "%s:%u: Assertion failed! Bit \"%s\" (%" PRIu64 ") of \"%s\" (0x%" PRIx64 ") is set.\n",	\
 				    __FILE__, __LINE__, #bit, b, #value, v);	\
 	cond;									\
 })
 
 #define weston_assert_legal_bits(compositor, value, mask)			\
 ({										\
-	struct weston_compositor *ec = compositor;				\
+	struct weston_compositor *wc_ = compositor;				\
 	uint64_t v_ = (value);							\
 	uint64_t m_ = (mask);							\
 	uint64_t ill = v_ & ~m_;							\
 	bool cond = ill == 0;							\
 	if (!cond)								\
-		custom_assert_fail_(ec, "%s:%u: Assertion failed! "		\
+		custom_assert_fail_(wc_, "%s:%u: Assertion failed! "		\
 				    "Value %s (0x%" PRIx64 ") contains illegal bits 0x%" PRIx64 ". " \
 				    "Legal mask is %s (0x%" PRIx64 ").\n",	\
 				    __FILE__, __LINE__, #value, v_, ill, #mask, m_); \
@@ -228,8 +228,8 @@ weston_assert_fail_(const struct weston_compositor *compositor, const char *fmt,
 
 #define weston_assert_not_reached(compositor, reason)				\
 do {										\
-	struct weston_compositor *ec = compositor;				\
-	custom_assert_fail_(ec, "%s:%u: Assertion failed! This should not be reached: %s\n",	\
+	struct weston_compositor *wc_ = compositor;				\
+	custom_assert_fail_(wc_, "%s:%u: Assertion failed! This should not be reached: %s\n",	\
 			    __FILE__, __LINE__, reason);					\
 } while (0)
 
