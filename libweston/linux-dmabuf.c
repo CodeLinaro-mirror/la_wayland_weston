@@ -800,7 +800,7 @@ weston_dmabuf_feedback_send_all(struct weston_compositor *compositor,
 {
 	struct wl_resource *res;
 
-	weston_assert_true(compositor, !wl_list_empty(&dmabuf_feedback->resource_list));
+	weston_assert_list_not_empty(compositor, &dmabuf_feedback->resource_list);
 	wl_resource_for_each(res, &dmabuf_feedback->resource_list)
 		weston_dmabuf_feedback_send(dmabuf_feedback,
 					    format_table, res, false);

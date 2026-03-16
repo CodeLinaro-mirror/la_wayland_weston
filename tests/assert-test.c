@@ -110,6 +110,35 @@ TEST(asserts_boolean)
 	return RESULT_OK;
 }
 
+TEST(asserts_list)
+{
+	/* Unused by the macros for now, so let's just use NULL. */
+	struct weston_compositor *compositor = NULL;
+	struct wl_list list;
+	struct wl_list link;
+	bool ret;
+
+	wl_list_init(&list);
+
+	ret = weston_assert_list_empty(compositor, &list);
+	abort_if_not(ret);
+	ret = weston_assert_list_not_empty(compositor, &list);
+	abort_if_not(ret == false);
+
+	wl_list_insert(&list, &link);
+
+	ret = weston_assert_list_empty(compositor, &list);
+	abort_if_not(ret == false);
+	ret = weston_assert_list_not_empty(compositor, &list);
+	abort_if_not(ret);
+
+	/* If we reach that point, it's a success so reset the assert counter
+	 * that's been incremented to check that assertions work. */
+	weston_assert_counter_reset();
+
+	return RESULT_OK;
+}
+
 TEST(asserts_pointer)
 {
 	/* Unused by the macros for now, so let's just use NULL. */

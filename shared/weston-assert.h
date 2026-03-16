@@ -32,6 +32,8 @@
 #include <stdbool.h>
 #include <inttypes.h>
 
+#include <wayland-util.h>
+
 struct weston_compositor;
 
 __attribute__((noreturn, format(printf, 2, 3)))
@@ -221,6 +223,30 @@ weston_assert_fail_(const struct weston_compositor *compositor, const char *fmt,
 				    "Value %s (0x%" PRIx64 ") contains illegal bits 0x%" PRIx64 ". " \
 				    "Legal mask is %s (0x%" PRIx64 ").\n",	\
 				    __FILE__, __LINE__, #value, v_, ill, #mask, m_); \
+	cond;									\
+})
+
+/* wl_list asserts */
+
+#define weston_assert_list_empty(compositor, list)				\
+({										\
+	struct weston_compositor *wc_ = compositor;				\
+	struct wl_list *l_ = list;						\
+	bool cond = wl_list_empty(l_);						\
+	if (!cond)								\
+		custom_assert_fail_(wc_, "%s:%u: Assertion failed! wl_list '%s' is not empty.\n",	\
+				    __FILE__, __LINE__, #list);			\
+	cond;									\
+})
+
+#define weston_assert_list_not_empty(compositor, list)				\
+({										\
+	struct weston_compositor *wc_ = compositor;				\
+	struct wl_list *l_ = list;						\
+	bool cond = !wl_list_empty(l_);						\
+	if (!cond)								\
+		custom_assert_fail_(wc_, "%s:%u: Assertion failed! wl_list '%s' is empty.\n",	\
+				    __FILE__, __LINE__, #list);			\
 	cond;									\
 })
 

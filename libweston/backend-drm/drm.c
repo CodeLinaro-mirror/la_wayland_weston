@@ -4215,7 +4215,7 @@ drm_device_destroy(struct drm_device *device)
 			      &device->writeback_connector_list, link)
 		drm_writeback_destroy(writeback);
 
-	weston_assert_true(ec, wl_list_empty(&device->drm_colorop_3x1d_lut_list));
+	weston_assert_list_empty(ec, &device->drm_colorop_3x1d_lut_list);
 
 	if (device->drm_event_source)
 		wl_event_source_remove(device->drm_event_source);
