@@ -195,6 +195,89 @@ get_placeholder_color(struct weston_paint_node *pnode,
 	color->a = 1.0;
 }
 
+/* If we have a simple transform, we can compute an output destination
+ * rectangle and a buffer source rectangle that backends can use for plane
+ * setup.
+ */
+static void
+paint_node_update_rectangles(struct weston_paint_node *pnode)
+{
+	struct weston_view *view = pnode->view;
+	struct weston_output *output = pnode->output;
+	struct weston_surface *surface = pnode->surface;
+	struct weston_buffer *buffer = surface->buffer_ref.buffer;
+	pixman_region32_t dest_rect;
+	pixman_box32_t *box;
+	struct weston_coord corners[2];
+	float sxf1, syf1, sxf2, syf2, swidth, sheight;
+
+	box = pixman_region32_extents(&view->transform.boundingbox);
+
+	/* First calculate the destination co-ordinates by taking the
+	 * area of the view which is visible on this output, performing any
+	 * transforms to account for output rotation and scale as necessary. */
+	pixman_region32_init(&dest_rect);
+	pixman_region32_intersect(&dest_rect, &view->transform.boundingbox,
+				  &output->region);
+	weston_region_global_to_output(&dest_rect, output, &dest_rect);
+
+	box = pixman_region32_extents(&dest_rect);
+	pnode->output_dest.x = box->x1;
+	pnode->output_dest.y = box->y1;
+	pnode->output_dest.width = box->x2 - box->x1;
+	pnode->output_dest.height = box->y2 - box->y1;
+
+	/* Now calculate the source rectangle, by transforming the destination
+	 * rectangle by the output to buffer matrix. */
+	corners[0] = weston_matrix_transform_coord(&pnode->output_to_buffer_matrix,
+						   weston_coord(box->x1, box->y1));
+	corners[1] = weston_matrix_transform_coord(&pnode->output_to_buffer_matrix,
+						   weston_coord(box->x2, box->y2));
+	sxf1 = corners[0].x;
+	syf1 = corners[0].y;
+	sxf2 = corners[1].x;
+	syf2 = corners[1].y;
+	pixman_region32_fini(&dest_rect);
+
+	/* Make sure that our post-transform coordinates are in the
+	 * right order.
+	 */
+	if (sxf1 > sxf2) {
+		float temp = sxf1;
+
+		sxf1 = sxf2;
+		sxf2 = temp;
+	}
+	if (syf1 > syf2) {
+		float temp = syf1;
+
+		syf1 = syf2;
+		syf2 = temp;
+	}
+
+	/* Clamp our source co-ordinates to surface bounds; it's possible
+	 * for intermediate translations to give us slightly incorrect
+	 * co-ordinates if we have, for example, multiple zooming
+	 * transformations. View bounding boxes are also explicitly rounded
+	 * greedily. */
+	if (sxf1 < 0.0)
+		sxf1 = 0.0;
+	if (syf1 < 0.0)
+		syf1 = 0.0;
+
+	swidth = sxf2 - sxf1;
+	sheight = syf2 - syf1;
+	if (swidth > buffer->width - sxf1)
+		swidth = buffer->width - sxf1;
+	if (sheight > buffer->height - syf1)
+		sheight = buffer->height - syf1;
+
+	pnode->buffer_source_x = sxf1;
+	pnode->buffer_source_y = syf1;
+	pnode->buffer_source_width = swidth;
+	pnode->buffer_source_height = sheight;
+}
+
 /* Paint nodes contain filter and transform information that needs to be
  * up to date before assign_planes() is called. But there are also
  * damage related bits that must be updated after assign_planes()
@@ -224,6 +307,8 @@ paint_node_update_early(struct weston_paint_node *pnode)
 
 		pnode->simple_transform = weston_matrix_to_transform(mat,
 								     &pnode->transform);
+		if (pnode->simple_transform)
+			paint_node_update_rectangles(pnode);
 	}
 
 	buffer = pnode->surface->buffer_ref.buffer;

@@ -712,6 +712,15 @@ struct weston_paint_node {
 	bool simple_transform;
 	/* Only valid if the transform is considered simple. */
 	enum wl_output_transform transform;
+	/* The paint node's output destination rectangle, only valid if simple_transform
+	 * is true */
+	struct weston_geometry output_dest;
+	/* The paint node's buffer source rectangle, only valid if simple_transform
+	 * is true */
+	float buffer_source_x;
+	float buffer_source_y;
+	float buffer_source_width;
+	float buffer_source_height;
 
 	/* struct weston_output::paint_node_z_order_list */
 	struct wl_list z_order_link;

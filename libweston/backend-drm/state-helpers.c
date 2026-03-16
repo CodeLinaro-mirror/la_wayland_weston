@@ -227,13 +227,6 @@ drm_plane_state_coords_for_paint_node(struct drm_plane_state *state,
 				      struct weston_paint_node *pnode,
 				      uint64_t zpos)
 {
-	struct drm_output *output = state->handle->output;
-	struct weston_view *ev = pnode->view;
-	struct weston_buffer *buffer = ev->surface->buffer_ref.buffer;
-	pixman_region32_t dest_rect;
-	pixman_box32_t *box;
-	struct weston_coord corners[2];
-	float sxf1, syf1, sxf2, syf2, swidth, sheight;
 	uint16_t min_alpha = state->plane->alpha_min;
 	uint16_t max_alpha = state->plane->alpha_max;
 
@@ -246,75 +239,16 @@ drm_plane_state_coords_for_paint_node(struct drm_plane_state *state,
 	assert(pnode->simple_transform);
 	state->rotation = drm_rotation_from_output_transform(state->plane, pnode->transform);
 
-	box = pixman_region32_extents(&ev->transform.boundingbox);
-
-	/* First calculate the destination co-ordinates by taking the
-	 * area of the view which is visible on this output, performing any
-	 * transforms to account for output rotation and scale as necessary. */
-	pixman_region32_init(&dest_rect);
-	pixman_region32_intersect(&dest_rect, &ev->transform.boundingbox,
-				  &output->base.region);
-	weston_region_global_to_output(&dest_rect, &output->base, &dest_rect);
-
-	box = pixman_region32_extents(&dest_rect);
-
-	state->dest_x = box->x1;
-	state->dest_y = box->y1;
-	state->dest_w = box->x2 - box->x1;
-	state->dest_h = box->y2 - box->y1;
-
-	/* Now calculate the source rectangle, by transforming the destination
-	 * rectangle by the output to buffer matrix. */
-	corners[0] = weston_matrix_transform_coord(
-		&pnode->output_to_buffer_matrix,
-		weston_coord(box->x1, box->y1));
-	corners[1] = weston_matrix_transform_coord(
-		&pnode->output_to_buffer_matrix,
-		weston_coord(box->x2, box->y2));
-	sxf1 = corners[0].x;
-	syf1 = corners[0].y;
-	sxf2 = corners[1].x;
-	syf2 = corners[1].y;
-	pixman_region32_fini(&dest_rect);
-
-	/* Make sure that our post-transform coordinates are in the
-	 * right order.
-	 */
-	if (sxf1 > sxf2) {
-		float temp = sxf1;
-
-		sxf1 = sxf2;
-		sxf2 = temp;
-	}
-	if (syf1 > syf2) {
-		float temp = syf1;
-
-		syf1 = syf2;
-		syf2 = temp;
-	}
-
-	/* Clamp our source co-ordinates to surface bounds; it's possible
-	 * for intermediate translations to give us slightly incorrect
-	 * co-ordinates if we have, for example, multiple zooming
-	 * transformations. View bounding boxes are also explicitly rounded
-	 * greedily. */
-	if (sxf1 < 0.0)
-		sxf1 = 0.0;
-	if (syf1 < 0.0)
-		syf1 = 0.0;
-
-	swidth = sxf2 - sxf1;
-	sheight = syf2 - syf1;
-	if (swidth > buffer->width - sxf1)
-		swidth = buffer->width - sxf1;
-	if (sheight > buffer->height - syf1)
-		sheight = buffer->height - syf1;
+	state->dest_x = pnode->output_dest.x;
+	state->dest_y = pnode->output_dest.y;
+	state->dest_w = pnode->output_dest.width;
+	state->dest_h = pnode->output_dest.height;
 
 	/* Convert to U16.16 KMS fixed-point encoding. */
-	state->src_x = wl_fixed_from_double(sxf1) << 8;
-	state->src_y = wl_fixed_from_double(syf1) << 8;
-	state->src_w = wl_fixed_from_double(swidth) << 8;
-	state->src_h = wl_fixed_from_double(sheight) << 8;
+	state->src_x = wl_fixed_from_double(pnode->buffer_source_x) << 8;
+	state->src_y = wl_fixed_from_double(pnode->buffer_source_y) << 8;
+	state->src_w = wl_fixed_from_double(pnode->buffer_source_width) << 8;
+	state->src_h = wl_fixed_from_double(pnode->buffer_source_height) << 8;
 
 	/* apply zpos if available */
 	state->zpos = zpos;
