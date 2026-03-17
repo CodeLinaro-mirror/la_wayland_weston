@@ -712,7 +712,7 @@ drm_fb_get_from_paint_node(struct drm_output *output,
 		return NULL;
 	}
 
-	weston_log("\t\t\t[view] view %p format: %s\n",
+	drm_debug(b, "\t\t\t[view] view %p format: %s\n",
 		  ev, fb->format->drm_format_name);
 	drm_fb_set_buffer(fb, buffer,
 			ev->surface->buffer_release_ref.buffer_release);
