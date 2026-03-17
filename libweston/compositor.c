@@ -529,6 +529,8 @@ weston_paint_node_create(struct weston_surface *surface,
 	pnode->plane = &pnode->output->primary_plane;
 	pnode->plane_next = NULL;
 
+	pnode->view_transform_matrix = &view->transform.matrix;
+
 	pnode->need_hole = false;
 	pnode->status =
 		WESTON_PAINT_NODE_ALL_DIRTY & ~WESTON_PAINT_NODE_PLANE_DIRTY;

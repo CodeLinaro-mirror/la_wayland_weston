@@ -1497,7 +1497,7 @@ vulkan_pipeline_config_init_for_paint_node(struct vulkan_pipeline_config *pconf,
 			.renderpass = vo->renderpass,
 			.green_tint = (vr->debug_mode == DEBUG_MODE_FRAGMENT),
 		},
-		.projection = pnode->view->transform.matrix,
+		.projection = *pnode->view_transform_matrix,
 		.surface_to_buffer =
 			pnode->surface->surface_to_buffer_matrix,
 		.view_alpha = pnode->view_alpha,

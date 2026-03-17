@@ -689,6 +689,7 @@ struct weston_paint_node {
 	/* struct weston_view::paint_node_list */
 	struct wl_list view_link;
 	struct weston_view *view;
+	struct weston_matrix *view_transform_matrix;
 
 	/* struct weston_output::paint_node_list */
 	struct wl_list output_link;

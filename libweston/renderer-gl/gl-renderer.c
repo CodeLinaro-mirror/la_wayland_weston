@@ -1742,7 +1742,7 @@ prepare_solid_draw(struct gl_shader_config *sconf,
 			.variant = SHADER_VARIANT_SOLID,
 			.input_is_premult = true,
 		},
-		.projection = pnode->view->transform.matrix,
+		.projection = *pnode->view_transform_matrix,
 		.view_alpha = pnode->view_alpha,
 		.unicolor = { pnode->solid.r,
 			      pnode->solid.g,
@@ -1931,7 +1931,7 @@ prepare_textured_draw(struct gl_shader_config *sconf,
 
 	*sconf = (struct gl_shader_config) {
 		.req.texcoord_input = SHADER_TEXCOORD_INPUT_SURFACE,
-		.projection = pnode->view->transform.matrix,
+		.projection = *pnode->view_transform_matrix,
 		.surface_to_buffer =
 			pnode->surface->surface_to_buffer_matrix,
 		.view_alpha = pnode->view_alpha,
