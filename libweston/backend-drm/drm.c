@@ -357,9 +357,15 @@ drm_output_update_complete(struct drm_output *output, uint32_t flags,
 	ts.tv_sec = sec;
 	ts.tv_nsec = usec * 1000;
 
-	if (output->state_cur->dpms != WESTON_DPMS_OFF)
-		weston_output_finish_frame(&output->base, &ts, flags);
-	else
+	if (output->state_cur->dpms != WESTON_DPMS_OFF) {
+			if (sec == 0 && usec == 0) {
+				weston_log("drm_output_update_complete: ignore zero timestamp on output\n");
+
+				weston_output_finish_frame(&output->base, NULL,
+						WP_PRESENTATION_FEEDBACK_INVALID);
+			}else
+				weston_output_finish_frame(&output->base, &ts, flags);
+	} else
 		weston_output_finish_frame(&output->base, NULL,
 					   WP_PRESENTATION_FEEDBACK_INVALID);
 
