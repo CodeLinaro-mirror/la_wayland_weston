@@ -160,6 +160,7 @@ class SdmDisplayInterface {
     virtual DisplayError SetDisplayState(DisplayState state, bool teardown,
                                          shared_ptr<Fence> *release_fence) = 0;
     virtual DisplayError SetVSyncState(bool enable, struct drm_output *output) = 0;
+    virtual DisplayError SetQSyncMode(QSyncMode qsync_mode) = 0;
     virtual DisplayError GetDisplayConfiguration(struct DisplayConfigInfo *display_config) = 0;
     virtual DisplayError SetDisplayConfiguration(struct DisplayConfigInfo *display_config) = 0;
     virtual DisplayError SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence) = 0;
@@ -204,6 +205,7 @@ class SdmNullDisplay : public SdmDisplayInterface {
     DisplayError SetDisplayState(DisplayState state, bool teardown,
                                  shared_ptr<Fence> *release_fence);
     DisplayError SetVSyncState(bool enable, struct drm_output *output);
+    DisplayError SetQSyncMode(QSyncMode qsync_mode);
     DisplayError GetDisplayConfiguration(struct DisplayConfigInfo *display_config);
     DisplayError SetDisplayConfiguration(struct DisplayConfigInfo *display_config);
     DisplayError SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence);
@@ -245,6 +247,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     DisplayError SetDisplayState(DisplayState state, bool teardown,
                                  shared_ptr<Fence> *release_fence);
     DisplayError SetVSyncState(bool enable, struct drm_output *output);
+    DisplayError SetQSyncMode(QSyncMode qsync_mode);
     DisplayError GetDisplayConfiguration(struct DisplayConfigInfo *display_config);
     DisplayError SetDisplayConfiguration(struct DisplayConfigInfo *display_config);
     DisplayError SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence);
@@ -403,6 +406,9 @@ class SdmDisplayProxy {
     }
     DisplayError SetVSyncState(bool enable, struct drm_output *output) {
       return display_intf_->SetVSyncState(enable, output);
+    }
+    DisplayError SetQSyncMode(QSyncMode qsync_mode) {
+      return display_intf_->SetQSyncMode(qsync_mode);
     }
     DisplayError GetDisplayConfiguration(struct DisplayConfigInfo *display_config) {
       return display_intf_->GetDisplayConfiguration(display_config);

@@ -382,6 +382,20 @@ DisplayError SdmDisplay::SetVSyncState(bool VSyncState, struct drm_output *outpu
     return kErrorNone;
 }
 
+DisplayError SdmDisplay::SetQSyncMode(QSyncMode qsync_mode) {
+    DisplayError error = kErrorNone;
+
+    error = display_intf_->SetQSyncMode(qsync_mode);
+    if (error != kErrorNone) {
+        DLOGE("Set QSync mode = %d fail. Error = %d", qsync_mode, error);
+        return error;
+    } else {
+        DLOGD("Set QSync mode = %d", qsync_mode);
+    }
+
+    return kErrorNone;
+}
+
 DisplayError SdmDisplay::SetPanelBrightness(float brightness) {
     return display_intf_->SetPanelBrightness(brightness, true);
 }
@@ -2277,6 +2291,10 @@ void SdmNullDisplay::RefreshWithCachedLayerstack() {
 }
 
 void SdmNullDisplay::RefreshCallback() {
+}
+
+DisplayError SdmNullDisplay::SetQSyncMode(QSyncMode qsync_mode) {
+  return kErrorNone;
 }
 
 DisplayError SdmNullDisplay::SetVSyncState(bool enable, struct drm_output *output) {

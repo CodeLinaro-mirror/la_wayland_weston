@@ -404,6 +404,30 @@ DisplayError SetOutputBuffer(uint32_t display_id, void *gbm_bo)
     return kErrorNone;
 }
 
+DisplayError SetDisplayQsyncMode(uint32_t display_id, uint32_t mode)
+{
+    DisplayError error = kErrorNone;
+    SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
+    if (!dpy) {
+        DLOGE("Failed as Display (%d) not created yet.", display_id);
+        return kErrorNotSupported;
+    } else {
+        DLOGD("SetDisplayQsyncMode Display (%d), mode: %d", display_id, mode);
+    }
+
+    error = dpy->SetQSyncMode(static_cast<sdm::QSyncMode>(mode));
+    if (error != kErrorNone) {
+        DLOGE("Failed SetDisplayQsyncMode with error = %d", error);
+        return error;
+    }
+
+    #if SDM_DISPLAY_DEBUG
+    DLOGD("function successful.");
+    #endif
+
+    return kErrorNone;
+}
+
 bool GetDisplayHdrInfo(uint32_t display_id, struct DisplayHdrInfo *display_hdr_info)
 {
     DisplayError error = kErrorNone;

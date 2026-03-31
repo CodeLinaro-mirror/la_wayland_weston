@@ -152,12 +152,21 @@ sdm_weston_global_transform_rect(struct weston_paint_node *node,
 		*x2 = corners_box.x2;
 		*y2 = corners_box.y2;
 	} else {
+		struct weston_output *output = node->output;
+	        //Convert global box -> output-local physical coordinates
+	        pixman_box32_t output_box = {
+	            .x1 = box->x1 - output->pos.c.x,
+	            .y1 = box->y1 - output->pos.c.y,
+	            .x2 = box->x2 - output->pos.c.x,
+	            .y2 = box->y2 - output->pos.c.y,
+	        };
+	        //Convert output -> buffer coordinates
 		corners[0] = weston_matrix_transform_coord(
 			&node->output_to_buffer_matrix,
-			weston_coord(box->x1, box->y1));
+			weston_coord(output_box.x1, output_box.y1));
 		corners[1] = weston_matrix_transform_coord(
 			&node->output_to_buffer_matrix,
-			weston_coord(box->x2, box->y2));
+			weston_coord(output_box.x2, output_box.y2));
 		*x1 = corners[0].x;
 		*y1 = corners[0].y;
 		*x2 = corners[1].x;
@@ -554,6 +563,22 @@ drm_repaint_cancel(struct weston_backend *backend)
 		free(device->repaint_data);
 		device->repaint_data = NULL;
 	}
+}
+
+static uint32_t
+drm_set_qsync_mode(struct weston_output *output_base, uint32_t qsync_mode)
+{
+    DisplayError error = kErrorNone;
+	struct drm_output *output = to_drm_output(output_base);
+
+	error = SetDisplayQsyncMode(output->display_id, qsync_mode);
+	if (error != kErrorNone) {
+		weston_log("Failed %s with error = %d\n", __func__, error);
+	} else {
+		weston_log("%s to mode = %d\n", __func__, qsync_mode);
+	}
+
+	return (uint32_t)error;
 }
 
 static int
@@ -968,6 +993,7 @@ drm_output_enable(struct weston_output *base)
 	output->base.repaint = drm_output_repaint;
 	output->base.assign_planes = drm_assign_planes;
 	output->base.set_dpms = drm_set_dpms;
+	output->base.set_qsync_mode = drm_set_qsync_mode;
 	output->base.switch_mode = drm_output_switch_mode;
 	output->base.set_backlight = drm_set_backlight;
 	output->base.backlight_current = drm_get_backlight(output->display_id);
