@@ -137,6 +137,9 @@ struct gl_renderer {
 
 	bool fragment_shader_debug;
 	bool fan_debug;
+#ifdef QCOM_BSP
+	bool secure_context;
+#endif
 	struct weston_binding *fragment_binding;
 	struct weston_binding *fan_binding;
 

@@ -35,9 +35,9 @@
 
 #include <sys/eventfd.h>
 #include <poll.h>
-#include <libweston/libweston.h>
 #include <gbm_priv.h>
 #include "sdm-internal.h"
+#include <libweston/libweston.h>
 #include "sdm-service/sdm_display_connect.h"
 #include "shared/string-helpers.h"
 #include "shared/timespec-util.h"
@@ -1281,7 +1281,16 @@ drm_output_create(struct weston_backend *backend, const char *name)
 
 	output->max_bpc = 16;
 #ifdef BUILD_SDM_GBM
+#ifdef QCOM_BSP
+	if (b->compositor->secure_mode) {
+		output->gbm_bo_flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING |
+							   GBM_BO_USE_PROTECTED | GBM_BO_ALLOC_SECURE_HEAP_QTI;
+	} else {
+		output->gbm_bo_flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
+	}
+#else
 	output->gbm_bo_flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
+#endif
 #endif
 
 	weston_output_init(&output->base, b->compositor, name);

@@ -1489,7 +1489,10 @@ struct weston_compositor {
 
 	/* Whether to let the compositor run without any input device. */
 	bool require_input;
-
+#ifdef QCOM_BSP
+	/* Add option to run weston in secure mode. */
+	bool secure_mode;
+#endif
 	/* Whether to load multiple backends. */
 	bool multi_backend;
 
