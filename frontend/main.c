@@ -4076,8 +4076,12 @@ load_drm_backend(struct weston_compositor *c, int *argc, char **argv,
 	weston_config_section_get_bool(section, "offload-blend-to-output",
 				       &offload_blend_to_output, false);
 
-	if (!c->color_manager && offload_blend_to_output)
+	if (!c->color_manager)
 		offload_blend_to_output = false;
+
+#if !CAN_OFFLOAD_COLOR_PIPELINE
+	offload_blend_to_output = false;
+#endif
 
 	config.offload_blend_to_output = offload_blend_to_output;
 
