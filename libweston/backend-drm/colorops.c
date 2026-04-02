@@ -33,6 +33,84 @@
 #include "shared/xalloc.h"
 
 static void
+drm_colorop_3x1d_lut_blob_destroy(struct drm_colorop_3x1d_lut_blob *lut)
+{
+	wl_list_remove(&lut->destroy_listener.link);
+	wl_list_remove(&lut->link);
+	drmModeDestroyPropertyBlob(lut->device->kms_device->fd, lut->blob_id);
+	free(lut);
+}
+
+static void
+drm_colorop_3x1d_lut_blob_destroy_handler(struct wl_listener *l, void *data)
+{
+	struct drm_colorop_3x1d_lut_blob *lut;
+
+	lut = wl_container_of(l, lut, destroy_listener);
+	assert(lut->xform == data);
+
+	drm_colorop_3x1d_lut_blob_destroy(lut);
+}
+
+/**
+ * Search for a 3x1D LUT colorop blob in a DRM device.
+ *
+ * \param device The DRM device in which we want to look for the blob.
+ * \param xform The xform from which the LUT comes from.
+ * \param lut_len How many taps each of the 1D LUT has.
+ */
+struct drm_colorop_3x1d_lut_blob *
+drm_colorop_3x1d_lut_blob_search(struct drm_device *device,
+				 struct weston_color_transform *xform,
+				 uint32_t lut_len)
+{
+	struct drm_colorop_3x1d_lut_blob *lut;
+
+	wl_list_for_each(lut, &device->drm_colorop_3x1d_lut_blob_list, link)
+		if (lut->xform == xform && lut->lut_len == lut_len)
+			return lut;
+
+	return NULL;
+}
+
+/**
+ * Create a 3x1D LUT colorop blob.
+ *
+ * A Weston colorop is an object associated with a step from a struct
+ * weston_color_transform and that can be used to program KMS color operations.
+ * This function creates a blob for such kind of object and cache that in the
+ * given DRM device, so we can avoid re-creating it.
+ *
+ * \param device The DRM device in which this colorop blob is stored.
+ * \param xform The xform from which the LUT comes from. This object matches its
+ * lifetime.
+ * \param lut_len The number of taps for each of the 1D LUT.
+ * \param blob_id The KMS blob id (associated to the DRM device).
+ * \return The 3x1D LUT colorop blob.
+ */
+struct drm_colorop_3x1d_lut_blob *
+drm_colorop_3x1d_lut_blob_create(struct drm_device *device,
+				 struct weston_color_transform *xform,
+				 uint32_t lut_len, uint32_t blob_id)
+{
+	struct drm_colorop_3x1d_lut_blob *lut;
+
+	lut = xzalloc(sizeof(*lut));
+
+	lut->device = device;
+	lut->blob_id = blob_id;
+	lut->xform = xform;
+	lut->lut_len = lut_len;
+
+	wl_list_insert(&device->drm_colorop_3x1d_lut_blob_list, &lut->link);
+
+	lut->destroy_listener.notify = drm_colorop_3x1d_lut_blob_destroy_handler;
+	wl_signal_add(&lut->xform->destroy_signal, &lut->destroy_listener);
+
+	return lut;
+}
+
+static void
 drm_colorop_destroy(struct drm_colorop *colorop)
 {
 	wl_list_remove(&colorop->link);

@@ -54,6 +54,16 @@ struct drm_color_pipeline {
 
 #if CAN_OFFLOAD_COLOR_PIPELINE
 
+struct drm_colorop_3x1d_lut_blob *
+drm_colorop_3x1d_lut_blob_create(struct drm_device *device,
+				 struct weston_color_transform *xform,
+				 uint32_t lut_len, uint32_t blob_id);
+
+struct drm_colorop_3x1d_lut_blob *
+drm_colorop_3x1d_lut_blob_search(struct drm_device *device,
+				 struct weston_color_transform *xform,
+				 uint32_t lut_len);
+
 void
 drm_plane_populate_color_pipelines(struct drm_plane *plane,
 				   drmModeObjectPropertiesPtr plane_props);
@@ -62,6 +72,22 @@ void
 drm_plane_release_color_pipelines(struct drm_plane *plane);
 
 #else /* CAN_OFFLOAD_COLOR_PIPELINE */
+
+static inline struct drm_colorop_3x1d_lut_blob *
+drm_colorop_3x1d_lut_blob_create(struct drm_device *device,
+				 struct weston_color_transform *xform,
+				 uint32_t lut_len, uint32_t blob_id)
+{
+	return NULL;
+}
+
+static inline struct drm_colorop_3x1d_lut_blob *
+drm_colorop_3x1d_lut_blob_search(struct drm_device *device,
+				 struct weston_color_transform *xform,
+				 uint32_t lut_len)
+{
+	return NULL;
+}
 
 static inline void
 drm_plane_populate_color_pipelines(struct drm_plane *plane,
