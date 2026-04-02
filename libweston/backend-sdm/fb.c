@@ -647,9 +647,13 @@ drm_fb_get_from_view(struct drm_output *output, struct weston_view *ev)
 		bo = gbm_bo_import(b->gbm, GBM_BO_IMPORT_GBM_BUF_TYPE,
 					&gbmbuf_info, GBM_BO_USE_SCANOUT);
 	} else {
-		//simple-egl will use WL_BUFFER
-		bo = gbm_bo_import(b->gbm, GBM_BO_IMPORT_WL_BUFFER,
-				   buffer->resource, GBM_BO_USE_SCANOUT);
+		//wayland buffer protocol shares gbmbuf type buffer by default
+		struct weston_surface *es = ev->surface;
+		void* temp_buf = wl_resource_get_user_data(es->buffer_ref.buffer->resource);
+
+		bo = gbm_bo_import(b->gbm, GBM_BO_IMPORT_GBM_BUF_TYPE,
+				   temp_buf, GBM_BO_USE_SCANOUT);
+
 	}
 
 	if (!dmabuf) {
