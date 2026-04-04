@@ -417,8 +417,7 @@ lcms_curve_matches_any_tf(struct weston_compositor *compositor,
 			  const float lcms_curve_params[3][MAX_PARAMS_LCMS_PARAM_CURVE])
 {
 	struct weston_color_curve_parametric curve = { 0 };
-	unsigned int i, j;
-	uint32_t n_lcms_curve_params;
+	unsigned int i;
 
 	curve.clamped_input = clamped_input;
 
@@ -428,27 +427,33 @@ lcms_curve_matches_any_tf(struct weston_compositor *compositor,
 		 * LittleCMS type 1 is the pure power-law curve, which is a
 		 * special case of LINPOW. See init_curve_from_type_1().
 		 */
-		n_lcms_curve_params = 1;
 		curve.type = WESTON_COLOR_CURVE_PARAMETRIC_TYPE_LINPOW;
+		for (i = 0; i < 3; i++) {
+			curve.params.chan[i].g = lcms_curve_params[i][0];
+			/* a = 1, b = 0, c = 1, d = 0 */
+			curve.params.chan[i].a = 1.0f;
+			curve.params.chan[i].b = 0.0f;
+			curve.params.chan[i].c = 1.0f;
+			curve.params.chan[i].d = 0.0f;
+		}
 		break;
 	case 4:
 		/**
 		 * LittleCMS type 4 is almost exactly the same as LINPOW. See
 		 * init_curve_from_type_4().
 		 */
-		n_lcms_curve_params = 5;
 		curve.type = WESTON_COLOR_CURVE_PARAMETRIC_TYPE_LINPOW;
+		for (i = 0; i < 3; i++) {
+			curve.params.chan[i].g = lcms_curve_params[i][0];
+			curve.params.chan[i].a = lcms_curve_params[i][1];
+			curve.params.chan[i].b = lcms_curve_params[i][2];
+			curve.params.chan[i].c = lcms_curve_params[i][3];
+			curve.params.chan[i].d = lcms_curve_params[i][4];
+		}
 		break;
 	default:
 		return NULL;
 	}
-
-	weston_assert_u32_le(compositor,
-			     n_lcms_curve_params, MAX_PARAMS_LCMS_PARAM_CURVE);
-
-	for (i = 0; i < 3; i++)
-		for (j = 0; j < n_lcms_curve_params; j++)
-			curve.params.chan[i].data[j] = lcms_curve_params[i][j];
 
 	return weston_color_tf_info_from_parametric_curve(&curve);
 }
