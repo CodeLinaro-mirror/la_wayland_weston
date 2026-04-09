@@ -382,12 +382,77 @@ DisplayError SdmDisplay::SetVSyncState(bool VSyncState, struct drm_output *outpu
     return kErrorNone;
 }
 
+DisplayError SdmDisplay::SetQSyncMode(QSyncMode qsync_mode) {
+    DisplayError error = kErrorNone;
+
+    error = display_intf_->SetQSyncMode(qsync_mode);
+    if (error != kErrorNone) {
+        DLOGE("Set QSync mode = %d fail. Error = %d", qsync_mode, error);
+        return error;
+    } else {
+        DLOGD("Set QSync mode = %d", qsync_mode);
+    }
+
+    return kErrorNone;
+}
+
 DisplayError SdmDisplay::SetPanelBrightness(float brightness) {
     return display_intf_->SetPanelBrightness(brightness, true);
 }
 
 DisplayError SdmDisplay::GetPanelBrightness(float *brightness) {
     return display_intf_->GetPanelBrightness(brightness);
+}
+
+DisplayError SdmDisplay::GetDisplayConfigCount(uint32_t *count) {
+  return display_intf_->GetNumVariableInfoConfigs(count);
+}
+
+DisplayError SdmDisplay::SetDisplayConfigurationByIndex(uint32_t index) {
+    DisplayError error = kErrorNone;
+    DisplayConfigVariableInfo disp_config = {};
+
+    error = display_intf_->SetActiveConfig(index);
+
+    if (error != kErrorNone) {
+        DLOGE("Active Index not found. Error = %d", error);
+        return error;
+    }
+
+    error = display_intf_->GetConfig(index, &disp_config);
+
+    if (error != kErrorNone) {
+        DLOGE("Display Configuration failed. Error = %d", error);
+        return error;
+    }
+
+    fps_  = disp_config.fps;
+
+    return kErrorNone;
+}
+
+DisplayError SdmDisplay::GetDisplayConfigurationByIndex(uint32_t index,
+                        struct DisplayConfigInfo *display_config) {
+    DisplayError error = kErrorNone;
+    DisplayConfigVariableInfo disp_config = {};
+
+    error = display_intf_->GetConfig(index, &disp_config);
+
+    if (error != kErrorNone) {
+        DLOGE("Display Configuration failed. Error = %d", error);
+        return error;
+    }
+
+    display_config->x_pixels     = disp_config.x_pixels;
+    display_config->y_pixels     = disp_config.y_pixels;
+    display_config->x_dpi        = disp_config.x_dpi;
+    display_config->y_dpi        = disp_config.y_dpi;
+    display_config->fps          = disp_config.fps;
+    display_config->vsync_period_ns = disp_config.vsync_period_ns;
+    display_config->is_yuv       = disp_config.is_yuv;
+    display_config->is_connected = true;
+
+    return kErrorNone;
 }
 
 DisplayError SdmDisplay::GetDisplayConfiguration(struct DisplayConfigInfo *display_config) {
@@ -2279,6 +2344,10 @@ void SdmNullDisplay::RefreshWithCachedLayerstack() {
 void SdmNullDisplay::RefreshCallback() {
 }
 
+DisplayError SdmNullDisplay::SetQSyncMode(QSyncMode qsync_mode) {
+  return kErrorNone;
+}
+
 DisplayError SdmNullDisplay::SetVSyncState(bool enable, struct drm_output *output) {
   /**
    * TODO: drm_output_ needs to be re-initialized based on the preferred supported mode
@@ -2287,6 +2356,19 @@ DisplayError SdmNullDisplay::SetVSyncState(bool enable, struct drm_output *outpu
    *       the recent Weston release updates.
    */
   drm_output_ = output;
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::GetDisplayConfigurationByIndex(uint32_t index,
+                                                            struct DisplayConfigInfo *display_config) {
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::GetDisplayConfigCount(uint32_t *count) {
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::SetDisplayConfigurationByIndex(uint32_t index) {
   return kErrorNone;
 }
 
@@ -2515,7 +2597,11 @@ void SdmFrameDumper::HandleInputDump(struct drm_output *output, uint32_t frame_i
     std::vector<shared_ptr<DumpInputData>> dump_input_data = {};
 
     wl_list_for_each_reverse(sdm_layer, &output->sdm_layer_list, link) {
-        struct weston_buffer *buffer = sdm_layer->buffer_ref.buffer;
+        /* For SHM layers, buffer_ref is intentionally NULL (gl-renderer owns
+         * SHM lifetime). Read the buffer directly from the surface instead. */
+        struct weston_buffer *buffer = sdm_layer->fb ?
+            sdm_layer->buffer_ref.buffer :
+            sdm_layer->pnode->view->surface->buffer_ref.buffer;
 
         layer_index++;
 

@@ -790,7 +790,6 @@ pixman_renderer_attach(struct weston_surface *es, struct weston_buffer *buffer)
 	if (buffer->type != WESTON_BUFFER_SHM) {
 #ifdef QCOM_BSP
 		if (buffer->type == WESTON_BUFFER_GBMBUF) {
-			weston_log("Pixman renderer supports GBM buffers\n");
 			struct gbm_buffer *gbmbuf;
 			gbmbuf = gbm_buffer_get(buffer->resource);
 			if (gbmbuf) {
@@ -799,7 +798,6 @@ pixman_renderer_attach(struct weston_surface *es, struct weston_buffer *buffer)
 			}
 		} else {
 #endif
-			weston_log("Pixman renderer supports only SHM buffers\n");
 			weston_buffer_reference(&ps->buffer_ref, NULL,
 						BUFFER_WILL_NOT_BE_ACCESSED);
 			weston_buffer_release_reference(&ps->buffer_release_ref, NULL);
