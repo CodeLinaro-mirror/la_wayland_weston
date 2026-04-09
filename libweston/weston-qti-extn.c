@@ -49,7 +49,8 @@ const struct weston_qti_extn_interface weston_qti_extn_impl = {
   power_off,
   set_output_state,
   set_brightness,
-  set_output_qsync_mode
+  set_output_qsync_mode,
+  set_output_fps
 };
 
 void power_on(struct wl_client *client, struct wl_resource *resource) {
@@ -124,6 +125,34 @@ void set_output_state(struct wl_client *client, struct wl_resource *resource,
     }
   }
   weston_log("set_output_state failed, output not found!\n");
+}
+
+void set_output_fps(struct wl_client *client, struct wl_resource *resource,
+                      const char *output_name, uint32_t fps) {
+  struct weston_compositor *compositor;
+  compositor = wl_resource_get_user_data(resource);
+  if (compositor == NULL) {
+    weston_log("error: compositor not found\n");
+    return;
+  }
+
+  struct weston_output *output;
+  wl_list_for_each(output, &compositor->output_list, link) {
+    if (!strcmp(output->name, output_name)) {
+      if (!output->set_fps) {
+        weston_log("error: set_fps not available for output %s\n", output->name);
+        return;
+      }
+      int ret = output->set_fps(output, fps);
+      if (ret != 0)
+        weston_log("set_output_fps failed for output %s\n", output->name);
+      else
+        weston_log("set output(%s) fps to %u\n", output->name, fps);
+
+      return;
+    }
+  }
+  weston_log("set_output_fps failed, output not found!\n");
 }
 
 void set_brightness(struct wl_client *client, struct wl_resource *resource,
