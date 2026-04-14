@@ -604,6 +604,20 @@ drm_output_switch_mode(struct weston_output *output_base, struct weston_mode *mo
 	if (&drm_mode->base == output->base.current_mode)
 		return 0;
 
+	/* If only the refresh rate changes (same resolution), skip EGL
+	*  recreation — the framebuffer dimensions are unchanged. */
+	if (drm_mode->base.width  == output->base.current_mode->width &&
+	    drm_mode->base.height == output->base.current_mode->height) {
+		weston_log("%s: refresh-rate-only change (%dx%d), skip EGL reinit\n",
+			   __func__,
+			   drm_mode->base.width, drm_mode->base.height);
+		output->base.current_mode->flags = 0;
+		output->base.current_mode = &drm_mode->base;
+		output->base.current_mode->flags =
+			WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED;
+		return 0;
+	}
+
 	output->base.current_mode->flags = 0;
 
 	output->base.current_mode = &drm_mode->base;
@@ -664,7 +678,7 @@ drm_set_fps(struct weston_output *output_base, int target_fps)
 
 			int ret = drm_output_switch_mode(output_base, &mode->base);
 			if (ret == 0) {
-				weston_output_damage(output_base);
+				weston_output_schedule_repaint(output_base);
 			} else {
 				weston_log("Failed to switch to %d FPS\n", target_fps);
 			}
