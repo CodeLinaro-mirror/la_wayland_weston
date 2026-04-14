@@ -233,7 +233,7 @@ drm_plane_state_coords_for_paint_node(struct drm_plane_state *state,
 	pixman_region32_t dest_rect;
 	pixman_box32_t *box;
 	struct weston_coord corners[2];
-	float sxf1, syf1, sxf2, syf2;
+	float sxf1, syf1, sxf2, syf2, swidth, sheight;
 	uint16_t min_alpha = state->plane->alpha_min;
 	uint16_t max_alpha = state->plane->alpha_max;
 
@@ -293,25 +293,28 @@ drm_plane_state_coords_for_paint_node(struct drm_plane_state *state,
 		syf2 = temp;
 	}
 
-	/* Shift from S23.8 wl_fixed to U16.16 KMS fixed-point encoding. */
-	state->src_x = wl_fixed_from_double(sxf1) << 8;
-	state->src_y = wl_fixed_from_double(syf1) << 8;
-	state->src_w = wl_fixed_from_double(sxf2 - sxf1) << 8;
-	state->src_h = wl_fixed_from_double(syf2 - syf1) << 8;
-
 	/* Clamp our source co-ordinates to surface bounds; it's possible
 	 * for intermediate translations to give us slightly incorrect
 	 * co-ordinates if we have, for example, multiple zooming
 	 * transformations. View bounding boxes are also explicitly rounded
 	 * greedily. */
-	if (state->src_x < 0)
-		state->src_x = 0;
-	if (state->src_y < 0)
-		state->src_y = 0;
-	if (state->src_w > (uint32_t) ((buffer->width << 16) - state->src_x))
-		state->src_w = (buffer->width << 16) - state->src_x;
-	if (state->src_h > (uint32_t) ((buffer->height << 16) - state->src_y))
-		state->src_h = (buffer->height << 16) - state->src_y;
+	if (sxf1 < 0.0)
+		sxf1 = 0.0;
+	if (syf1 < 0.0)
+		syf1 = 0.0;
+
+	swidth = sxf2 - sxf1;
+	sheight = syf2 - syf1;
+	if (swidth > buffer->width - sxf1)
+		swidth = buffer->width - sxf1;
+	if (sheight > buffer->height - syf1)
+		sheight = buffer->height - syf1;
+
+	/* Convert to U16.16 KMS fixed-point encoding. */
+	state->src_x = wl_fixed_from_double(sxf1) << 8;
+	state->src_y = wl_fixed_from_double(syf1) << 8;
+	state->src_w = wl_fixed_from_double(swidth) << 8;
+	state->src_h = wl_fixed_from_double(sheight) << 8;
 
 	/* apply zpos if available */
 	state->zpos = zpos;
