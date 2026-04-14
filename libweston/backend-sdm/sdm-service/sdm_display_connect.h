@@ -196,6 +196,47 @@ DisplayError Prepare(uint32_t display_id, struct drm_output *output);
 */
 DisplayError Commit(uint32_t display_id, struct drm_output *output);
 
+/*! @brief Method to obtain display property count for a display_id requested.
+    @details Client shall use this method to display properties of requested
+    display id.
+
+    @param[in] display_id \link int \endlink
+    @param[in] count \link display mode count \endlink
+
+    @return \link DisplayError \endlink
+
+    @sa
+*/
+DisplayError GetDisplayConfigCount(uint32_t display_id, uint32_t *count);
+
+/*! @brief Method to obtain display property for a display_id requested by index.
+    @details Client shall use this method to get display properties of requested
+    display id by index.
+
+    @param[in] display_id \link int \endlink
+    @param[in] index \link uint \endlink
+    @param[in] display_config \link struct DisplayConfigInfo \endlink
+
+    @return \link DisplayError \endlink
+
+    @sa
+*/
+DisplayError GetDisplayConfigurationByIndex(uint32_t display_id, uint32_t index,
+                                            struct DisplayConfigInfo *display_config);
+
+/*! @brief Method to set display property for a display_id requested by index.
+    @details Client shall use this method to set display properties of requested
+    display id by index.
+
+    @param[in] display_id \link int \endlink
+    @param[in] index \link uint \endlink
+
+    @return \link DisplayError \endlink
+
+    @sa
+*/
+DisplayError SetDisplayConfigurationByIndex(uint32_t display_id, uint32_t index);
+
 /*! @brief Method to obtain display property for a display_id requested.
     @details Client shall use this method to display properties of requested
     display id.
@@ -207,7 +248,7 @@ DisplayError Commit(uint32_t display_id, struct drm_output *output);
 
     @sa
 */
-bool GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config);
+DisplayError GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config);
 
 /*! @brief Method to Set display property for a display_id requested.
     @details Client shall use this method to display properties of requested
@@ -215,20 +256,6 @@ bool GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *disp
 
     @param[in] display_id \link int \endlink
     @param[in] display_config \link struct DisplayConfigInfo \endlink
-
-    @return \link DisplayError \endlink
-
-    @sa
-*/
-DisplayError SetDisplayConfiguration(uint32_t display_id,
-                                     struct DisplayConfigInfo *display_config);
-
-/*! @brief Method to set display Qsync for a display_id requested by mode.
-    @details Client shall use this method to set display Qsync of requested
-    display id by mode.
-
-    @param[in] display_id \link int \endlink
-    @param[in] mode \link uint \endlink
 
     @return \link DisplayError \endlink
 
