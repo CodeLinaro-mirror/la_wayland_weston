@@ -246,10 +246,7 @@ DisplayError SdmDisplay::PFlip(int fd, unsigned int sequence, unsigned int tv_se
 }
 
 DisplayError SdmDisplay::Refresh() {
-    if (client_event_handler_) {
-        client_event_handler_->Refresh();
-    }
-
+    RefreshCallback();
     return kErrorNone;
 }
 
