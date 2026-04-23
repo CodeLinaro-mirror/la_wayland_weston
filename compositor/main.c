@@ -707,6 +707,9 @@ usage(int error_code)
 		"  -c, --config=FILE\tConfig file to load, defaults to weston.ini\n"
 		"  --no-config\t\tDo not read weston.ini\n"
 		"  --wait-for-debugger\tRaise SIGSTOP on start-up\n"
+#ifdef QCOM_BSP
+		"  --secure-mode\tRun weston in secure mode\n"
+#endif
 		"  --debug\t\tEnable debug extension\n"
 		"  -l, --logger-scopes=SCOPE\n\t\t\tSpecify log scopes to "
 			"subscribe to.\n\t\t\tCan specify multiple scopes, "
@@ -4136,6 +4139,9 @@ wet_main(int argc, char *argv[], const struct weston_testsuite_data *test_data)
 	struct sigaction action;
 
 	bool wait_for_debugger = false;
+#ifdef QCOM_BSP
+	bool secure_mode = false;
+#endif
 	struct wl_protocol_logger *protologger = NULL;
 
 	const struct weston_option core_options[] = {
@@ -4158,6 +4164,9 @@ wet_main(int argc, char *argv[], const struct weston_testsuite_data *test_data)
 		{ WESTON_OPTION_BOOLEAN, "debug", 0, &debug_protocol },
 		{ WESTON_OPTION_STRING, "logger-scopes", 'l', &log_scopes },
 		{ WESTON_OPTION_STRING, "flight-rec-scopes", 'f', &flight_rec_scopes },
+#ifdef QCOM_BSP
+		{ WESTON_OPTION_BOOLEAN, "secure-mode", 0, &secure_mode },
+#endif
 	};
 
 	wl_list_init(&wet.layoutput_list);
@@ -4298,7 +4307,14 @@ wet_main(int argc, char *argv[], const struct weston_testsuite_data *test_data)
 		weston_log("fatal: failed to create compositor\n");
 		goto out;
 	}
-
+#ifdef QCOM_BSP
+	wet.compositor->secure_mode = secure_mode;
+	if (secure_mode) {
+		weston_log("INFO: Running weston in secure mode\n");
+	} else {
+		weston_log("INFO: Running weston in non-secure mode\n");
+	}
+#endif
 	protocol_scope =
 		weston_log_ctx_add_log_scope(log_ctx, "proto",
 					     "Wayland protocol dump for all clients.\n",

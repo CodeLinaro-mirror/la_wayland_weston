@@ -1154,6 +1154,10 @@ int SdmDisplay::PrepareFbLayerGeometry(struct drm_output *output,
         return -1;
     }
 
+    if (output->gbm_bo_flags & GBM_BO_USE_PROTECTED) {
+        fb_layer->flags.secure_present = true;
+    }
+
     fb_layer->width = output->base.current_mode->width;
     fb_layer->height = output->base.current_mode->height;
     fb_layer->unaligned_width = output->base.current_mode->width;
