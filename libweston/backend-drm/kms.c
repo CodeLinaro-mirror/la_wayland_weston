@@ -2069,6 +2069,15 @@ init_kms_caps(struct drm_device *device)
 	weston_log("DRM: %s atomic modesetting\n",
 		   device->atomic_modeset ? "supports" : "does not support");
 
+	if (!device->atomic_modeset) {
+#ifdef ALLOW_DEPRECATED_MODESET
+		weston_log("DRM Warning: Non-atomic modeset support is deprecated and will be removed.\n");
+#else
+		weston_log("Error: Kernel DRM KMS does not support DRM_CLIENT_CAP_ATOMIC.\n");
+		return -1;
+#endif
+	}
+
 	if (!getenv("WESTON_DISABLE_GBM_MODIFIERS")) {
 		ret = drmGetCap(device->kms_device->fd, DRM_CAP_ADDFB2_MODIFIERS, &cap);
 		if (ret == 0)

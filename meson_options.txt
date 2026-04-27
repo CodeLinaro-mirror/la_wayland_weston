@@ -216,3 +216,10 @@ option(
 	value : false,
 	description : 'Enable performance analysis with Perfetto.'
 )
+
+option(
+	'allow-deprecated-modeset',
+	type: 'boolean',
+	value: false,
+	description: 'DEPRECATED: Allow non-atomic modeset paths which will be removed soon'
+)
