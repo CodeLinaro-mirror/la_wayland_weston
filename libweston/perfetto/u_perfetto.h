@@ -39,6 +39,22 @@
 extern "C" {
 #endif
 
+enum weston_debug_annotation_type {
+        WESTON_DEBUG_ANNOTATION_INT_VAL,
+        WESTON_DEBUG_ANNOTATION_FLOAT_VAL,
+        WESTON_DEBUG_ANNOTATION_STR_VAL,
+};
+
+struct weston_debug_annotation {
+        const char *key;
+        enum weston_debug_annotation_type type;
+        union {
+                int ivalue;
+                float fvalue;
+                const char *svalue;
+        };
+};
+
 #ifdef HAVE_PERFETTO
 
 extern int util_perfetto_tracing_state;
@@ -62,6 +78,15 @@ void util_perfetto_counter_set(const char *name, double value);
 void util_perfetto_trace_full_begin(const char *name, uint64_t track_id, uint64_t id, clockid_t clock, uint64_t timestamp);
 
 void util_perfetto_trace_full_end(const char *name, uint64_t track_id, clockid_t clock, uint64_t timestamp);
+
+void util_perfetto_trace_commit_debug_annots(uint64_t id, const char *name,
+		unsigned int entries, struct weston_debug_annotation *annots);
+
+void util_perfetto_trace_commit_annotate_func(const char *name,
+		unsigned int entries, struct weston_debug_annotation *annots);
+
+void util_perfetto_trace_commit_annotate_func_flow(uint64_t id, const char *name,
+		unsigned int entries, struct weston_debug_annotation *annots);
 
 uint64_t util_perfetto_next_id(void);
 
@@ -101,6 +126,27 @@ util_perfetto_trace_full_begin(const char *name, uint64_t track_id, uint64_t id,
 
 static inline void
 util_perfetto_trace_full_end(const char *name, uint64_t track_id, clockid_t clock, uint64_t timestamp)
+{
+}
+
+static inline void
+util_perfetto_trace_commit_debug_annots(uint64_t id, const char *name,
+					unsigned int entries,
+					struct weston_debug_annotation *annots)
+{
+}
+
+static inline void
+util_perfetto_trace_commit_annotate_func(const char *name,
+					 unsigned int entries,
+					 struct weston_debug_annotation *annots)
+{
+}
+
+static inline void
+util_perfetto_trace_commit_annotate_func_flow(uint64_t id, const char *name,
+					 unsigned int entries,
+					 struct weston_debug_annotation *annots)
 {
 }
 

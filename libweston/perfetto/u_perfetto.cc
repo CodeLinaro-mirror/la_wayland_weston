@@ -151,6 +151,83 @@ util_perfetto_next_id(void)
 	return p_atomic_inc_return(&util_perfetto_unique_id);
 }
 
+static void
+util_perfetto_flush_debug_annotation(perfetto::EventContext *ctx,
+				     unsigned int nr_entries,
+				     struct weston_debug_annotation *annots)
+{
+	if (nr_entries == 0)
+		return;
+
+	for (unsigned int idx = 0; idx < nr_entries; idx++) {
+		switch (annots[idx].type) {
+		case WESTON_DEBUG_ANNOTATION_INT_VAL:
+			ctx->AddDebugAnnotation(annots[idx].key, annots[idx].ivalue);
+			break;
+		case WESTON_DEBUG_ANNOTATION_FLOAT_VAL:
+			ctx->AddDebugAnnotation(annots[idx].key, annots[idx].fvalue);
+			break;
+		case WESTON_DEBUG_ANNOTATION_STR_VAL:
+			ctx->AddDebugAnnotation(annots[idx].key, annots[idx].svalue);
+			break;
+		default:
+			break;
+		}
+	}
+
+}
+
+void
+util_perfetto_trace_commit_debug_annots(uint64_t id, const char *name,
+				        unsigned int nr_entries,
+					struct weston_debug_annotation *annots)
+{
+	if (id) {
+		TRACE_EVENT_INSTANT(UTIL_PERFETTO_CATEGORY_DEFAULT_STR,
+				    nullptr,
+				    perfetto::Flow::ProcessScoped(id),
+				    [&](perfetto::EventContext ctx) {
+					ctx.event()->set_name(name);
+					util_perfetto_flush_debug_annotation(&ctx, nr_entries, annots);
+		});
+		return;
+	}
+
+	TRACE_EVENT_INSTANT(UTIL_PERFETTO_CATEGORY_DEFAULT_STR,
+			    nullptr,
+			    [&](perfetto::EventContext ctx) {
+				ctx.event()->set_name(name);
+				util_perfetto_flush_debug_annotation(&ctx, nr_entries, annots);
+	});
+}
+
+void
+util_perfetto_trace_commit_annotate_func(const char *name, unsigned int nr_entries,
+					 struct weston_debug_annotation *annots)
+{
+	TRACE_EVENT_BEGIN(UTIL_PERFETTO_CATEGORY_DEFAULT_STR,
+			  nullptr,
+			  [&](perfetto::EventContext ctx) {
+			  ctx.event()->set_name(name);
+			  util_perfetto_flush_debug_annotation(&ctx, nr_entries, annots);
+	});
+}
+
+void
+util_perfetto_trace_commit_annotate_func_flow(uint64_t id, const char *name,
+					 unsigned int nr_entries,
+					 struct weston_debug_annotation *annots)
+{
+	TRACE_EVENT_BEGIN(UTIL_PERFETTO_CATEGORY_DEFAULT_STR,
+			  nullptr,
+			  perfetto::Flow::ProcessScoped(id),
+			  [&](perfetto::EventContext ctx) {
+			  ctx.event()->set_name(name);
+			  util_perfetto_flush_debug_annotation(&ctx, nr_entries, annots);
+	});
+}
+
+
 class UtilPerfettoObserver : public perfetto::TrackEventSessionObserver {
  public:
 	UtilPerfettoObserver() { perfetto::TrackEvent::AddSessionObserver(this); }
