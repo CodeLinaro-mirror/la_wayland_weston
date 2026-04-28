@@ -2414,7 +2414,7 @@ draw_mesh(struct gl_renderer *gr,
 		set_debug_mode(gr, sconf, barycentrics, opaque);
 
 	gl_log_paint_node(gr, "\t\tdrawing paint node mesh\n");
-	if (!gl_renderer_use_program(gr, sconf))
+	if (!gl_renderer_use_program(gr, pnode, sconf))
 		gl_renderer_send_shader_error(pnode); /* Use fallback shader. */
 
 	glVertexAttribPointer(SHADER_ATTRIB_LOC_POSITION, 2, GL_FLOAT, GL_FALSE,
@@ -2954,7 +2954,7 @@ draw_output_border_texture(struct gl_renderer *gr,
 	sconf->input_num = 1;
 
 	gl_log_paint_node(gr, "\t\tdrawing output border texture\n");
-	gl_renderer_use_program(gr, sconf);
+	gl_renderer_use_program(gr, NULL, sconf);
 
 	GLfloat texcoord[] = {
 		0.0f, 0.0f,
@@ -3075,7 +3075,7 @@ blit_shadow_to_output(struct weston_output *output,
 	pixman_region32_init(&translated_damage);
 
 	gl_log_paint_node(gr, "\t\tdrawing shadow output\n");
-	gl_renderer_use_program(gr, &sconf);
+	gl_renderer_use_program(gr, NULL, &sconf);
 	set_blend_state(gr, NULL, false);
 
 	/* output_damage is in global coordinates */
@@ -4566,7 +4566,7 @@ gl_renderer_surface_copy_content(struct weston_surface *surface,
 				WESTON_MATRIX_TRANSFORM_TRANSLATE;
 
 	gl_log_paint_node(gr, "\t\tcopying surface\n");
-	if (!gl_renderer_use_program(gr, &sconf))
+	if (!gl_renderer_use_program(gr, NULL, &sconf))
 		goto use_program_error;
 
 	glEnableVertexAttribArray(SHADER_ATTRIB_LOC_POSITION);

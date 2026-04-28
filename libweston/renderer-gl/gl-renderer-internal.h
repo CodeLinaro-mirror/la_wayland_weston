@@ -765,7 +765,7 @@ void
 gl_renderer_garbage_collect_programs(struct gl_renderer *gr);
 
 bool
-gl_renderer_use_program(struct gl_renderer *gr,
+gl_renderer_use_program(struct gl_renderer *gr, struct weston_paint_node *pnode,
 			const struct gl_shader_config *sconf);
 
 struct weston_log_scope *

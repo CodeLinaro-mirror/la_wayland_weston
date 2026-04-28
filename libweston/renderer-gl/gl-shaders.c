@@ -46,6 +46,7 @@
 #include "shared/helpers.h"
 #include "shared/timespec-util.h"
 #include "shared/weston-assert.h"
+#include "weston-trace.h"
 
 /* static const char vertex_shader[]; vertex.glsl */
 #include "vertex-shader.h"
@@ -843,7 +844,7 @@ gl_shader_texture_variant_get_target(enum gl_shader_texture_variant v)
 }
 
 static void
-gl_shader_load_config(struct gl_renderer *gr,
+gl_shader_load_config(struct gl_renderer *gr, struct weston_paint_node *pnode,
 		      struct gl_shader *shader,
 		      const struct gl_shader_config *sconf)
 {
@@ -852,6 +853,11 @@ gl_shader_load_config(struct gl_renderer *gr,
 	float swizzle_mask[4];
 	float swizzle_sub[4];
 	int i, j;
+
+	WESTON_TRACE_BEGIN_ANNOTATION();
+	if (pnode) {
+		WESTON_TRACE_ANNOTATE_ADD_STR("paint node", pnode->internal_name);
+	}
 
 	glUniformMatrix4fv(shader->proj_uniform,
 			   1, GL_FALSE, sconf->projection.M.colmaj);
@@ -865,6 +871,10 @@ gl_shader_load_config(struct gl_renderer *gr,
 			"\t\tcolor: r: %.2f, g: %.2f, b: %.2f, a: %.2f\n",
 			sconf->unicolor[0], sconf->unicolor[1],
 			sconf->unicolor[2], sconf->unicolor[3]);
+		WESTON_TRACE_ANNOTATE_ADD_FLOAT("color r", sconf->unicolor[0]);
+		WESTON_TRACE_ANNOTATE_ADD_FLOAT("color g", sconf->unicolor[1]);
+		WESTON_TRACE_ANNOTATE_ADD_FLOAT("color b", sconf->unicolor[2]);
+		WESTON_TRACE_ANNOTATE_ADD_FLOAT("color a", sconf->unicolor[3]);
 		glUniform4fv(shader->color_uniform, 1, sconf->unicolor);
 	}
 	if (shader->tint_uniform != -1) {
@@ -872,10 +882,15 @@ gl_shader_load_config(struct gl_renderer *gr,
 				"\t\ttint: r: %.2f, g: %.2f, b: %.2f, a: %.2f\n",
 				sconf->tint[0], sconf->tint[1],
 				sconf->tint[2], sconf->tint[3]);
+		WESTON_TRACE_ANNOTATE_ADD_FLOAT("tint r", sconf->tint[0]);
+		WESTON_TRACE_ANNOTATE_ADD_FLOAT("tint g", sconf->tint[1]);
+		WESTON_TRACE_ANNOTATE_ADD_FLOAT("tint b", sconf->tint[2]);
+		WESTON_TRACE_ANNOTATE_ADD_FLOAT("tint a", sconf->tint[3]);
 		glUniform4fv(shader->tint_uniform, 1, sconf->tint);
 	}
 
 	weston_log_scope_printf(gr->paint_node_scope, "\t\talpha: %.2f\n", sconf->view_alpha);
+	WESTON_TRACE_ANNOTATE_ADD_FLOAT("alpha", sconf->view_alpha);
 	glUniform1f(shader->view_alpha_uniform, sconf->view_alpha);
 
 	assert(sconf->input_num <= SHADER_INPUT_TEX_MAX);
@@ -920,9 +935,11 @@ gl_shader_load_config(struct gl_renderer *gr,
 		break;
 	case SHADER_COLOR_EFFECT_INVERSION:
 		weston_log_scope_printf(gr->paint_node_scope, "\t\tcolor effect: inversion\n");
+		WESTON_TRACE_ANNOTATE_ADD_STR("color effect", "inversion");
 		break;
 	case SHADER_COLOR_EFFECT_GRAYSCALE:
 		weston_log_scope_printf(gr->paint_node_scope, "\t\tcolor effect: grayscale\n");
+		WESTON_TRACE_ANNOTATE_ADD_STR("color effect", "greyscale");
 		break;
 	case SHADER_COLOR_EFFECT_CVD_CORRECTION:
 		weston_assert_int_ne(gr->compositor, shader->cvd_correction_uniform, -1);
@@ -931,6 +948,8 @@ gl_shader_load_config(struct gl_renderer *gr,
 		glUniformMatrix3fv(shader->cvd_correction_uniform,
 				   1, GL_FALSE,
 				   sconf->color_effect.cvd.correction.colmaj);
+		WESTON_TRACE_ANNOTATE_ADD_STR("color effect",
+				weston_output_cvd_type_to_str(sconf->color_effect.cvd));
 		break;
 	}
 
@@ -958,11 +977,17 @@ gl_shader_load_config(struct gl_renderer *gr,
 					    TEX_UNIT_FB_STORE_CURVE);
 	}
 
+	if (pnode) {
+		WESTON_TRACE_COMMIT_ANNOTATION(&pnode->flow_id);
+	} else {
+		WESTON_TRACE_COMMIT_ANNOTATION(NULL);
+	}
+
 	glActiveTexture(GL_TEXTURE0);
 }
 
 bool
-gl_renderer_use_program(struct gl_renderer *gr,
+gl_renderer_use_program(struct gl_renderer *gr, struct weston_paint_node *pnode,
 			const struct gl_shader_config *sconf)
 {
 	static const GLfloat fallback_shader_color[4] = { 0.2, 0.1, 0.0, 1.0 };
@@ -1004,7 +1029,7 @@ gl_renderer_use_program(struct gl_renderer *gr,
 
 	weston_log_scope_printf(gr->paint_node_scope,
 				"\t\t\tshader id: %d\n", gr->current_shader->program);
-	gl_shader_load_config(gr, shader, sconf);
+	gl_shader_load_config(gr, pnode, shader, sconf);
 
 	return true;
 }
