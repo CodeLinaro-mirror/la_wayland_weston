@@ -419,12 +419,12 @@ gl_log_paint_node_bbox_and_region(struct gl_renderer *gr, const char *str,
 	int32_t box_x, box_y;
 	uint32_t box_width, box_height;
 	int n_rects = 0;
-	const pixman_box32_t *rects =
-		pixman_region32_rectangles(damage, &n_rects);
+	const pixman_box32_t *rects;
 
 	if (!weston_log_scope_is_enabled(gr->paint_node_scope))
 		return;
 
+	rects = pixman_region32_rectangles(damage, &n_rects);
 	box = pixman_region32_extents(damage);
 
 	box_x = box->x1;
