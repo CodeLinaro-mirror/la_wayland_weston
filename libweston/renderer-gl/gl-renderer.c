@@ -58,6 +58,7 @@
 #include "linux-explicit-synchronization.h"
 #include "output-capture.h"
 #include "pixel-formats.h"
+#include "weston-trace.h"
 
 #include "shared/fd-util.h"
 #include "shared/helpers.h"
@@ -412,8 +413,8 @@ gl_log_paint_node_start(struct gl_renderer *gr, struct weston_paint_node *pnode)
 }
 
 static void
-gl_log_paint_node_bbox_and_region(struct gl_renderer *gr, const char *str,
-				  pixman_region32_t *damage)
+gl_log_paint_node_bbox_and_region(struct gl_renderer *gr, struct weston_paint_node *pnode,
+				  const char *str, pixman_region32_t *damage)
 {
 	pixman_box32_t *box;
 	int32_t box_x, box_y;
@@ -421,7 +422,8 @@ gl_log_paint_node_bbox_and_region(struct gl_renderer *gr, const char *str,
 	int n_rects = 0;
 	const pixman_box32_t *rects;
 
-	if (!weston_log_scope_is_enabled(gr->paint_node_scope))
+	if (!weston_log_scope_is_enabled(gr->paint_node_scope) &&
+	    !util_perfetto_is_tracing_enabled())
 		return;
 
 	rects = pixman_region32_rectangles(damage, &n_rects);
@@ -431,6 +433,20 @@ gl_log_paint_node_bbox_and_region(struct gl_renderer *gr, const char *str,
 	box_y = box->y1;
 	box_width = box->x2 - box->x1;
 	box_height = box->y2 - box->y1;
+
+	WESTON_TRACE_BEGIN_ANNOTATION();
+
+	WESTON_TRACE_ANNOTATE_ADD_STR("paint node", pnode->internal_name);
+	WESTON_TRACE_ANNOTATE_ADD_STR("type", str);
+	WESTON_TRACE_ANNOTATE_ADD_INT("x", box_x);
+	WESTON_TRACE_ANNOTATE_ADD_INT("y", box_y);
+	WESTON_TRACE_ANNOTATE_ADD_INT("box_width", box_width);
+	WESTON_TRACE_ANNOTATE_ADD_INT("box_height", box_height);
+
+	WESTON_TRACE_COMMIT_ANNOTATION(&pnode->flow_id);
+
+	if (!weston_log_scope_is_enabled(gr->paint_node_scope))
+		return;
 
 	weston_log_scope_printf(gr->paint_node_scope, "\t\t%s bounding box: ", str);
 	weston_log_scope_printf(gr->paint_node_scope, "x: %5d, y: %5d, width: "
@@ -2338,19 +2354,30 @@ set_debug_mode(struct gl_renderer *gr,
 }
 
 static void
-set_blend_state(struct gl_renderer *gr,
-		bool state)
+set_blend_state(struct gl_renderer *gr, struct weston_paint_node *pnode, bool state)
 {
 	if (gr->blend_state == state)
 		return;
 
+	WESTON_TRACE_BEGIN_ANNOTATION();
+
 	if (state) {
 		glEnable(GL_BLEND);
 		gl_log_paint_node(gr, "\t\tblending enabled\n");
+		WESTON_TRACE_ANNOTATE_ADD_STR("blending", "enabled");
 	} else {
 		glDisable(GL_BLEND);
 		gl_log_paint_node(gr, "\t\tblending disabled\n");
+		WESTON_TRACE_ANNOTATE_ADD_STR("blending", "disabled");
 	}
+
+	if (pnode) {
+		WESTON_TRACE_ANNOTATE_ADD_STR("paint node", pnode->internal_name);
+		WESTON_TRACE_COMMIT_ANNOTATION(&pnode->flow_id);
+	} else {
+		WESTON_TRACE_COMMIT_ANNOTATION(NULL);
+	}
+
 	gr->blend_state = state;
 }
 
@@ -2371,7 +2398,7 @@ draw_mesh(struct gl_renderer *gr,
 
 	assert(nidx > 0);
 
-	set_blend_state(gr, (!opaque || pnode->view_alpha < 1.0) && !go->shader_blender);
+	set_blend_state(gr, pnode, (!opaque || pnode->view_alpha < 1.0) && !go->shader_blender);
 
 	/* Prevent translucent surfaces from punching holes through the
 	 * renderbuffer. */
@@ -2499,7 +2526,7 @@ weston_output_cvd_type_to_str(struct weston_cvd_correction cvd)
 }
 
 static void
-apply_color_effect(struct gl_renderer *gr, struct weston_output *output,
+apply_color_effect(struct gl_renderer *gr, struct weston_paint_node *pnode, struct weston_output *output,
 		   float *r, float *g, float *b, const float a)
 {
 	struct weston_compositor *compositor = output->compositor;
@@ -2516,6 +2543,11 @@ apply_color_effect(struct gl_renderer *gr, struct weston_output *output,
 	if (!output->color_effect || a == 0.0f) {
 		return;
 	}
+
+	WESTON_TRACE_FUNC_FLOW(&pnode->flow_id);
+	WESTON_TRACE_BEGIN_ANNOTATION();
+	WESTON_TRACE_ANNOTATE_ADD_STR("paint node", pnode->internal_name);
+
 	weston_assert_f32_eq(compositor, a, 1.0f);
 
 	switch (effect->type) {
@@ -2524,12 +2556,16 @@ apply_color_effect(struct gl_renderer *gr, struct weston_output *output,
 		*g = 1.0f - *g;
 		*b = 1.0f - *b;
 		gl_log_paint_node(gr, "\t\tcolor effect: inversion\n");
+		WESTON_TRACE_ANNOTATE_ADD_STR("color effect", "inversion");
+		WESTON_TRACE_COMMIT_ANNOTATION(&pnode->flow_id);
 		return;
 	case WESTON_OUTPUT_COLOR_EFFECT_TYPE_GRAYSCALE:
 		*r = 0.2126f * (*r) + 0.7152f * (*g) + 0.0722f * (*b);
 		*g = *r;
 		*b = *r;
 		gl_log_paint_node(gr, "\t\tcolor effect: grayscale\n");
+		WESTON_TRACE_ANNOTATE_ADD_STR("color effect", "greyscale");
+		WESTON_TRACE_COMMIT_ANNOTATION(&pnode->flow_id);
 		return;
 	case WESTON_OUTPUT_COLOR_EFFECT_TYPE_CVD_CORRECTION:
 		/**
@@ -2543,8 +2579,12 @@ apply_color_effect(struct gl_renderer *gr, struct weston_output *output,
 		weston_log_scope_printf(gr->paint_node_scope,
 					"\t\tcolor effect: cvd - %s\n",
 					 weston_output_cvd_type_to_str(effect->u.cvd));
+		WESTON_TRACE_ANNOTATE_ADD_STR("color effect",
+				weston_output_cvd_type_to_str(effect->u.cvd));
+		WESTON_TRACE_COMMIT_ANNOTATION(&pnode->flow_id);
 		return;
 	};
+
 	weston_assert_not_reached(compositor, "unknown color effect type");
 }
 
@@ -2566,13 +2606,13 @@ clear_region(struct gl_renderer *gr, struct weston_paint_node *pnode,
 	/* We must be either fully transparent - punching a hole for an
 	 * underlay - or fully opaque, to use clear rather than blending. */
 	assert(pnode->solid.a == 0.0f || pnode->solid.a == 1.0f);
-	set_blend_state(gr, false);
+	set_blend_state(gr, pnode, false);
 
 	r = pnode->solid.r;
 	g = pnode->solid.g;
 	b = pnode->solid.b;
 	a = pnode->solid.a;
-	apply_color_effect(gr, output, &r, &g, &b, a);
+	apply_color_effect(gr, pnode, output, &r, &g, &b, a);
 	glClearColor(r, g, b, a);
 
 	glEnable(GL_SCISSOR_TEST);
@@ -2589,6 +2629,7 @@ static void
 draw_paint_node(struct weston_paint_node *pnode,
 		pixman_region32_t *damage /* in global coordinates */)
 {
+	WESTON_TRACE_FUNC_FLOW(&pnode->flow_id);
 	struct gl_renderer *gr = get_renderer(pnode->surface->compositor);
 	struct gl_surface_state *gs = get_surface_state(pnode->surface);
 	/* repaint bounding region in global coordinates: */
@@ -2600,20 +2641,27 @@ draw_paint_node(struct weston_paint_node *pnode,
 	struct gl_shader_config sconf;
 	struct clipper_quad *quads = NULL;
 	int nquads;
+	WESTON_TRACE_BEGIN_ANNOTATION();
 
 	pixman_region32_init(&repaint);
 	pixman_region32_intersect(&repaint, &pnode->visible, damage);
+
+	WESTON_TRACE_ANNOTATE_ADD_STR("paint node", pnode->internal_name);
+	WESTON_TRACE_ANNOTATE_ADD_STR("label", pnode->surface->label);
+	WESTON_TRACE_ANNOTATE_ADD_INT("surface id", pnode->surface->s_id);
 
 	gl_log_paint_node_start(gr, pnode);
 
 	if (!pixman_region32_not_empty(&repaint)) {
 		gl_log_paint_node(gr, "\t\tskipped repaint: repaint region empty\n");
+		WESTON_TRACE_ANNOTATE_ADD_STR("skipped repaint", "repaint region empty");
 		goto out;
 	}
 
 	if (pnode->is_fully_transparent) {
 		gl_log_paint_node(gr, "\t\tskipped repaint: paint node transparent\n");
 		gs->used_in_output_repaint = true; /* sort of */
+		WESTON_TRACE_ANNOTATE_ADD_STR("skipped repaint", "paint node transparent");
 		goto out;
 	}
 
@@ -2621,18 +2669,21 @@ draw_paint_node(struct weston_paint_node *pnode,
 	    pnode->valid_transform && (pnode->surf_xform_valid &&
 				       !pnode->surf_xform.transform)) {
 		gl_log_paint_node(gr, "\t\toptimize: using glClear\n");
+		WESTON_TRACE_ANNOTATE_ADD_STR("optimization", "using glClear");
 		clear_region(gr, pnode, &repaint);
 		gs->used_in_output_repaint = true;
 		goto out;
 	}
 
 	if (ensure_surface_buffer_is_ready(gr, gs, pnode) < 0) {
-		gl_log_paint_node(gr, "\t\tskip repaint: buffer not ready\n");
+		gl_log_paint_node(gr, "\t\tskipped repaint: buffer not ready\n");
+		WESTON_TRACE_ANNOTATE_ADD_STR("skipped repaint", "buffer not ready");
 		goto out;
 	}
 
 	if (!gl_shader_config_init_for_paint_node(&sconf, pnode)) {
-		gl_log_paint_node(gr, "\t\tskip repaint: shader config failure\n");
+		gl_log_paint_node(gr, "\t\tskipped repaint: shader config failure\n");
+		WESTON_TRACE_ANNOTATE_ADD_STR("skipped repaint", "shader config failure");
 		goto out;
 	}
 
@@ -2659,18 +2710,18 @@ draw_paint_node(struct weston_paint_node *pnode,
 	pixman_region32_subtract(&surface_blend, &surface_blend,
 				 &surface_opaque);
 
-	gl_log_paint_node_bbox_and_region(gr, "repaint region", &repaint);
+	gl_log_paint_node_bbox_and_region(gr, pnode, "repaint region", &repaint);
 	transform_damage(pnode, &repaint, &quads, &nquads);
 
 	if (pixman_region32_not_empty(&surface_opaque)) {
-		gl_log_paint_node_bbox_and_region(gr, "opaque region", &surface_opaque);
+		gl_log_paint_node_bbox_and_region(gr, pnode, "opaque region", &surface_opaque);
 		repaint_region(gr, pnode, quads, nquads, &surface_opaque,
 			       &sconf, true);
 		gs->used_in_output_repaint = true;
 	}
 
 	if (pixman_region32_not_empty(&surface_blend)) {
-		gl_log_paint_node_bbox_and_region(gr, "blended region", &surface_blend);
+		gl_log_paint_node_bbox_and_region(gr, pnode, "blended region", &surface_blend);
 		repaint_region(gr, pnode, quads, nquads, &surface_blend, &sconf,
 			       false);
 		gs->used_in_output_repaint = true;
@@ -2680,6 +2731,8 @@ draw_paint_node(struct weston_paint_node *pnode,
 
 	pixman_region32_fini(&surface_blend);
 	pixman_region32_fini(&surface_opaque);
+
+	WESTON_TRACE_COMMIT_ANNOTATION(&pnode->flow_id);
 
 out:
 	pixman_region32_fini(&repaint);
@@ -2950,7 +3003,7 @@ draw_output_borders(struct weston_output *output,
 		return;
 	}
 
-	set_blend_state(gr, false);
+	set_blend_state(gr, NULL, false);
 	glViewport(0, 0, fb->width, fb->height);
 
 	weston_matrix_init(&sconf.projection);
@@ -3023,7 +3076,7 @@ blit_shadow_to_output(struct weston_output *output,
 
 	gl_log_paint_node(gr, "\t\tdrawing shadow output\n");
 	gl_renderer_use_program(gr, &sconf);
-	set_blend_state(gr, false);
+	set_blend_state(gr, NULL, false);
 
 	/* output_damage is in global coordinates */
 	pixman_region32_intersect(&translated_damage, output_damage,
@@ -4504,7 +4557,7 @@ gl_renderer_surface_copy_content(struct weston_surface *surface,
 	}
 
 	glViewport(0, 0, cw, ch);
-	set_blend_state(gr, false);
+	set_blend_state(gr, NULL, false);
 	if (buffer->buffer_origin == ORIGIN_TOP_LEFT)
 		ARRAY_COPY(sconf.projection.M.colmaj, projmat_normal);
 	else
