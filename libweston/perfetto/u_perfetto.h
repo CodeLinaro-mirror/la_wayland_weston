@@ -43,6 +43,7 @@ enum weston_debug_annotation_type {
         WESTON_DEBUG_ANNOTATION_INT_VAL,
         WESTON_DEBUG_ANNOTATION_FLOAT_VAL,
         WESTON_DEBUG_ANNOTATION_STR_VAL,
+	WESTON_DEBUG_ANNOTATION_CONTAINER,
 };
 
 struct weston_debug_annotation {
@@ -53,6 +54,8 @@ struct weston_debug_annotation {
                 float fvalue;
                 const char *svalue;
         };
+	unsigned char parent;
+	unsigned char key_size;
 };
 
 struct weston_debug_annotations {

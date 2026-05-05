@@ -151,6 +151,30 @@ util_perfetto_next_id(void)
 	return p_atomic_inc_return(&util_perfetto_unique_id);
 }
 
+static char *
+build_key(char *space, size_t size, struct weston_debug_annotations *annots, unsigned char idx)
+{
+	struct weston_debug_annotation *annot = &annots->annots[idx];
+	char *cur = space + size;
+
+	cur -= annot->key_size;
+	memcpy(cur, annot->key, annot->key_size);
+
+	do {
+		annot = &annots->annots[annot->parent];
+
+		if (space + 2 + annot->key_size - 1 >= cur)
+			return NULL;
+
+		*(--cur) = ':';
+		*(--cur) = ':';
+		cur -= annot->key_size - 1;
+		memcpy(cur, annot->key, annot->key_size - 1);
+	} while (annot != &annots->annots[annot->parent]);
+
+	return cur;
+}
+
 static void
 util_perfetto_flush_debug_annotation(perfetto::EventContext *ctx,
 				     struct weston_debug_annotations *annots)
@@ -162,22 +186,45 @@ util_perfetto_flush_debug_annotation(perfetto::EventContext *ctx,
 
 	for (unsigned char idx = 0; idx < annots->count; idx++) {
 		annot = &annots->annots[idx];
+		const char *key = annot->key;
+		char keyspace[400];
+		bool use_built_key;
+
+		if (annot->type == WESTON_DEBUG_ANNOTATION_CONTAINER)
+			continue;
+
+		use_built_key = false;
+		if (annot->parent != idx) {
+			key = build_key(keyspace, sizeof(keyspace), annots, idx);
+			if (!key)
+				continue;
+
+			use_built_key = true;
+		}
 
 		switch (annot->type) {
 		case WESTON_DEBUG_ANNOTATION_INT_VAL:
-			ctx->AddDebugAnnotation(annot->key, annot->ivalue);
+			if (use_built_key)
+				ctx->AddDebugAnnotation(perfetto::DynamicString(key), annot->ivalue);
+			else
+				ctx->AddDebugAnnotation(key, annot->ivalue);
 			break;
 		case WESTON_DEBUG_ANNOTATION_FLOAT_VAL:
-			ctx->AddDebugAnnotation(annot->key, annot->fvalue);
+			if (use_built_key)
+				ctx->AddDebugAnnotation(perfetto::DynamicString(key), annot->fvalue);
+			else
+				ctx->AddDebugAnnotation(key, annot->fvalue);
 			break;
 		case WESTON_DEBUG_ANNOTATION_STR_VAL:
-			ctx->AddDebugAnnotation(annot->key, annot->svalue);
+			if (use_built_key)
+				ctx->AddDebugAnnotation(perfetto::DynamicString(key), annot->svalue);
+			else
+				ctx->AddDebugAnnotation(key, annot->svalue);
 			break;
 		default:
 			break;
 		}
 	}
-
 }
 
 void

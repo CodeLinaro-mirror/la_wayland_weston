@@ -205,13 +205,8 @@ weston_surface_attach(struct weston_surface *surface,
 	enum weston_paint_node_status pnode_changes = WESTON_PAINT_NODE_CLEAN;
 
 	WESTON_TRACE_BEGIN_ANNOTATION();
-	if (buffer) {
-		WESTON_TRACE_ANNOTATE(("surface", surface->internal_name),
-				      ("format", buffer->pixel_format->drm_format_name),
-				      ("modifier", buffer->format_modifier_name),
-				      ("width", buffer->width),
-				      ("height", buffer->height));
-	}
+	WESTON_TRACE_ANNOTATE(("surface", surface->internal_name),
+			      ("new buffer", buffer));
 	WESTON_TRACE_ANNOTATE_FUNC_FLOW(&surface->flow_id);
 
 	if (!buffer) {

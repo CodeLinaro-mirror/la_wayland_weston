@@ -92,8 +92,10 @@
 			unsigned int: perfetto_annotate_int,                              \
 			float: perfetto_annotate_float,                                   \
 			char *: perfetto_annotate_string,                                 \
-			const char *: perfetto_annotate_string                            \
-		) (&__pd_annots, k, v);                                                   \
+			const char *: perfetto_annotate_string,                           \
+			struct weston_buffer *: perfetto_annotate_buffer,                 \
+			const struct weston_buffer *: perfetto_annotate_buffer            \
+		) (&__pd_annots, k, sizeof(k), v);                                        \
 	}
 
 #define _WESTON_TRACE_ANNOTATE_ADD(k, v)                  \
