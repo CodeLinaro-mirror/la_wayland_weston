@@ -436,12 +436,12 @@ gl_log_paint_node_bbox_and_region(struct gl_renderer *gr, struct weston_paint_no
 
 	WESTON_TRACE_BEGIN_ANNOTATION();
 
-	WESTON_TRACE_ANNOTATE_ADD("paint node", pnode->internal_name);
-	WESTON_TRACE_ANNOTATE_ADD("type", str);
-	WESTON_TRACE_ANNOTATE_ADD("x", box_x);
-	WESTON_TRACE_ANNOTATE_ADD("y", box_y);
-	WESTON_TRACE_ANNOTATE_ADD("box_width", box_width);
-	WESTON_TRACE_ANNOTATE_ADD("box_height", box_height);
+	WESTON_TRACE_ANNOTATE(("paint node", pnode->internal_name),
+			      ("type", str),
+			      ("x", box_x),
+			      ("y", box_y),
+			      ("box_width", box_width),
+			      ("box_height", box_height));
 
 	WESTON_TRACE_COMMIT_ANNOTATION(&pnode->flow_id);
 
@@ -2364,15 +2364,15 @@ set_blend_state(struct gl_renderer *gr, struct weston_paint_node *pnode, bool st
 	if (state) {
 		glEnable(GL_BLEND);
 		gl_log_paint_node(gr, "\t\tblending enabled\n");
-		WESTON_TRACE_ANNOTATE_ADD("blending", "enabled");
+		WESTON_TRACE_ANNOTATE(("blending", "enabled"));
 	} else {
 		glDisable(GL_BLEND);
 		gl_log_paint_node(gr, "\t\tblending disabled\n");
-		WESTON_TRACE_ANNOTATE_ADD("blending", "disabled");
+		WESTON_TRACE_ANNOTATE(("blending", "disabled"));
 	}
 
 	if (pnode) {
-		WESTON_TRACE_ANNOTATE_ADD("paint node", pnode->internal_name);
+		WESTON_TRACE_ANNOTATE(("paint node", pnode->internal_name));
 		WESTON_TRACE_COMMIT_ANNOTATION(&pnode->flow_id);
 	} else {
 		WESTON_TRACE_COMMIT_ANNOTATION(NULL);
@@ -2546,7 +2546,7 @@ apply_color_effect(struct gl_renderer *gr, struct weston_paint_node *pnode, stru
 
 	WESTON_TRACE_FUNC_FLOW(&pnode->flow_id);
 	WESTON_TRACE_BEGIN_ANNOTATION();
-	WESTON_TRACE_ANNOTATE_ADD("paint node", pnode->internal_name);
+	WESTON_TRACE_ANNOTATE(("paint node", pnode->internal_name));
 
 	weston_assert_f32_eq(compositor, a, 1.0f);
 
@@ -2556,7 +2556,7 @@ apply_color_effect(struct gl_renderer *gr, struct weston_paint_node *pnode, stru
 		*g = 1.0f - *g;
 		*b = 1.0f - *b;
 		gl_log_paint_node(gr, "\t\tcolor effect: inversion\n");
-		WESTON_TRACE_ANNOTATE_ADD("color effect", "inversion");
+		WESTON_TRACE_ANNOTATE(("color effect", "inversion"));
 		WESTON_TRACE_COMMIT_ANNOTATION(&pnode->flow_id);
 		return;
 	case WESTON_OUTPUT_COLOR_EFFECT_TYPE_GRAYSCALE:
@@ -2564,7 +2564,7 @@ apply_color_effect(struct gl_renderer *gr, struct weston_paint_node *pnode, stru
 		*g = *r;
 		*b = *r;
 		gl_log_paint_node(gr, "\t\tcolor effect: grayscale\n");
-		WESTON_TRACE_ANNOTATE_ADD("color effect", "greyscale");
+		WESTON_TRACE_ANNOTATE(("color effect", "greyscale"));
 		WESTON_TRACE_COMMIT_ANNOTATION(&pnode->flow_id);
 		return;
 	case WESTON_OUTPUT_COLOR_EFFECT_TYPE_CVD_CORRECTION:
@@ -2579,8 +2579,8 @@ apply_color_effect(struct gl_renderer *gr, struct weston_paint_node *pnode, stru
 		weston_log_scope_printf(gr->paint_node_scope,
 					"\t\tcolor effect: cvd - %s\n",
 					 weston_output_cvd_type_to_str(effect->u.cvd));
-		WESTON_TRACE_ANNOTATE_ADD("color effect",
-				weston_output_cvd_type_to_str(effect->u.cvd));
+		WESTON_TRACE_ANNOTATE(("color effect",
+				weston_output_cvd_type_to_str(effect->u.cvd)));
 		WESTON_TRACE_COMMIT_ANNOTATION(&pnode->flow_id);
 		return;
 	};
@@ -2646,22 +2646,22 @@ draw_paint_node(struct weston_paint_node *pnode,
 	pixman_region32_init(&repaint);
 	pixman_region32_intersect(&repaint, &pnode->visible, damage);
 
-	WESTON_TRACE_ANNOTATE_ADD("paint node", pnode->internal_name);
-	WESTON_TRACE_ANNOTATE_ADD("label", pnode->surface->label);
-	WESTON_TRACE_ANNOTATE_ADD("surface id", pnode->surface->s_id);
+	WESTON_TRACE_ANNOTATE(("paint node", pnode->internal_name),
+			      ("label", pnode->surface->label),
+			      ("surface id", pnode->surface->s_id));
 
 	gl_log_paint_node_start(gr, pnode);
 
 	if (!pixman_region32_not_empty(&repaint)) {
 		gl_log_paint_node(gr, "\t\tskipped repaint: repaint region empty\n");
-		WESTON_TRACE_ANNOTATE_ADD("skipped repaint", "repaint region empty");
+		WESTON_TRACE_ANNOTATE(("skipped repaint", "repaint region empty"));
 		goto out;
 	}
 
 	if (pnode->is_fully_transparent) {
 		gl_log_paint_node(gr, "\t\tskipped repaint: paint node transparent\n");
 		gs->used_in_output_repaint = true; /* sort of */
-		WESTON_TRACE_ANNOTATE_ADD("skipped repaint", "paint node transparent");
+		WESTON_TRACE_ANNOTATE(("skipped repaint", "paint node transparent"));
 		goto out;
 	}
 
@@ -2669,7 +2669,7 @@ draw_paint_node(struct weston_paint_node *pnode,
 	    pnode->valid_transform && (pnode->surf_xform_valid &&
 				       !pnode->surf_xform.transform)) {
 		gl_log_paint_node(gr, "\t\toptimize: using glClear\n");
-		WESTON_TRACE_ANNOTATE_ADD("optimization", "using glClear");
+		WESTON_TRACE_ANNOTATE(("optimization", "using glClear"));
 		clear_region(gr, pnode, &repaint);
 		gs->used_in_output_repaint = true;
 		goto out;
@@ -2677,13 +2677,13 @@ draw_paint_node(struct weston_paint_node *pnode,
 
 	if (ensure_surface_buffer_is_ready(gr, gs, pnode) < 0) {
 		gl_log_paint_node(gr, "\t\tskipped repaint: buffer not ready\n");
-		WESTON_TRACE_ANNOTATE_ADD("skipped repaint", "buffer not ready");
+		WESTON_TRACE_ANNOTATE(("skipped repaint", "buffer not ready"));
 		goto out;
 	}
 
 	if (!gl_shader_config_init_for_paint_node(&sconf, pnode)) {
 		gl_log_paint_node(gr, "\t\tskipped repaint: shader config failure\n");
-		WESTON_TRACE_ANNOTATE_ADD("skipped repaint", "shader config failure");
+		WESTON_TRACE_ANNOTATE(("skipped repaint", "shader config failure"));
 		goto out;
 	}
 

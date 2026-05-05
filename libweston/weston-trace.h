@@ -117,6 +117,35 @@
 		}                                                                                       \
 	} while (0)
 
+#define _WESTON_TRACE_ANNOTATE(...) \
+	do {                                                                \
+		_WESTON_TRACE_EXPAND(_WESTON_TRACE_ITER_HELPER(             \
+			_WESTON_TRACE_ANNOTATE_PAIR, __VA_ARGS__))          \
+	} while (0)
+
+
+/* Helpers macros for recursive variadic expansion, never to
+ * be used outside of this header.
+ */
+#define _WESTON_TRACE_EXPAND(arg)                          \
+	_WESTON_TRACE_EXPAND1(_WESTON_TRACE_EXPAND1(       \
+	_WESTON_TRACE_EXPAND1(_WESTON_TRACE_EXPAND1(arg))))
+#define _WESTON_TRACE_EXPAND1(arg)                         \
+	_WESTON_TRACE_EXPAND2(_WESTON_TRACE_EXPAND2(       \
+	_WESTON_TRACE_EXPAND2(_WESTON_TRACE_EXPAND2(arg))))
+#define _WESTON_TRACE_EXPAND2(arg) arg
+
+#define _WESTON_TRACE_ITER_HELPER(operation, pair, ...)                     \
+	operation(pair)                                                     \
+	__VA_OPT__(_WESTON_TRACE_ITER_AGAIN                                 \
+		   _WESTON_TRACE_FORCE_RECURSE (operation, __VA_ARGS__))
+#define _WESTON_TRACE_ITER_AGAIN() _WESTON_TRACE_ITER_HELPER
+
+#define _WESTON_TRACE_FORCE_RECURSE ()
+#define _WESTON_TRACE_ANNOTATE_PAIR(pair) _WESTON_TRACE_ANNOTATE_ADD_GENERIC pair
+
+/* end of helper section */
+
 #if __has_attribute(cleanup) && __has_attribute(unused)
 
 #define _WESTON_TRACE_SCOPE_VAR_CONCAT(name, suffix) name##suffix
@@ -229,9 +258,9 @@ _weston_trace_scope_end(int *scope)
 
 #define _WESTON_TRACE_BEGIN_ANNOTATION()
 #define _WESTON_TRACE_COMMIT_ANNOTATION(id, name)
-#define _WESTON_TRACE_ANNOTATE_ADD(k, v)
 #define _WESTON_TRACE_ANNOTATE_FUNC()
 #define _WESTON_TRACE_ANNOTATE_FUNC_FLOW(id, name)
+#define _WESTON_TRACE_ANNOTATE(...)
 
 #endif /* HAVE_PERFETTO */
 
@@ -248,9 +277,6 @@ _weston_trace_scope_end(int *scope)
 #define WESTON_TRACE_BEGIN_ANNOTATION() \
         _WESTON_TRACE_BEGIN_ANNOTATION()
 
-#define WESTON_TRACE_ANNOTATE_ADD(k, v) \
-        _WESTON_TRACE_ANNOTATE_ADD(k, v)
-
 #define WESTON_TRACE_COMMIT_ANNOTATION(id) \
         _WESTON_TRACE_COMMIT_ANNOTATION(id, __func__)
 
@@ -259,5 +285,14 @@ _weston_trace_scope_end(int *scope)
 
 #define WESTON_TRACE_ANNOTATE_FUNC_FLOW(id) \
         _WESTON_TRACE_ANNOTATE_FUNC_FLOW(id, __func__)
+
+/* Adds a series of annotations of the form '("key string", value)' separated
+ * by commas.
+ *
+ * Brackets are necessary, and the value can be any type understood by the
+ * _Generic block in _WESTON_TRACE_ANNOTATE_ADD
+ */
+#define WESTON_TRACE_ANNOTATE(...)                                          \
+	_WESTON_TRACE_ANNOTATE(__VA_ARGS__)
 
 #endif /* WESTON_TRACE_H */

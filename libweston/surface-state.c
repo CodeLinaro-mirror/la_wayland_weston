@@ -206,11 +206,11 @@ weston_surface_attach(struct weston_surface *surface,
 
 	WESTON_TRACE_BEGIN_ANNOTATION();
 	if (buffer) {
-		WESTON_TRACE_ANNOTATE_ADD("surface", surface->internal_name);
-		WESTON_TRACE_ANNOTATE_ADD("format", buffer->pixel_format->drm_format_name);
-		WESTON_TRACE_ANNOTATE_ADD("modifier", buffer->format_modifier_name);
-		WESTON_TRACE_ANNOTATE_ADD("width", buffer->width);
-		WESTON_TRACE_ANNOTATE_ADD("height", buffer->height);
+		WESTON_TRACE_ANNOTATE(("surface", surface->internal_name),
+				      ("format", buffer->pixel_format->drm_format_name),
+				      ("modifier", buffer->format_modifier_name),
+				      ("width", buffer->width),
+				      ("height", buffer->height));
 	}
 	WESTON_TRACE_ANNOTATE_FUNC_FLOW(&surface->flow_id);
 

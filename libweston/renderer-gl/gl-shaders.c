@@ -856,7 +856,7 @@ gl_shader_load_config(struct gl_renderer *gr, struct weston_paint_node *pnode,
 
 	WESTON_TRACE_BEGIN_ANNOTATION();
 	if (pnode) {
-		WESTON_TRACE_ANNOTATE_ADD("paint node", pnode->internal_name);
+		WESTON_TRACE_ANNOTATE(("paint node", pnode->internal_name));
 	}
 
 	glUniformMatrix4fv(shader->proj_uniform,
@@ -871,10 +871,10 @@ gl_shader_load_config(struct gl_renderer *gr, struct weston_paint_node *pnode,
 			"\t\tcolor: r: %.2f, g: %.2f, b: %.2f, a: %.2f\n",
 			sconf->unicolor[0], sconf->unicolor[1],
 			sconf->unicolor[2], sconf->unicolor[3]);
-		WESTON_TRACE_ANNOTATE_ADD("color r", sconf->unicolor[0]);
-		WESTON_TRACE_ANNOTATE_ADD("color g", sconf->unicolor[1]);
-		WESTON_TRACE_ANNOTATE_ADD("color b", sconf->unicolor[2]);
-		WESTON_TRACE_ANNOTATE_ADD("color a", sconf->unicolor[3]);
+		WESTON_TRACE_ANNOTATE(("color r", sconf->unicolor[0]),
+				      ("color g", sconf->unicolor[1]),
+				      ("color b", sconf->unicolor[2]),
+				      ("color a", sconf->unicolor[3]));
 		glUniform4fv(shader->color_uniform, 1, sconf->unicolor);
 	}
 	if (shader->tint_uniform != -1) {
@@ -882,15 +882,15 @@ gl_shader_load_config(struct gl_renderer *gr, struct weston_paint_node *pnode,
 				"\t\ttint: r: %.2f, g: %.2f, b: %.2f, a: %.2f\n",
 				sconf->tint[0], sconf->tint[1],
 				sconf->tint[2], sconf->tint[3]);
-		WESTON_TRACE_ANNOTATE_ADD("tint r", sconf->tint[0]);
-		WESTON_TRACE_ANNOTATE_ADD("tint g", sconf->tint[1]);
-		WESTON_TRACE_ANNOTATE_ADD("tint b", sconf->tint[2]);
-		WESTON_TRACE_ANNOTATE_ADD("tint a", sconf->tint[3]);
+		WESTON_TRACE_ANNOTATE(("tint r", sconf->tint[0]),
+				      ("tint g", sconf->tint[1]),
+				      ("tint b", sconf->tint[2]),
+				      ("tint a", sconf->tint[3]));
 		glUniform4fv(shader->tint_uniform, 1, sconf->tint);
 	}
 
 	weston_log_scope_printf(gr->paint_node_scope, "\t\talpha: %.2f\n", sconf->view_alpha);
-	WESTON_TRACE_ANNOTATE_ADD("alpha", sconf->view_alpha);
+	WESTON_TRACE_ANNOTATE(("alpha", sconf->view_alpha));
 	glUniform1f(shader->view_alpha_uniform, sconf->view_alpha);
 
 	assert(sconf->input_num <= SHADER_INPUT_TEX_MAX);
@@ -935,11 +935,11 @@ gl_shader_load_config(struct gl_renderer *gr, struct weston_paint_node *pnode,
 		break;
 	case SHADER_COLOR_EFFECT_INVERSION:
 		weston_log_scope_printf(gr->paint_node_scope, "\t\tcolor effect: inversion\n");
-		WESTON_TRACE_ANNOTATE_ADD("color effect", "inversion");
+		WESTON_TRACE_ANNOTATE(("color effect", "inversion"));
 		break;
 	case SHADER_COLOR_EFFECT_GRAYSCALE:
 		weston_log_scope_printf(gr->paint_node_scope, "\t\tcolor effect: grayscale\n");
-		WESTON_TRACE_ANNOTATE_ADD("color effect", "greyscale");
+		WESTON_TRACE_ANNOTATE(("color effect", "greyscale"));
 		break;
 	case SHADER_COLOR_EFFECT_CVD_CORRECTION:
 		weston_assert_int_ne(gr->compositor, shader->cvd_correction_uniform, -1);
@@ -948,8 +948,8 @@ gl_shader_load_config(struct gl_renderer *gr, struct weston_paint_node *pnode,
 		glUniformMatrix3fv(shader->cvd_correction_uniform,
 				   1, GL_FALSE,
 				   sconf->color_effect.cvd.correction.colmaj);
-		WESTON_TRACE_ANNOTATE_ADD("color effect",
-				weston_output_cvd_type_to_str(sconf->color_effect.cvd));
+		WESTON_TRACE_ANNOTATE(("color effect",
+				weston_output_cvd_type_to_str(sconf->color_effect.cvd)));
 		break;
 	}
 
