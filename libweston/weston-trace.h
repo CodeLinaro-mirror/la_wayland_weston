@@ -81,14 +81,16 @@
 		.count = 0,                                                     \
 	}
 
-#define _WESTON_TRACE_ANNOTATE_ADD_GENERIC(k, v)                                  \
-	_Generic((v),                                                             \
-		int: perfetto_annotate_int,                                       \
-		unsigned int: perfetto_annotate_int,                              \
-		float: perfetto_annotate_float,                                   \
-		char *: perfetto_annotate_string,                                 \
-		const char *: perfetto_annotate_string                            \
-	) (&__pd_annots, k, v);
+#define _WESTON_TRACE_ANNOTATE_ADD_GENERIC(k, v)                                          \
+	if (unlikely(util_perfetto_is_tracing_enabled())) {                               \
+		_Generic((v),                                                             \
+			int: perfetto_annotate_int,                                       \
+			unsigned int: perfetto_annotate_int,                              \
+			float: perfetto_annotate_float,                                   \
+			char *: perfetto_annotate_string,                                 \
+			const char *: perfetto_annotate_string                            \
+		) (&__pd_annots, k, v);                                                   \
+	}
 
 #define _WESTON_TRACE_ANNOTATE_ADD(k, v)                  \
 	do {                                              \
