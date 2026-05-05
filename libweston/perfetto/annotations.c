@@ -23,9 +23,11 @@
  * SOFTWARE.
  */
 
+#include "config.h"
 #include <libweston/libweston.h>
 
 #include "perfetto/annotations.h"
+#include "shared/weston-assert.h"
 #include "weston-trace.h"
 
 WL_EXPORT void
@@ -33,6 +35,7 @@ perfetto_annotate_int(struct weston_debug_annotations *annots,
 		      const char *key,
 		      int value)
 {
+	weston_assert_u8_gt(NULL, WESTON_MAX_DEBUG_ANNOTS, annots->count);
 	struct weston_debug_annotation *annot = &annots->annots[annots->count];
 
 	annot->type = WESTON_DEBUG_ANNOTATION_INT_VAL;
@@ -47,6 +50,7 @@ perfetto_annotate_float(struct weston_debug_annotations *annots,
 			const char *key,
 			float value)
 {
+	weston_assert_u8_gt(NULL, WESTON_MAX_DEBUG_ANNOTS, annots->count);
 	struct weston_debug_annotation *annot = &annots->annots[annots->count];
 
 	annot->type = WESTON_DEBUG_ANNOTATION_FLOAT_VAL;
@@ -61,6 +65,7 @@ perfetto_annotate_string(struct weston_debug_annotations *annots,
 			 const char *key,
 			 const char *value)
 {
+	weston_assert_u8_gt(NULL, WESTON_MAX_DEBUG_ANNOTS, annots->count);
 	struct weston_debug_annotation *annot = &annots->annots[annots->count];
 
 	annot->type = WESTON_DEBUG_ANNOTATION_STR_VAL;

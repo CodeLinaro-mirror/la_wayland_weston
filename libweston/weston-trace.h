@@ -82,7 +82,6 @@
 	}
 
 #define _WESTON_TRACE_ANNOTATE_ADD_GENERIC(k, v)                                  \
-	weston_assert_u8_gt(NULL, WESTON_MAX_DEBUG_ANNOTS, __pd_annots.count);   \
 	_Generic((v),                                                             \
 		int: perfetto_annotate_int,                                       \
 		unsigned int: perfetto_annotate_int,                              \
