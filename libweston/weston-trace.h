@@ -33,6 +33,9 @@
 /* maximum allowed debug annotations */
 #define WESTON_MAX_DEBUG_ANNOTS      128
 
+/* maximum key length */
+#define WESTON_TRACE_MAX_KEY_LENGTH  30
+
 /* note that util_perfetto_is_tracing_enabled always returns false until
  * util_perfetto_init is called
  */
@@ -83,6 +86,7 @@
 
 #define _WESTON_TRACE_ANNOTATE_ADD_GENERIC(k, v)                                          \
 	if (unlikely(util_perfetto_is_tracing_enabled())) {                               \
+		static_assert(sizeof(k) < WESTON_TRACE_MAX_KEY_LENGTH);                   \
 		_Generic((v),                                                             \
 			int: perfetto_annotate_int,                                       \
 			unsigned int: perfetto_annotate_int,                              \
