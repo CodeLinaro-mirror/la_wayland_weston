@@ -80,26 +80,20 @@
 		.count = 0,                                                     \
 	}
 
-#define _WESTON_TRACE_ANNOTATE_ADD_INT(k, v)                           \
+#define _WESTON_TRACE_ANNOTATE_ADD_GENERIC(k, v)                                  \
 	weston_assert_u8_gt(NULL, WESTON_MAX_DEBUG_ANNOTS, __pd_annots.count);   \
-	__pd_annots.annots[__pd_annots.count].type = WESTON_DEBUG_ANNOTATION_INT_VAL;    \
-	__pd_annots.annots[__pd_annots.count].ivalue = v;                                \
-	__pd_annots.annots[__pd_annots.count].key = k;                                   \
-	__pd_annots.count++
+	_Generic((v),                                                             \
+		int: perfetto_annotate_int,                                       \
+		unsigned int: perfetto_annotate_int,                              \
+		float: perfetto_annotate_float,                                   \
+		char *: perfetto_annotate_string,                                 \
+		const char *: perfetto_annotate_string                            \
+	) (&__pd_annots, k, v);
 
-#define _WESTON_TRACE_ANNOTATE_ADD_FLOAT(k, v)                         \
-	weston_assert_u8_gt(NULL, WESTON_MAX_DEBUG_ANNOTS, __pd_annots.count);   \
-	__pd_annots.annots[__pd_annots.count].type = WESTON_DEBUG_ANNOTATION_FLOAT_VAL;  \
-	__pd_annots.annots[__pd_annots.count].fvalue = v;                                \
-	__pd_annots.annots[__pd_annots.count].key = k;                                   \
-	__pd_annots.count++
-
-#define _WESTON_TRACE_ANNOTATE_ADD_STR(k, v)                           \
-	weston_assert_u8_gt(NULL, WESTON_MAX_DEBUG_ANNOTS, __pd_annots.count);   \
-	__pd_annots.annots[__pd_annots.count].type = WESTON_DEBUG_ANNOTATION_STR_VAL;    \
-	__pd_annots.annots[__pd_annots.count].svalue = v;                                \
-	__pd_annots.annots[__pd_annots.count].key = k;                                   \
-	__pd_annots.count++
+#define _WESTON_TRACE_ANNOTATE_ADD(k, v)                  \
+	do {                                              \
+		_WESTON_TRACE_ANNOTATE_ADD_GENERIC(k, v); \
+	} while (0)
 
 #define _WESTON_TRACE_COMMIT_ANNOTATION(id, name)                                                       \
 	do {                                                                                            \
@@ -235,9 +229,7 @@ _weston_trace_scope_end(int *scope)
 
 #define _WESTON_TRACE_BEGIN_ANNOTATION()
 #define _WESTON_TRACE_COMMIT_ANNOTATION(id, name)
-#define _WESTON_TRACE_ANNOTATE_ADD_INT(k, v)
-#define _WESTON_TRACE_ANNOTATE_ADD_FLOAT(k, v)
-#define _WESTON_TRACE_ANNOTATE_ADD_STR(k, v)
+#define _WESTON_TRACE_ANNOTATE_ADD(k, v)
 #define _WESTON_TRACE_ANNOTATE_FUNC()
 #define _WESTON_TRACE_ANNOTATE_FUNC_FLOW(id, name)
 
@@ -256,14 +248,8 @@ _weston_trace_scope_end(int *scope)
 #define WESTON_TRACE_BEGIN_ANNOTATION() \
         _WESTON_TRACE_BEGIN_ANNOTATION()
 
-#define WESTON_TRACE_ANNOTATE_ADD_INT(k, v) \
-        _WESTON_TRACE_ANNOTATE_ADD_INT(k, v)
-
-#define WESTON_TRACE_ANNOTATE_ADD_FLOAT(k, v) \
-        _WESTON_TRACE_ANNOTATE_ADD_FLOAT(k, v)
-
-#define WESTON_TRACE_ANNOTATE_ADD_STR(k, v) \
-        _WESTON_TRACE_ANNOTATE_ADD_STR(k, v)
+#define WESTON_TRACE_ANNOTATE_ADD(k, v) \
+        _WESTON_TRACE_ANNOTATE_ADD(k, v)
 
 #define WESTON_TRACE_COMMIT_ANNOTATION(id) \
         _WESTON_TRACE_COMMIT_ANNOTATION(id, __func__)

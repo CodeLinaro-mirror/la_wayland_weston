@@ -97,6 +97,21 @@ uint64_t util_perfetto_next_id(void);
 
 uint64_t util_perfetto_new_track(const char *name);
 
+void
+perfetto_annotate_int(struct weston_debug_annotations *annots,
+		      const char *key,
+		      int value);
+
+void
+perfetto_annotate_float(struct weston_debug_annotations *annots,
+			const char *key,
+			float value);
+
+void
+perfetto_annotate_string(struct weston_debug_annotations *annots,
+			 const char *key,
+			 const char *value);
+
 #else /* HAVE_PERFETTO */
 
 static inline void
