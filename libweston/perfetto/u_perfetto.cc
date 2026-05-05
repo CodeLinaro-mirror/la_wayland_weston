@@ -228,48 +228,6 @@ util_perfetto_trace_commit_annotate_func_flow(uint64_t id, const char *name,
 	});
 }
 
-void
-perfetto_annotate_int(struct weston_debug_annotations *annots,
-		      const char *key,
-		      int value)
-{
-	struct weston_debug_annotation *annot = &annots->annots[annots->count];
-
-	annot->type = WESTON_DEBUG_ANNOTATION_INT_VAL;
-	annot->ivalue = value;
-	annot->key = key;
-
-	annots->count++;
-}
-
-void
-perfetto_annotate_float(struct weston_debug_annotations *annots,
-			const char *key,
-			float value)
-{
-	struct weston_debug_annotation *annot = &annots->annots[annots->count];
-
-	annot->type = WESTON_DEBUG_ANNOTATION_FLOAT_VAL;
-	annot->fvalue = value;
-	annot->key = key;
-
-	annots->count++;
-}
-
-void
-perfetto_annotate_string(struct weston_debug_annotations *annots,
-			 const char *key,
-			 const char *value)
-{
-	struct weston_debug_annotation *annot = &annots->annots[annots->count];
-
-	annot->type = WESTON_DEBUG_ANNOTATION_STR_VAL;
-	annot->svalue = value;
-	annot->key = key;
-
-	annots->count++;
-}
-
 class UtilPerfettoObserver : public perfetto::TrackEventSessionObserver {
  public:
 	UtilPerfettoObserver() { perfetto::TrackEvent::AddSessionObserver(this); }
