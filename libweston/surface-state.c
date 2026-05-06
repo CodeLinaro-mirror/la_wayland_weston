@@ -204,10 +204,9 @@ weston_surface_attach(struct weston_surface *surface,
 	struct weston_buffer *old_buffer = surface->buffer_ref.buffer;
 	enum weston_paint_node_status pnode_changes = WESTON_PAINT_NODE_CLEAN;
 
-	WESTON_TRACE_BEGIN_ANNOTATION();
-	WESTON_TRACE_ANNOTATE(("surface", surface->internal_name),
-			      ("new buffer", buffer));
-	WESTON_TRACE_ANNOTATE_FUNC_FLOW(&surface->flow_id);
+	WESTON_TRACE_ANNOTATE_FUNC_FLOW(&surface->flow_id,
+					("surface", surface->internal_name),
+					("new buffer", buffer));
 
 	if (!buffer) {
 		if (weston_surface_is_mapped(surface)) {

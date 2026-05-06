@@ -288,10 +288,14 @@ _weston_trace_scope_end(int *scope)
 #define WESTON_TRACE_COMMIT_ANNOTATION(id) \
         _WESTON_TRACE_COMMIT_ANNOTATION(id, __func__)
 
-#define WESTON_TRACE_ANNOTATE_FUNC() \
+#define WESTON_TRACE_ANNOTATE_FUNC(...)               \
+	WESTON_TRACE_BEGIN_ANNOTATION();              \
+	WESTON_TRACE_ANNOTATE(__VA_ARGS__);           \
         _WESTON_TRACE_ANNOTATE_FUNC(__func__)
 
-#define WESTON_TRACE_ANNOTATE_FUNC_FLOW(id) \
+#define WESTON_TRACE_ANNOTATE_FUNC_FLOW(id, ...)      \
+	WESTON_TRACE_BEGIN_ANNOTATION();              \
+	WESTON_TRACE_ANNOTATE(__VA_ARGS__);           \
         _WESTON_TRACE_ANNOTATE_FUNC_FLOW(id, __func__)
 
 /* Adds a series of annotations of the form '("key string", value)' separated
