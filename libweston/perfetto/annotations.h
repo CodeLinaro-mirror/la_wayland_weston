@@ -52,3 +52,9 @@ perfetto_annotate_buffer(struct weston_debug_annotations *annots,
 			 const char *key,
 			 unsigned char key_size,
 			 const struct weston_buffer *buffer);
+
+void
+perfetto_annotate_solid_buffer_values(struct weston_debug_annotations *annots,
+				      const char *key,
+				      unsigned char key_size,
+				      const struct weston_solid_buffer_values *values);

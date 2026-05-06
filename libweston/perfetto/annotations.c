@@ -32,6 +32,13 @@
 #include "weston-trace.h"
 
 static void
+do_annotate_solid_buffer_values(struct weston_debug_annotations *annots,
+				unsigned char parent,
+				const char *key,
+				unsigned char key_size,
+				const struct weston_solid_buffer_values *values);
+
+static void
 do_annotate_buffer(struct weston_debug_annotations *annots,
 		   unsigned char parent,
 		   const char *key,
@@ -148,9 +155,35 @@ create_container(struct weston_debug_annotations *annots,
 			int: do_annotate_int,                                        \
 			float: do_annotate_float,                                    \
 			struct weston_buffer *:do_annotate_buffer,                   \
-			const struct weston_buffer *:do_annotate_buffer              \
+			const struct weston_buffer *:do_annotate_buffer,             \
+			struct weston_solid_buffer_values *:do_annotate_solid_buffer_values,       \
+			const struct weston_solid_buffer_values *: do_annotate_solid_buffer_values \
 		) (annots, parent, key, sizeof(key), value);                         \
 	} while (0)
+
+static void
+do_annotate_solid_buffer_values(struct weston_debug_annotations *annots,
+				unsigned char parent,
+				const char *key,
+				unsigned char key_size,
+				const struct weston_solid_buffer_values *values)
+{
+	unsigned char container_id = create_container(annots, parent, key, key_size);
+
+	ADD(annots, container_id, "red", values->r);
+	ADD(annots, container_id, "green", values->g);
+	ADD(annots, container_id, "blue", values->b);
+	ADD(annots, container_id, "alpha", values->a);
+}
+
+WL_EXPORT void
+perfetto_annotate_solid_buffer_values(struct weston_debug_annotations *annots,
+				      const char *key,
+				      unsigned char key_size,
+				      const struct weston_solid_buffer_values *values)
+{
+	do_annotate_solid_buffer_values(annots, annots->count, key, key_size, values);
+}
 
 static void
 do_annotate_buffer(struct weston_debug_annotations *annots,
@@ -165,6 +198,9 @@ do_annotate_buffer(struct weston_debug_annotations *annots,
 	ADD(annots, container_id, "modifier", buffer->format_modifier_name);
 	ADD(annots, container_id, "width", buffer->width);
 	ADD(annots, container_id, "height", buffer->height);
+
+	if (buffer->type == WESTON_BUFFER_SOLID)
+		ADD(annots, container_id, "solid", &buffer->solid);
 }
 
 WL_EXPORT void
