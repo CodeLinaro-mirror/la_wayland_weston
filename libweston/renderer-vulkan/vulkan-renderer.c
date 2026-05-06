@@ -2374,8 +2374,8 @@ vulkan_renderer_create_swapchain(struct weston_output *output,
 
 		transition_image_layout(cmd_buffer, swapchain_images[i],
 					VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-					VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-					0, VK_ACCESS_TRANSFER_WRITE_BIT);
+					VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+					0, VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 
 		create_image_semaphores(vr, vo, im);
 
