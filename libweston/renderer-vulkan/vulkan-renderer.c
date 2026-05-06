@@ -433,7 +433,8 @@ static void
 transition_image_layout(VkCommandBuffer cmd_buffer, VkImage image,
 			VkImageLayout old_layout, VkImageLayout new_layout,
 			VkPipelineStageFlags srcs, VkPipelineStageFlags dsts,
-			VkAccessFlags src_access, VkAccessFlags dst_access)
+			VkAccessFlags src_access, VkAccessFlags dst_access,
+			uint32_t src_index, uint32_t dst_index)
 {
 	const VkImageMemoryBarrier barrier = {
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -445,8 +446,8 @@ transition_image_layout(VkCommandBuffer cmd_buffer, VkImage image,
 		.subresourceRange.levelCount = 1,
 		.srcAccessMask = src_access,
 		.dstAccessMask = dst_access,
-		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.srcQueueFamilyIndex = src_index,
+		.dstQueueFamilyIndex = dst_index,
 	};
 
 	vkCmdPipelineBarrier(cmd_buffer, srcs, dsts, 0, 0, NULL, 0, NULL, 1, &barrier);
@@ -1355,7 +1356,8 @@ vulkan_renderer_do_read_pixels(struct vulkan_renderer *vr,
 	transition_image_layout(cmd_buffer, color_attachment,
 				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-				VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+				VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+				VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED);
 
 	copy_sub_image_to_buffer(cmd_buffer,
 				 dst_buffer, color_attachment,
@@ -1368,7 +1370,8 @@ vulkan_renderer_do_read_pixels(struct vulkan_renderer *vr,
 	transition_image_layout(cmd_buffer, color_attachment,
 				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-				VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+				VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+				VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED);
 
 	// TODO: async implementation of this, remove wait
 	vulkan_renderer_cmd_end_wait(vr, &cmd_buffer);
@@ -2380,7 +2383,8 @@ vulkan_renderer_create_swapchain(struct weston_output *output,
 		transition_image_layout(cmd_buffer, swapchain_images[i],
 					VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 					VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-					0, VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+					0, VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+					VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED);
 
 		create_image_semaphores(vr, vo, im);
 
@@ -2755,7 +2759,8 @@ update_texture_image(struct vulkan_renderer *vr,
 	transition_image_layout(cmd_buffer, texture->image,
 				expected_layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 				VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-				VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+				VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+				VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED);
 
 	copy_buffer_to_sub_image(cmd_buffer, texture->staging_buffer, texture->image,
 				 buffer_width, buffer_height, pitch, pixel_format->bpp,
@@ -2764,7 +2769,8 @@ update_texture_image(struct vulkan_renderer *vr,
 	transition_image_layout(cmd_buffer, texture->image,
 				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-				VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+				VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+				VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED);
 
 	result = vkEndCommandBuffer(cmd_buffer);
 	check_vk_success(result, "vkEndCommandBuffer");
@@ -3892,7 +3898,8 @@ vulkan_renderer_create_renderbuffer(struct weston_output *output,
 	transition_image_layout(cmd_buffer, im->image,
 				VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-				0, VK_ACCESS_TRANSFER_WRITE_BIT);
+				0, VK_ACCESS_TRANSFER_WRITE_BIT,
+				VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED);
 
 	// Wait here is bad, but this is only on renderbuffer creation
 	vulkan_renderer_cmd_end_wait(vr, &cmd_buffer);
