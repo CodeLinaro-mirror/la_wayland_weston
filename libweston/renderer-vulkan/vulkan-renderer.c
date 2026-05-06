@@ -406,30 +406,6 @@ static const struct vulkan_extension_table vulkan_device_ext_table[] = {
 };
 
 static void
-transfer_image_queue_family(VkCommandBuffer cmd_buffer, VkImage image,
-			    uint32_t src_index, uint32_t dst_index)
-{
-	const VkImageMemoryBarrier barrier = {
-		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-		.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		.srcAccessMask = 0,
-		.dstAccessMask = 0,
-		.image = image,
-		.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-		.subresourceRange.layerCount = 1,
-		.subresourceRange.levelCount = 1,
-		.srcQueueFamilyIndex = src_index,
-		.dstQueueFamilyIndex = dst_index,
-	};
-
-	vkCmdPipelineBarrier(cmd_buffer,
-			     VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-			     VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-			     0, 0, NULL, 0, NULL, 1, &barrier);
-}
-
-static void
 transition_image_layout(VkCommandBuffer cmd_buffer, VkImage image,
 			VkImageLayout old_layout, VkImageLayout new_layout,
 			VkPipelineStageFlags srcs, VkPipelineStageFlags dsts,
@@ -2493,9 +2469,11 @@ vulkan_renderer_repaint_output(struct weston_output *output,
 	if (rb->dmabuf) {
 		// Transfer ownership of the dmabuf to Vulkan
 		assert(vulkan_device_has(vr, EXTENSION_EXT_QUEUE_FAMILY_FOREIGN));
-		transfer_image_queue_family(cmd_buffer, im->image,
-					    VK_QUEUE_FAMILY_FOREIGN_EXT,
-					    vr->queue_family);
+		transition_image_layout(cmd_buffer, im->image,
+					VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+					VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+					VK_ACCESS_MEMORY_READ_BIT, VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+					VK_QUEUE_FAMILY_FOREIGN_EXT, vr->queue_family);
 	}
 
 	const struct weston_size *fb = &vo->fb_size;
@@ -2536,9 +2514,11 @@ vulkan_renderer_repaint_output(struct weston_output *output,
 	if (rb->dmabuf) {
 		// Transfer ownership of the dmabuf to DRM
 		assert(vulkan_device_has(vr, EXTENSION_EXT_QUEUE_FAMILY_FOREIGN));
-		transfer_image_queue_family(cmd_buffer, im->image,
-					    vr->queue_family,
-					    VK_QUEUE_FAMILY_FOREIGN_EXT);
+		transition_image_layout(cmd_buffer, im->image,
+					VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+					VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+					VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_MEMORY_READ_BIT,
+					vr->queue_family, VK_QUEUE_FAMILY_FOREIGN_EXT);
 	}
 
 	result = vkEndCommandBuffer(cmd_buffer);
