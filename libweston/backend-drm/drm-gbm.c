@@ -816,13 +816,15 @@ struct drm_fb *
 drm_output_render_vulkan(struct drm_output_state *state, pixman_region32_t *damage)
 {
 	struct drm_output *output = state->output;
+	struct drm_plane_state *pstate =
+		drm_output_state_get_plane(state, output->scanout_handle->plane);
+	struct weston_renderer *renderer = output->base.compositor->renderer;
 	struct drm_device *device = output->device;
 	struct linux_dmabuf_memory *dmabuf;
 	struct drm_fb *ret;
 
-	output->base.compositor->renderer->repaint_output(&output->base,
-							  damage,
-							  output->renderbuffer[output->current_image]);
+	renderer->repaint_output(&output->base, damage,
+				 output->renderbuffer[output->current_image]);
 
 	dmabuf = output->linux_dmabuf_memory[output->current_image];
 	if (!dmabuf) {
@@ -837,6 +839,13 @@ drm_output_render_vulkan(struct drm_output_state *state, pixman_region32_t *dama
 						false, true, NULL);
 	if (!ret) {
 		weston_log("failed to get drm_fb for dmabuf\n");
+		return NULL;
+	}
+
+	pstate->in_fence_fd = renderer->vulkan->create_fence_fd(&output->base);
+	if (pstate->in_fence_fd < 1) {
+		weston_log("failed to get fence fd from rendering\n");
+		drm_fb_unref(ret);
 		return NULL;
 	}
 
