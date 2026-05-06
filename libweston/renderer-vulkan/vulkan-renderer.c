@@ -2749,8 +2749,8 @@ update_texture_image(struct vulkan_renderer *vr,
 
 	transition_image_layout(cmd_buffer, texture->image,
 				expected_layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-				VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+				VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+				VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 
 	copy_buffer_to_sub_image(cmd_buffer, texture->staging_buffer, texture->image,
 				 buffer_width, buffer_height, pitch, pixel_format->bpp,
