@@ -1547,7 +1547,7 @@ rect_to_quad(pixman_box32_t *rect,
 		polygon[i].y = (float)rect_s.y;
 	}
 
-	clipper_quad_init(quad, polygon, pnode->valid_transform);
+	clipper_quad_init(quad, polygon, pnode->simple_transform);
 }
 
 static uint32_t

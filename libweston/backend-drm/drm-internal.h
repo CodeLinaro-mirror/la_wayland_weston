@@ -838,7 +838,7 @@ drm_paint_node_transform_supported(struct weston_paint_node *node, struct drm_pl
 {
 	/* if false, the transform doesn't map to any of the standard
 	 * (ie: 90 degree) output transformations. */
-	if (!node->valid_transform)
+	if (!node->simple_transform)
 		return false;
 
 	if (drm_rotation_from_output_transform(plane, node->transform) == 0)

@@ -2224,7 +2224,7 @@ transform_damage(const struct weston_paint_node *pnode,
 	 * stores standard output transforms (translations, flips and rotations
 	 * by 90°), then all the transformed quads are axis-aligned in surface
 	 * space. */
-	axis_aligned = pnode->valid_transform;
+	axis_aligned = pnode->simple_transform;
 	for (i = 0; i < nrects; i++) {
 		global_to_surface(&rects[i], pnode, polygon);
 		clipper_quad_init(&quads_alloc[i], polygon, axis_aligned);
@@ -2666,7 +2666,7 @@ draw_paint_node(struct weston_paint_node *pnode,
 	}
 
 	if (!gr->debug_mode && pnode->draw_solid && pnode->is_fully_opaque &&
-	    pnode->valid_transform && (pnode->surf_xform_valid &&
+	    pnode->simple_transform && (pnode->surf_xform_valid &&
 				       !pnode->surf_xform.transform)) {
 		gl_log_paint_node(gr, "\t\toptimize: using glClear\n");
 		WESTON_TRACE_ANNOTATE(("optimization", "using glClear"));

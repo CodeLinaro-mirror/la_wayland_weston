@@ -703,7 +703,14 @@ struct weston_paint_node {
 	struct weston_matrix output_to_buffer_matrix;
 	bool needs_filtering;
 
-	bool valid_transform;
+	/* We consider a transform to be simple if it can be
+	 * represented by one of wayland's named transforms,
+	 * plus translation and scale.
+	 *
+	 * An axis aligned box must remain axis aligned.
+	 */
+	bool simple_transform;
+	/* Only valid if the transform is considered simple. */
 	enum wl_output_transform transform;
 
 	/* struct weston_output::paint_node_z_order_list */

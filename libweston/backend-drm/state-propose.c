@@ -902,7 +902,7 @@ static bool
 is_paint_node_solid_opaque_untransformed(struct weston_paint_node *pnode)
 {
 	return pnode->draw_solid && pnode->is_fully_opaque &&
-	       pnode->valid_transform &&
+	       pnode->simple_transform &&
 	       (pnode->surf_xform_valid && !pnode->surf_xform.transform);
 }
 

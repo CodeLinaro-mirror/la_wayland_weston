@@ -243,7 +243,7 @@ drm_plane_state_coords_for_paint_node(struct drm_plane_state *state,
 	 */
 	assert(drm_paint_node_transform_supported(pnode, state->plane));
 
-	assert(pnode->valid_transform);
+	assert(pnode->simple_transform);
 	state->rotation = drm_rotation_from_output_transform(state->plane, pnode->transform);
 
 	box = pixman_region32_extents(&ev->transform.boundingbox);

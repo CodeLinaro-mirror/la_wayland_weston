@@ -222,8 +222,8 @@ paint_node_update_early(struct weston_paint_node *pnode)
 		weston_matrix_invert(&pnode->output_to_buffer_matrix, mat);
 		pnode->needs_filtering = weston_matrix_needs_filtering(mat);
 
-		pnode->valid_transform = weston_matrix_to_transform(mat,
-								    &pnode->transform);
+		pnode->simple_transform = weston_matrix_to_transform(mat,
+								     &pnode->transform);
 	}
 
 	buffer = pnode->surface->buffer_ref.buffer;
@@ -234,7 +234,7 @@ paint_node_update_early(struct weston_paint_node *pnode)
 		pnode->draw_solid = true;
 		pnode->is_fully_opaque = (pnode->view->alpha == 1.0f &&
 					  buffer->solid.a == 1.0f &&
-					  pnode->valid_transform);
+					  pnode->simple_transform);
 		pnode->is_fully_blended = !pnode->is_fully_opaque;
 		pnode->solid = buffer->solid;
 		if (pnode->solid.a == 0.0f)
@@ -259,7 +259,7 @@ paint_node_update_early(struct weston_paint_node *pnode)
 		pnode->draw_solid = true;
 		pnode->censored = true;
 		pnode->is_fully_opaque = (pnode->view->alpha == 1.0f) &&
-					 pnode->valid_transform;
+					 pnode->simple_transform;
 		pnode->is_fully_blended = !pnode->is_fully_opaque;
 		get_placeholder_color(pnode, &pnode->solid);
 	}
@@ -267,7 +267,7 @@ paint_node_update_early(struct weston_paint_node *pnode)
 	if (!pnode->draw_solid && (was_solid || view_dirty)) {
 		pnode->is_fully_opaque = weston_view_is_opaque(pnode->view,
 							       &pnode->view->transform.boundingbox) &&
-							       pnode->valid_transform;
+							       pnode->simple_transform;
 		pnode->is_fully_blended = weston_view_is_fully_blended(pnode->view,
 								       &pnode->view->transform.boundingbox);
 	}
@@ -382,7 +382,7 @@ paint_node_update_late(struct weston_paint_node *pnode)
 	} else if (buffer->direct_display && !pnode->censored) {
 		pnode->draw_solid = true;
 		pnode->is_fully_opaque = (pnode->view->alpha == 1.0f) &&
-					 pnode->valid_transform;
+					 pnode->simple_transform;
 		pnode->is_fully_blended = !pnode->is_fully_opaque;
 		get_placeholder_color(pnode, &pnode->solid);
 	}
@@ -9638,7 +9638,7 @@ debug_scene_view_print_paint_node(FILE *fp,
 		return;
 
 	fputs("\t\t\t\tBuffer to output transform: ", fp);
-	if (!pnode->valid_transform)
+	if (!pnode->simple_transform)
 		fputs("Free form\n", fp);
 	else {
 		fputs(weston_transform_to_string(pnode->transform), fp);
