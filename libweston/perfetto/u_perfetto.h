@@ -55,6 +55,11 @@ struct weston_debug_annotation {
         };
 };
 
+struct weston_debug_annotations {
+	struct weston_debug_annotation *annots;
+	unsigned char count;
+};
+
 #ifdef HAVE_PERFETTO
 
 extern int util_perfetto_tracing_state;
@@ -80,13 +85,13 @@ void util_perfetto_trace_full_begin(const char *name, uint64_t track_id, uint64_
 void util_perfetto_trace_full_end(const char *name, uint64_t track_id, clockid_t clock, uint64_t timestamp);
 
 void util_perfetto_trace_commit_debug_annots(uint64_t id, const char *name,
-		unsigned int entries, struct weston_debug_annotation *annots);
+		struct weston_debug_annotations *annots);
 
 void util_perfetto_trace_commit_annotate_func(const char *name,
-		unsigned int entries, struct weston_debug_annotation *annots);
+		struct weston_debug_annotations *annots);
 
 void util_perfetto_trace_commit_annotate_func_flow(uint64_t id, const char *name,
-		unsigned int entries, struct weston_debug_annotation *annots);
+		struct weston_debug_annotations *annots);
 
 uint64_t util_perfetto_next_id(void);
 
@@ -131,22 +136,19 @@ util_perfetto_trace_full_end(const char *name, uint64_t track_id, clockid_t cloc
 
 static inline void
 util_perfetto_trace_commit_debug_annots(uint64_t id, const char *name,
-					unsigned int entries,
-					struct weston_debug_annotation *annots)
+					struct weston_debug_annotations *annots)
 {
 }
 
 static inline void
 util_perfetto_trace_commit_annotate_func(const char *name,
-					 unsigned int entries,
-					 struct weston_debug_annotation *annots)
+					 struct weston_debug_annotations *annots)
 {
 }
 
 static inline void
 util_perfetto_trace_commit_annotate_func_flow(uint64_t id, const char *name,
-					 unsigned int entries,
-					 struct weston_debug_annotation *annots)
+					      struct weston_debug_annotations *annots)
 {
 }
 

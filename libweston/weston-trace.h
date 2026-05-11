@@ -73,50 +73,53 @@
 						     clock, timestamp);       \
 	} while (0)
 
-#define _WESTON_TRACE_BEGIN_ANNOTATION()                                       \
-	struct weston_debug_annotation __pd_annots[WESTON_MAX_DEBUG_ANNOTS];    \
-	unsigned int __pd_i = 0
+#define _WESTON_TRACE_BEGIN_ANNOTATION()                                        \
+	struct weston_debug_annotation __pd_annot[WESTON_MAX_DEBUG_ANNOTS];     \
+	struct weston_debug_annotations __pd_annots = {                         \
+		.annots = __pd_annot,                                           \
+		.count = 0,                                                     \
+	}
 
 #define _WESTON_TRACE_ANNOTATE_ADD_INT(k, v)                           \
-	weston_assert_u32_gt(NULL, WESTON_MAX_DEBUG_ANNOTS, __pd_i);   \
-	__pd_annots[__pd_i].type = WESTON_DEBUG_ANNOTATION_INT_VAL;    \
-	__pd_annots[__pd_i].ivalue = v;                                \
-	__pd_annots[__pd_i].key = k;                                   \
-	__pd_i++
+	weston_assert_u8_gt(NULL, WESTON_MAX_DEBUG_ANNOTS, __pd_annots.count);   \
+	__pd_annots.annots[__pd_annots.count].type = WESTON_DEBUG_ANNOTATION_INT_VAL;    \
+	__pd_annots.annots[__pd_annots.count].ivalue = v;                                \
+	__pd_annots.annots[__pd_annots.count].key = k;                                   \
+	__pd_annots.count++
 
 #define _WESTON_TRACE_ANNOTATE_ADD_FLOAT(k, v)                         \
-	weston_assert_u32_gt(NULL, WESTON_MAX_DEBUG_ANNOTS, __pd_i);   \
-	__pd_annots[__pd_i].type = WESTON_DEBUG_ANNOTATION_FLOAT_VAL;  \
-	__pd_annots[__pd_i].fvalue = v;                                \
-	__pd_annots[__pd_i].key = k;                                   \
-	__pd_i++
+	weston_assert_u8_gt(NULL, WESTON_MAX_DEBUG_ANNOTS, __pd_annots.count);   \
+	__pd_annots.annots[__pd_annots.count].type = WESTON_DEBUG_ANNOTATION_FLOAT_VAL;  \
+	__pd_annots.annots[__pd_annots.count].fvalue = v;                                \
+	__pd_annots.annots[__pd_annots.count].key = k;                                   \
+	__pd_annots.count++
 
 #define _WESTON_TRACE_ANNOTATE_ADD_STR(k, v)                           \
-	weston_assert_u32_gt(NULL, WESTON_MAX_DEBUG_ANNOTS, __pd_i);   \
-	__pd_annots[__pd_i].type = WESTON_DEBUG_ANNOTATION_STR_VAL;    \
-	__pd_annots[__pd_i].svalue = v;                                \
-	__pd_annots[__pd_i].key = k;                                   \
-	__pd_i++
+	weston_assert_u8_gt(NULL, WESTON_MAX_DEBUG_ANNOTS, __pd_annots.count);   \
+	__pd_annots.annots[__pd_annots.count].type = WESTON_DEBUG_ANNOTATION_STR_VAL;    \
+	__pd_annots.annots[__pd_annots.count].svalue = v;                                \
+	__pd_annots.annots[__pd_annots.count].key = k;                                   \
+	__pd_annots.count++
 
 #define _WESTON_TRACE_COMMIT_ANNOTATION(id, name)                                                       \
 	do {                                                                                            \
 		if (unlikely(util_perfetto_is_tracing_enabled())) {                                     \
-			_weston_trace_scope_annotate_commit(id, name, &__pd_i, __pd_annots);            \
+			_weston_trace_scope_annotate_commit(id, name, &__pd_annots);                     \
 		}                                                                                       \
 	} while (0)
 
 /* annotated funcs */
-#define _WESTON_TRACE_ANNOTATE_FUNC_BEGIN(name, nr_entries, annots)                                     \
+#define _WESTON_TRACE_ANNOTATE_FUNC_BEGIN(name, annots)                                                 \
 	do {                                                                                            \
 		if (unlikely(util_perfetto_is_tracing_enabled())) {                                     \
-			util_perfetto_trace_commit_annotate_func(name, *nr_entries, annots);            \
+			util_perfetto_trace_commit_annotate_func(name, annots);                         \
 		}                                                                                       \
 	} while (0)
 
-#define _WESTON_TRACE_ANNOTATE_FUNC_BEGIN_FLOW(name, id, nr_entries, annots)                            \
+#define _WESTON_TRACE_ANNOTATE_FUNC_BEGIN_FLOW(name, id, annots)                                        \
 	do {                                                                                            \
 		if (unlikely(util_perfetto_is_tracing_enabled())) {                                     \
-			util_perfetto_trace_commit_annotate_func_flow(id, name, *nr_entries, annots);   \
+			util_perfetto_trace_commit_annotate_func_flow(id, name, annots);                \
 		}                                                                                       \
 	} while (0)
 
@@ -146,12 +149,12 @@
 #define _WESTON_TRACE_ANNOTATE_FUNC(name)                                     \
 	int _WESTON_TRACE_SCOPE_VAR(__LINE__)                                 \
 		__attribute__((cleanup(_weston_trace_scope_end), unused)) =   \
-			_weston_trace_annotate_func_begin(name, &__pd_i, __pd_annots)
+			_weston_trace_annotate_func_begin(name, &__pd_annots)
 
 #define _WESTON_TRACE_ANNOTATE_FUNC_FLOW(id, name)                            \
 	int _WESTON_TRACE_SCOPE_VAR(__LINE__)                                 \
 		__attribute__((cleanup(_weston_trace_scope_end), unused)) =   \
-			_weston_trace_annotate_func_begin_flow(name, id, &__pd_i, __pd_annots)
+			_weston_trace_annotate_func_begin_flow(name, id, &__pd_annots)
 
 static inline int
 _weston_trace_scope_begin(const char *name)
@@ -171,48 +174,40 @@ _weston_trace_scope_flow_begin(const char *name, uint64_t *id)
 
 static inline void
 _weston_trace_scope_annotate_commit(uint64_t *id, const char *name,
-				    unsigned int *nr_entries,
-				    struct weston_debug_annotation *annots)
+				    struct weston_debug_annotations *annots)
 {
 	if (id && *id == 0) {
 		*id = util_perfetto_next_id();
-		util_perfetto_trace_commit_debug_annots(*id, name, *nr_entries, annots);
+		util_perfetto_trace_commit_debug_annots(*id, name, annots);
 		goto reset_entries;
 	}
 
-	util_perfetto_trace_commit_debug_annots(0, name, *nr_entries, annots);
+	util_perfetto_trace_commit_debug_annots(0, name, annots);
 
-	/* reset the array and counter */
 reset_entries:
-	memset(annots, 0, sizeof(struct weston_debug_annotation) * *nr_entries);
-	*nr_entries = 0;
+	annots->count = 0;
 }
 
 static inline int
-_weston_trace_annotate_func_begin(const char *name, unsigned int *nr_entries,
-				  struct weston_debug_annotation *annots)
+_weston_trace_annotate_func_begin(const char *name,
+				  struct weston_debug_annotations *annots)
 {
-	_WESTON_TRACE_ANNOTATE_FUNC_BEGIN(name, nr_entries, annots);
+	_WESTON_TRACE_ANNOTATE_FUNC_BEGIN(name, annots);
 
-	/* reset the array and counter */
-	memset(annots, 0, sizeof(struct weston_debug_annotation) * *nr_entries);
-	*nr_entries = 0;
+	annots->count = 0;
 	return 0;
 }
 
 static inline int
 _weston_trace_annotate_func_begin_flow(const char *name, uint64_t *id,
-				       unsigned int *nr_entries,
-				       struct weston_debug_annotation *annots)
+				       struct weston_debug_annotations *annots)
 {
 	if (*id == 0)
 		*id = util_perfetto_next_id();
 
-	_WESTON_TRACE_ANNOTATE_FUNC_BEGIN_FLOW(name, *id, nr_entries, annots);
+	_WESTON_TRACE_ANNOTATE_FUNC_BEGIN_FLOW(name, *id, annots);
 
-	/* reset the array and counter */
-	memset(annots, 0, sizeof(struct weston_debug_annotation) * *nr_entries);
-	*nr_entries = 0;
+	annots->count = 0;
 	return 0;
 }
 
