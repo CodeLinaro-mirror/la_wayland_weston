@@ -47,13 +47,13 @@ enum weston_debug_annotation_type {
 };
 
 struct weston_debug_annotation {
-        const char *key;
-        enum weston_debug_annotation_type type;
-        union {
-                int ivalue;
-                float fvalue;
-                const char *svalue;
-        };
+	const char *key;
+	union {
+		int ivalue;
+		float fvalue;
+		const char *svalue;
+	};
+	unsigned char type;
 	unsigned char parent;
 	unsigned char key_size;
 };
