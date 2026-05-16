@@ -26,6 +26,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include "config.h"
 
@@ -169,6 +174,7 @@ enum wdrm_plane_property {
 	WDRM_PLANE_ZPOS,
 	WDRM_PLANE_ROTATION,
 	WDRM_PLANE_ALPHA,
+	WDRM_PLANE_BLEND_OP,
 	WDRM_PLANE__COUNT
 };
 
@@ -193,6 +199,18 @@ enum wdrm_plane_rotation {
 	WDRM_PLANE_ROTATION_REFLECT_X,
 	WDRM_PLANE_ROTATION_REFLECT_Y,
 	WDRM_PLANE_ROTATION__COUNT,
+};
+
+/**
+ * Possible values for the WDRM_PLANE_BLEND_OP property.
+ */
+enum wdrm_plane_blend_op {
+	WDRM_PLANE_BLEND_NOT_DEFINED = 0,
+	WDRM_PLANE_BLEND_OPAQUE,
+	WDRM_PLANE_BLEND_PREMULTIPLIED,
+	WDRM_PLANE_BLEND_COVERAGE,
+	WDRM_PLANE_BLEND_SKIP_BLENDING,
+	WDRM_PLANE_BLEND_OP__COUNT,
 };
 
 /**

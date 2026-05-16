@@ -26,6 +26,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+/*
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include "config.h"
 
@@ -75,6 +80,24 @@ struct drm_property_enum_info plane_rotation_enums[] = {
 	},
 };
 
+struct drm_property_enum_info plane_blend_op_enums[] = {
+	[WDRM_PLANE_BLEND_NOT_DEFINED] = {
+		.name = "not_defined",
+	},
+	[WDRM_PLANE_BLEND_OPAQUE] = {
+		.name = "opaque",
+	},
+	[WDRM_PLANE_BLEND_PREMULTIPLIED] = {
+		.name = "premultiplied",
+	},
+	[WDRM_PLANE_BLEND_COVERAGE] = {
+		.name = "coverage",
+	},
+	[WDRM_PLANE_BLEND_SKIP_BLENDING] = {
+		.name = "skip_blending",
+	},
+};
+
 const struct drm_property_info plane_props[] = {
 	[WDRM_PLANE_TYPE] = {
 		.name = "type",
@@ -101,6 +124,11 @@ const struct drm_property_info plane_props[] = {
 		.num_enum_values = WDRM_PLANE_ROTATION__COUNT,
 	 },
 	[WDRM_PLANE_ALPHA] = { .name = "alpha" },
+	[WDRM_PLANE_BLEND_OP] = {
+		.name = "blend_op",
+		.enum_values = plane_blend_op_enums,
+		.num_enum_values = WDRM_PLANE_BLEND_OP__COUNT,
+	 },
 };
 
 struct drm_property_enum_info dpms_state_enums[] = {
@@ -1315,6 +1343,12 @@ drm_output_apply_state_atomic(struct drm_output_state *state,
 			ret |= plane_add_prop(req, plane,
 					      WDRM_PLANE_ALPHA,
 					      plane_state->alpha);
+
+		/* For transparent background use case, hardcode blend op to premultiplied */
+		if (plane->props[WDRM_PLANE_BLEND_OP].prop_id != 0) {
+			uint64_t blend_val = plane->props[WDRM_PLANE_BLEND_OP].enum_values[WDRM_PLANE_BLEND_PREMULTIPLIED].value;
+			ret |= plane_add_prop(req, plane, WDRM_PLANE_BLEND_OP, blend_val);
+		}
 
 		if (ret != 0) {
 			weston_log("couldn't set plane state\n");

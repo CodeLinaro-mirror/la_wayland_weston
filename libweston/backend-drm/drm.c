@@ -410,20 +410,14 @@ drm_output_render(struct drm_output_state *state)
 	weston_output_flush_damage_for_primary_plane(&output->base, &damage);
 
 	/*
-	 * If we don't have any damage on the primary plane, and we already
-	 * have a renderer buffer active, we can reuse it; else we pass
-	 * the damaged region into the renderer to re-render the affected
-	 * area. But, we still have to call the renderer anyway if any screen
-	 * capture is pending, otherwise the capture will not complete.
+	 * Disable framebuffer reuse optimization to support transparent background
+	 * under ivi-shell: when a client exits, its view is removed from the paint
+	 * node list and damage may be empty, causing the previous framebuffer to be
+	 * reused and leaving the last frame stuck on screen. Always invoking the
+	 * renderer ensures glClear() wipes the framebuffer to transparent before
+	 * repainting the remaining views.
 	 */
-	if (!pixman_region32_not_empty(&damage) &&
-	    wl_list_empty(&output->base.frame_signal.listener_list) &&
-	    !weston_output_has_renderer_capture_tasks(&output->base) &&
-	    scanout_plane->state_cur->fb &&
-	    (scanout_plane->state_cur->fb->type == BUFFER_GBM_SURFACE ||
-	     scanout_plane->state_cur->fb->type == BUFFER_PIXMAN_DUMB)) {
-		fb = drm_fb_ref(scanout_plane->state_cur->fb);
-	} else if (c->renderer->type == WESTON_RENDERER_PIXMAN) {
+	if (c->renderer->type == WESTON_RENDERER_PIXMAN) {
 		fb = drm_output_render_pixman(state, &damage);
 	} else {
 		fb = drm_output_render_gl(state, &damage);
@@ -3919,7 +3913,7 @@ drm_backend_create(struct weston_compositor *compositor,
 	wl_list_insert(&compositor->backend_list, &b->base.link);
 
 	if (parse_gbm_format(config->gbm_format,
-			     pixel_format_get_info(DRM_FORMAT_XRGB8888),
+			     pixel_format_get_info(DRM_FORMAT_ABGR8888),
 			     &b->format) < 0)
 		goto err_compositor;
 
