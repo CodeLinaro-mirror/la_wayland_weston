@@ -18,6 +18,10 @@ deps_weston = [
 	dep_threads,
 ]
 
+if get_option('qcom-bsp')
+	deps_weston += dep_log
+endif
+
 if get_option('xwayland')
 	config_h.set('BUILD_XWAYLAND', '1')
 

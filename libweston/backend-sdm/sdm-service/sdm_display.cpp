@@ -254,10 +254,7 @@ DisplayError SdmDisplay::PFlip(int fd, unsigned int sequence, unsigned int tv_se
 }
 
 DisplayError SdmDisplay::Refresh() {
-    if (client_event_handler_) {
-        client_event_handler_->Refresh();
-    }
-
+    RefreshCallback();
     return kErrorNone;
 }
 
@@ -1163,6 +1160,10 @@ int SdmDisplay::PrepareFbLayerGeometry(struct drm_output *output,
     if (!fb_layer) {
         DLOGE("fb_layer is NULL\n");
         return -1;
+    }
+
+    if (output->gbm_bo_flags & GBM_BO_USE_PROTECTED) {
+        fb_layer->flags.secure_present = true;
     }
 
     fb_layer->width = output->base.current_mode->width;

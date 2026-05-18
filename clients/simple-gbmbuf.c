@@ -104,6 +104,8 @@ struct window {
 	struct buffer *prev_buffer;
 	struct wl_callback *callback;
 	bool wait_for_configure;
+	bool is_hdr_mode;
+	bool is_secure_mode;
 };
 
 static int running = 1;
@@ -327,6 +329,8 @@ create_gbmbuf_buffer(struct display *display, struct buffer *buffer,
 	buffer->height = height;
 	buffer->format = format;
 	buffer->flags = flags;
+	buffer->flags |= (window->is_secure_mode ?
+			(GBM_BO_ALLOC_SECURE_HEAP_QTI | GBM_BO_USAGE_PROTECTED_QTI) : 0);
 
 	if (!alloc_bo(buffer)) {
 		fprintf(stderr, "alloc_bo failed\n");
@@ -345,17 +349,32 @@ create_gbmbuf_buffer(struct display *display, struct buffer *buffer,
 		goto error2;
 	}
 
-	if (!map_bo(buffer)) {
+	if (!window->is_secure_mode && !map_bo(buffer)) {
 		fprintf(stderr, "map_bo failed\n");
 		goto error2;
 	}
 
-	if (format == GBM_FORMAT_NV12)
-		fill_nv12_content(buffer, COLOR_Y, COLOR_CBCR);
-	else if (format == GBM_FORMAT_ABGR8888)
-		fill_rgba_content(buffer, 255, 255, 0, 0); //blue color
+	if (buffer->bo && window->is_hdr_mode) {
+		struct ColorMetaData clr_mta = {};
+		clr_mta.colorPrimaries = ColorPrimaries_BT2020;
+		clr_mta.transfer = Transfer_SMPTE_ST2084;
 
-	unmap_bo(buffer);
+		if (GBM_ERROR_NONE !=
+				gbm_perform(GBM_PERFORM_SET_METADATA, buffer->bo,
+					GBM_METADATA_SET_COLOR_METADATA, &clr_mta)) {
+			fprintf(stderr, "error: Set color metadata failed\n");
+			goto error2;
+		}
+	}
+
+	if (!window->is_secure_mode) {
+		if (format == GBM_FORMAT_NV12)
+			fill_nv12_content(buffer, COLOR_Y, COLOR_CBCR);
+		else if (format == GBM_FORMAT_ABGR8888)
+			fill_rgba_content(buffer, 255, 255, 0, 0); //blue color
+
+		unmap_bo(buffer);
+	}
 
 	/* We now have a gbmbuf! It should contain no tiles i.e. linear of misc colours,
 	  and be mappable, either as ARGB8888, or XRGB8888. */
@@ -435,7 +454,7 @@ static const struct xdg_toplevel_listener xdg_toplevel_listener = {
 };
 
 static struct window *
-create_window(struct display *display, int width, int height)
+create_window(struct display *display, int width, int height, bool full_screen_mode)
 {
 	struct window *window;
 
@@ -463,6 +482,10 @@ create_window(struct display *display, int width, int height)
 			xdg_surface_get_toplevel(window->xdg_surface);
 
 		assert(window->xdg_toplevel);
+
+		if(full_screen_mode) {
+			xdg_toplevel_set_fullscreen(window->xdg_toplevel, NULL);
+		}
 
 		xdg_toplevel_add_listener(window->xdg_toplevel,
 					  &xdg_toplevel_listener, window);
@@ -691,6 +714,20 @@ signal_int(int signum)
 	running = 0;
 }
 
+static void
+usage(int error_code)
+{
+	fprintf(stderr, "Usage: simple-gbmbuf [OPTIONS]\n\n"
+		"  --hdr\t\tRun in hdr mode\n"
+		"  --secure\tPass buffers in secure mode\n"
+		"  --full-screen\tRun in full-screen mode\n"
+		"  -W <val>\tWidth of the drawing surface\n"
+		"  -H <val>\tHeight of the drawing surface\n"
+		"  -h\t\tThis help text\n\n");
+
+	exit(error_code);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -698,6 +735,27 @@ main(int argc, char **argv)
 	struct display *display;
 	struct window *window;
 	int width = 256, height = 256;
+	bool hdr_mode = false;
+	bool secure_mode = false;
+	bool full_screen_mode = false;
+
+	for (int i = 1; i < argc; i++) {
+		if (strcmp("--hdr", argv[i]) == 0) {
+			hdr_mode = true;
+		} else if (strcmp("--secure", argv[i]) == 0) {
+			secure_mode = true;
+		} else if (strcmp("--full-screen", argv[i]) == 0) {
+			full_screen_mode = true;
+		} else if (strcmp("-W", argv[i]) == 0 && i + 1 < argc) {
+			width = atoi(argv[++i]);
+		} else if (strcmp("-H", argv[i]) == 0 && i + 1 < argc) {
+			height = atoi(argv[++i]);
+		} else if (strcmp("-h", argv[i]) == 0) {
+			usage(EXIT_SUCCESS);
+		} else {
+			usage(EXIT_FAILURE);
+		}
+	}
 
 	int ret = 0;
 	display = create_display();
@@ -706,9 +764,11 @@ main(int argc, char **argv)
 		return 1;
 	}
 
-	window = create_window(display, width, height);
+	window = create_window(display, width, height, full_screen_mode);
 	if (!window)
 		return 1;
+	window->is_hdr_mode = hdr_mode;
+	window->is_secure_mode = secure_mode;
 
 	display->window = window;
 

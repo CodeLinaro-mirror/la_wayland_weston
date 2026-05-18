@@ -150,6 +150,7 @@ dep_threads = dependency('threads')
 
 qcom_bsp_enabled = get_option('qcom-bsp')
 if qcom_bsp_enabled
+dep_log = cc.find_library('liblog', required : true)
 dep_gbm = dependency('gbm')
 if get_option('backend-sdm')
 	dep_glib = dependency('glib-2.0')
