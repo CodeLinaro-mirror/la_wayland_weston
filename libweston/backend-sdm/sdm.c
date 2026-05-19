@@ -480,6 +480,17 @@ drm_repaint_begin(struct weston_compositor *compositor)
 	return ret;
 }
 
+static void
+drm_output_handle_commit_failure(struct drm_output *drm_output)
+{
+	drm_output->page_flip_pending = false;
+	drm_output->commit_pending = false;
+	drm_fb_unref(drm_output->next_fb);
+	drm_output->next_fb = NULL;
+	if (drm_output->base.repaint_status == REPAINT_AWAITING_COMPLETION)
+		weston_output_repaint_failed(&drm_output->base);
+}
+
 /**
  * Flush a repaint set
  *
@@ -518,17 +529,25 @@ drm_repaint_flush(struct weston_compositor *compositor, void *repaint_data)
 
 		if (ret != 0) {
 			weston_log("Vsync failed disp(%d)\n", drm_output->display_id);
-			return -1;
+			drm_output_handle_commit_failure(drm_output);
+			continue;
 		}
 
-		if (drm_output->prev_layer_none_commit && drm_output->layer_none_commit)
+		if (drm_output->prev_layer_none_commit && drm_output->layer_none_commit) {
+			/* Two consecutive empty frames: stop the repaint loop to avoid
+			 * busy-looping when no client content is available. The loop
+			 * restarts via weston_output_schedule_repaint() when a client
+			 * submits content to this output. */
 			weston_log("skip commit if two consecutive frames have no layers\n");
-		else if (drm_output->layer_none_commit) {
+			drm_output_handle_commit_failure(drm_output);
+			continue;
+		} else if (drm_output->layer_none_commit) {
 			ret = Flush(drm_output->display_id);
 
 			if (ret != 0) {
-				weston_log("%s Flush failed err = %d\n", __func__, ret);
-				return -1;
+				weston_log("%s Flush failed for disp(%d), err = %d\n", __func__, drm_output->display_id, ret);
+				drm_output_handle_commit_failure(drm_output);
+				continue;
 			}
 
 		} else {
@@ -536,7 +555,8 @@ drm_repaint_flush(struct weston_compositor *compositor, void *repaint_data)
 
 			if (ret != 0) {
 				weston_log("%s : commit failed err = %d\n", __func__, ret);
-				return -2;
+				drm_output_handle_commit_failure(drm_output);
+				continue;
 			}
 
 			if (!commit) {
