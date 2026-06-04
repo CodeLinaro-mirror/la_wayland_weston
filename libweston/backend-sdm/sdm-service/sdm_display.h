@@ -361,7 +361,6 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     CoreInterface *core_intf_ = NULL;
     SdmDisplayBufferAllocator *buffer_allocator_;
     SdmDisplaySocketHandler socket_handler_;
-    DisplayEventHandler *client_event_handler_ = NULL;
     DisplayInterface *display_intf_ = NULL;
     SDMDisplayType display_type_ = kDisplayMax;
     DisplayConfigVariableInfo variable_info_;

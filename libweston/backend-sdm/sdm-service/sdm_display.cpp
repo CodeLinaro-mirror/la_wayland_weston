@@ -145,8 +145,7 @@ DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
     DisplayError error = kErrorNone;
     char property[MAX_PROP_STR_SIZE] = {0};
     struct DisplayHdrInfo display_hdr_info = {};
-    bool is_pixman, is_gpu;
-    bool update_client_capabilities = false;
+    bool is_pixman;
     std::bitset<kClientCapabilityMax> client_capabilities =
                          std::bitset<kClientCapabilityMax>().set();
 
@@ -194,21 +193,16 @@ DisplayError SdmDisplay::CreateDisplay(uint32_t display_id) {
     frame_dumper_ = new SdmFrameDumper(display_id, GetDisplayString(), buffer_allocator_);
 
     is_pixman = buffer_allocator_->GetIsPixmaniAvailable();
-    is_gpu = buffer_allocator_->GetIsGpuAvailable();
 
-    if (!is_pixman) {
-        client_capabilities.reset(kPixmanRenderer);
-        update_client_capabilities = true;
-    }
-    if (!is_pixman && is_gpu) {
+    if (is_pixman) {
+        client_capabilities.reset(kGPUCompositionSupported);
+    } else {
         client_capabilities.reset(kPunchholeSupported);
-        update_client_capabilities = true;
     }
-    if (update_client_capabilities) {
-        error = display_intf_->SetClientTargetCapability(client_capabilities);
-        if (error != kErrorNone) {
-            DLOGW("Failed to populate client capabilities");
-        }
+
+    error = display_intf_->SetClientTargetCapability(client_capabilities);
+    if (error != kErrorNone) {
+        DLOGW("Failed to populate client capabilities");
     }
 
     return kErrorNone;
@@ -254,10 +248,7 @@ DisplayError SdmDisplay::PFlip(int fd, unsigned int sequence, unsigned int tv_se
 }
 
 DisplayError SdmDisplay::Refresh() {
-    if (client_event_handler_) {
-        client_event_handler_->Refresh();
-    }
-
+    RefreshCallback();
     return kErrorNone;
 }
 
