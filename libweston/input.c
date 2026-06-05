@@ -2091,6 +2091,9 @@ weston_keyboard_set_focus(struct weston_keyboard *keyboard,
 	uint32_t serial;
 	struct wl_list *focus_resource_list;
 
+	/* A sub-surface never has the keyboard focus of any seat. */
+	assert(!surface || !weston_surface_to_subsurface(surface));
+
 	/* Keyboard focus on a surface without a client is equivalent to NULL
 	 * focus as nothing would react to the keyboard events anyway.
 	 * Just set focus to NULL instead - the destroy listener hangs on the
@@ -2343,7 +2346,9 @@ weston_view_activate_input(struct weston_view *view,
 			peek_next_activate_serial(compositor);
 	}
 
-	weston_seat_set_keyboard_focus(seat, view->surface);
+	/* A sub-surface never has the keyboard focus of any seat. */
+	weston_seat_set_keyboard_focus(seat,
+				       weston_surface_get_main_surface(view->surface));
 
 	inc_activate_serial(compositor);
 
