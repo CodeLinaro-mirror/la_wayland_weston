@@ -404,7 +404,7 @@ drm_fb_destroy_dmabuf(struct drm_fb *fb)
 
 struct drm_fb *
 drm_fb_get_from_dmabuf_attributes(struct dmabuf_attributes *attributes,
-				  struct drm_device *device, bool is_opaque,
+				  struct drm_device *device,
 				  bool direct_display, bool is_internal,
 				  uint32_t *try_view_on_plane_failure_reasons)
 {
@@ -501,9 +501,6 @@ bo_import_skip:
 		goto err_free;
 	}
 
-	if (is_opaque)
-		fb->format = pixel_format_get_opaque_substitute(fb->format);
-
 	if (device->min_width > fb->width ||
 	    fb->width > device->max_width ||
 	    device->min_height > fb->height ||
@@ -541,19 +538,18 @@ err_free:
 
 struct drm_fb *
 drm_fb_get_from_dmabuf(struct linux_dmabuf_buffer *dmabuf,
-		       struct drm_device *device, bool is_opaque,
+		       struct drm_device *device,
 		       uint32_t *try_view_on_plane_failure_reasons)
 {
 	return drm_fb_get_from_dmabuf_attributes(&dmabuf->attributes,
-						 device, is_opaque,
-						 dmabuf->direct_display,
-						 false,
+						 device,
+						 dmabuf->direct_display, false,
 						 try_view_on_plane_failure_reasons);
 }
 
 struct drm_fb *
 drm_fb_get_from_bo(struct gbm_bo *bo, struct drm_device *device,
-		   bool is_opaque, enum drm_fb_type type)
+		   enum drm_fb_type type)
 {
 	struct drm_fb *fb = gbm_bo_get_user_data(bo);
 	int i;
@@ -591,11 +587,6 @@ drm_fb_get_from_bo(struct gbm_bo *bo, struct drm_device *device,
 			   (unsigned long) gbm_bo_get_format(bo));
 		goto err_free;
 	}
-
-	/* We can scanout an ARGB buffer if the surface's opaque region covers
-	 * the whole output, but we have to use XRGB as the KMS format code. */
-	if (is_opaque)
-		fb->format = pixel_format_get_opaque_substitute(fb->format);
 
 	if (device->min_width > fb->width ||
 	    fb->width > device->max_width ||
@@ -666,7 +657,7 @@ drm_can_scanout_dmabuf(struct weston_backend *backend,
 	bool ret = false;
 	uint32_t try_reason = 0x0;
 
-	fb = drm_fb_get_from_dmabuf(dmabuf, device, true, &try_reason);
+	fb = drm_fb_get_from_dmabuf(dmabuf, device, &try_reason);
 	if (fb)
 		ret = true;
 
@@ -748,7 +739,6 @@ drm_fb_get_from_paint_node(struct drm_output_state *state,
 	struct weston_buffer *buffer = ev->surface->buffer_ref.buffer;
 	struct drm_fb_private *private;
 	struct drm_buffer_fb *buf_fb;
-	bool is_opaque = weston_view_is_opaque(ev, &ev->transform.boundingbox);
 	struct drm_fb *fb;
 	struct drm_plane *plane;
 
@@ -792,7 +782,7 @@ drm_fb_get_from_paint_node(struct drm_output_state *state,
 	}
 
 	if (buffer->type == WESTON_BUFFER_DMABUF) {
-		fb = drm_fb_get_from_dmabuf(buffer->dmabuf, device, is_opaque,
+		fb = drm_fb_get_from_dmabuf(buffer->dmabuf, device,
 					    &buf_fb->failure_reasons);
 		if (!fb)
 			goto unsuitable;
@@ -804,7 +794,7 @@ drm_fb_get_from_paint_node(struct drm_output_state *state,
 		if (!bo)
 			goto unsuitable;
 
-		fb = drm_fb_get_from_bo(bo, device, is_opaque, BUFFER_CLIENT);
+		fb = drm_fb_get_from_bo(bo, device, BUFFER_CLIENT);
 		if (!fb) {
 			*try_view_on_plane_failure_reasons |=
 				FAILURE_REASONS_ADD_FB_FAILED;

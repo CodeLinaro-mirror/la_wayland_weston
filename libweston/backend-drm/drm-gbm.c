@@ -198,7 +198,7 @@ drm_output_init_cursor_egl(struct drm_output *output, struct drm_backend *b)
 				goto err;
 
 			output->gbm_cursor_fb[i] =
-				drm_fb_get_from_bo(bo, device, false, BUFFER_CURSOR);
+				drm_fb_get_from_bo(bo, device, BUFFER_CURSOR);
 			if (!output->gbm_cursor_fb[i]) {
 				gbm_bo_destroy(bo);
 				goto err;
@@ -247,7 +247,7 @@ drm_output_init_cursor_vulkan(struct drm_output *output, struct drm_backend *b)
 				goto err;
 
 			output->gbm_cursor_fb[i] =
-				drm_fb_get_from_bo(bo, device, false, BUFFER_CURSOR);
+				drm_fb_get_from_bo(bo, device, BUFFER_CURSOR);
 			if (!output->gbm_cursor_fb[i]) {
 				gbm_bo_destroy(bo);
 				goto err;
@@ -806,8 +806,7 @@ drm_output_render_gl(struct drm_output_state *state, pixman_region32_t *damage)
 
 	/* Output transparent/opaque image according to the format required by
 	 * the client. */
-	ret = drm_fb_get_from_bo(bo, device, !output->format->opaque_substitute,
-	                         BUFFER_GBM_SURFACE);
+	ret = drm_fb_get_from_bo(bo, device, BUFFER_GBM_SURFACE);
 	if (!ret) {
 		weston_log("failed to get drm_fb for bo\n");
 		gbm_surface_release_buffer(output->gbm_surface, bo);
@@ -839,7 +838,6 @@ drm_output_render_vulkan(struct drm_output_state *state, pixman_region32_t *dama
 	/* Output transparent/opaque image according to the format required by
 	 * the client. */
 	ret = drm_fb_get_from_dmabuf_attributes(dmabuf->attributes, device,
-						!output->format->opaque_substitute,
 						false, true, NULL);
 	if (!ret) {
 		weston_log("failed to get drm_fb for dmabuf\n");

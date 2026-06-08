@@ -818,7 +818,6 @@ drm_output_pick_writeback_capture_task(struct drm_output *output)
 		uint32_t failure_reasons = 0;
 		output->wb_state->fb = drm_fb_get_from_dmabuf(buffer->dmabuf,
 							      output->device,
-							      false,
 							      &failure_reasons);
 		if (!output->wb_state->fb) {
 			str_printf(&msg,
