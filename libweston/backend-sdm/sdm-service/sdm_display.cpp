@@ -1002,11 +1002,76 @@ DisplayError SdmDisplay::UpdateMetaData(sdm::Layer *layer, struct LayerGeometry 
             }
         }
 
+        if (src->color_metadata.dynamicMetaDataValid &&
+            src->color_metadata.dynamicMetaDataLen > 0) {
+            const uint32_t raw_dynamic_metadata_len =
+                static_cast<uint32_t>(src->color_metadata.dynamicMetaDataLen);
+            const size_t max_dynamic_metadata_len =
+                sizeof(dst->dynamicMetadata.dynamicMetaDataPayload);
+
+            if (static_cast<size_t>(raw_dynamic_metadata_len) <=
+                max_dynamic_metadata_len) {
+                const size_t dynamic_metadata_len =
+                    static_cast<size_t>(raw_dynamic_metadata_len);
+
+            const bool dynamic_metadata_changed =
+                !dst->dynamicMetadata.dynamicMetaDataValid ||
+                dst->dynamicMetadata.dynamicMetaDataLen != raw_dynamic_metadata_len ||
+                memcmp(dst->dynamicMetadata.dynamicMetaDataPayload,
+                       src->color_metadata.dynamicMetaDataPayload,
+                       dynamic_metadata_len) != 0;
+
+            if (dynamic_metadata_changed) {
+                dst->dynamicMetadata.dynamicMetaDataValid = true;
+                dst->dynamicMetadata.dynamicMetaDataLen = raw_dynamic_metadata_len;
+
+                memcpy(dst->dynamicMetadata.dynamicMetaDataPayload,
+                       src->color_metadata.dynamicMetaDataPayload,
+                       dynamic_metadata_len);
+
+                metadata_changed = true;
+        }
+
+            } else {
+                DLOGW("HDR Vivid dynamic metadata len too large: len=%u, max=%zu, dropping",
+                      raw_dynamic_metadata_len,
+                      max_dynamic_metadata_len);
+
+                if (dst->dynamicMetadata.dynamicMetaDataValid ||
+                    dst->dynamicMetadata.dynamicMetaDataLen != 0) {
+                    dst->dynamicMetadata.dynamicMetaDataValid = false;
+                    dst->dynamicMetadata.dynamicMetaDataLen = 0;
+
+                    metadata_changed = true;
+
+                    DLOGD("HDR Vivid dynamic metadata cleared");
+                }
+            }
+        } else {
+            if (dst->dynamicMetadata.dynamicMetaDataValid ||
+                dst->dynamicMetadata.dynamicMetaDataLen != 0) {
+                dst->dynamicMetadata.dynamicMetaDataValid = false;
+                dst->dynamicMetadata.dynamicMetaDataLen = 0;
+
+                metadata_changed = true;
+
+                DLOGD("HDR Vivid dynamic metadata cleared");
+            }
+        }
+
         // Set update flag if content metadata has changed
         if (metadata_changed) {
             layer->update_mask.set(kContentMetadata);
             DLOGD("BT2020 content metadata changed");
         }
+    } else if (dst->dynamicMetadata.dynamicMetaDataValid ||
+               dst->dynamicMetadata.dynamicMetaDataLen != 0) {
+               // Clear stale HDR Vivid metadata when switching from BT2020 to non-BT2020.
+               dst->dynamicMetadata.dynamicMetaDataValid = false;
+               dst->dynamicMetadata.dynamicMetaDataLen = 0;
+               layer->update_mask.set(kContentMetadata);
+
+               DLOGD("Non-BT2020: HDR Vivid dynamic metadata cleared");
     }
 
     return kErrorNone;
