@@ -1794,6 +1794,8 @@ enum weston_surface_status {
 	WESTON_SURFACE_DIRTY_INPUT = 1 << 4,
 	/** subsurfaces have been added, removed, or restacked */
 	WESTON_SURFACE_DIRTY_SUBSURFACE_CONFIG = 1 << 5,
+	/** surface added a frame callback */
+	WESTON_SURFACE_DIRTY_FRAME_CALLBACK = 1 << 6,
 };
 
 struct weston_surface_state {

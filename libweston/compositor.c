@@ -4854,6 +4854,7 @@ surface_frame(struct wl_client *client,
 
 	wl_list_insert(surface->pending.frame_callback_list.prev,
 		       wl_resource_get_link(cb));
+	surface->pending.status |= WESTON_SURFACE_DIRTY_FRAME_CALLBACK;
 }
 
 static void
