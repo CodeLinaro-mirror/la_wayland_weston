@@ -776,7 +776,8 @@ gl_shader_load_config_representation(struct weston_compositor *compositor,
 
 	if (shader->yuv_coefficients_uniform == -1 ||
 	    shader->yuv_offsets_uniform == -1) {
-		assert(shader->key.variant == SHADER_VARIANT_EXTERNAL);
+		assert(shader->key.variant == SHADER_VARIANT_EXTERNAL ||
+		       shader->key.variant == SHADER_VARIANT_RGBA);
 		return;
 	}
 
