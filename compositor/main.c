@@ -51,6 +51,10 @@
 #include <linux/input.h>
 #include <sys/time.h>
 #include <linux/limits.h>
+#ifdef QCOM_BSP
+#include <log/log.h>
+#include <stdarg.h>
+#endif
 
 #include "weston.h"
 #include <libweston/libweston.h>
@@ -73,8 +77,15 @@
 #include <libweston/backend-wayland.h>
 #include <libweston/windowed-output-api.h>
 #include <libweston/weston-log.h>
+#ifdef QCOM_BSP
+#include "libweston/weston-log-internal.h"
+#endif
 #include <libweston/remoting-plugin.h>
 #include <libweston/pipewire-plugin.h>
+
+#ifdef QCOM_BSP
+#define LOG_TAG "weston"
+#endif
 
 #define WINDOW_TITLE "Weston Compositor"
 /* flight recorder size (in bytes) */
@@ -186,7 +197,11 @@ weston_log_file_open(const char *filename)
 {
 	wl_log_set_handler_server(custom_handler);
 
+#ifdef QCOM_BSP
+	if (filename != NULL && strstr(filename, "logcat") == NULL) {
+#else
 	if (filename != NULL) {
+#endif
 		weston_logfile = fopen(filename, "a");
 		if (weston_logfile) {
 			os_fd_set_cloexec(fileno(weston_logfile));
@@ -244,6 +259,56 @@ vlog_continue(const char *fmt, va_list argp)
 {
 	return weston_log_scope_vprintf(log_scope, fmt, argp);
 }
+
+/* logcat subscriber: routes weston log scope output to adb logcat */
+#ifdef QCOM_BSP
+struct weston_debug_log_logcat {
+	struct weston_log_subscriber base;
+};
+
+static void
+weston_log_logcat_write(struct weston_log_subscriber *sub,
+			const char *data, size_t len)
+{
+	/* ALOGI expects a null-terminated string; emit in chunks to avoid truncation */
+	char buf[4096] = {0};
+	const char *p = data;
+	size_t remaining = len;
+
+	while (remaining > 0) {
+		size_t chunk = remaining < sizeof(buf) - 1 ? remaining : sizeof(buf) - 1;
+		memcpy(buf, p, chunk);
+		buf[chunk] = '\0';
+		ALOGI("%s", buf);
+		p += chunk;
+		remaining -= chunk;
+	}
+}
+
+static void
+weston_log_subscriber_destroy_logcat(struct weston_log_subscriber *subscriber)
+{
+	struct weston_debug_log_logcat *logcat =
+		container_of(subscriber, struct weston_debug_log_logcat, base);
+	free(logcat);
+}
+
+static struct weston_log_subscriber *
+weston_log_subscriber_create_logcat(void)
+{
+	struct weston_debug_log_logcat *logcat = zalloc(sizeof(*logcat));
+	if (!logcat)
+		return NULL;
+
+	logcat->base.write = weston_log_logcat_write;
+	logcat->base.destroy = weston_log_subscriber_destroy_logcat;
+	logcat->base.destroy_subscription = NULL;
+	logcat->base.complete = NULL;
+	wl_list_init(&logcat->base.subscription_list);
+
+	return &logcat->base;
+}
+#endif
 
 static const char *
 get_next_argument(const char *signature, char* type)
@@ -707,6 +772,9 @@ usage(int error_code)
 		"  -c, --config=FILE\tConfig file to load, defaults to weston.ini\n"
 		"  --no-config\t\tDo not read weston.ini\n"
 		"  --wait-for-debugger\tRaise SIGSTOP on start-up\n"
+#ifdef QCOM_BSP
+		"  --secure-mode\tRun weston in secure mode\n"
+#endif
 		"  --debug\t\tEnable debug extension\n"
 		"  -l, --logger-scopes=SCOPE\n\t\t\tSpecify log scopes to "
 			"subscribe to.\n\t\t\tCan specify multiple scopes, "
@@ -4136,6 +4204,9 @@ wet_main(int argc, char *argv[], const struct weston_testsuite_data *test_data)
 	struct sigaction action;
 
 	bool wait_for_debugger = false;
+#ifdef QCOM_BSP
+	bool secure_mode = false;
+#endif
 	struct wl_protocol_logger *protologger = NULL;
 
 	const struct weston_option core_options[] = {
@@ -4158,6 +4229,9 @@ wet_main(int argc, char *argv[], const struct weston_testsuite_data *test_data)
 		{ WESTON_OPTION_BOOLEAN, "debug", 0, &debug_protocol },
 		{ WESTON_OPTION_STRING, "logger-scopes", 'l', &log_scopes },
 		{ WESTON_OPTION_STRING, "flight-rec-scopes", 'f', &flight_rec_scopes },
+#ifdef QCOM_BSP
+		{ WESTON_OPTION_BOOLEAN, "secure-mode", 0, &secure_mode },
+#endif
 	};
 
 	wl_list_init(&wet.layoutput_list);
@@ -4194,7 +4268,18 @@ wet_main(int argc, char *argv[], const struct weston_testsuite_data *test_data)
 
 	weston_log_set_handler(vlog, vlog_continue);
 
-	logger = weston_log_subscriber_create_log(weston_logfile);
+#ifdef QCOM_BSP
+	if (log && strstr(log, "logcat") != NULL) {
+		logger = weston_log_subscriber_create_logcat();
+	} else {
+		logger = weston_log_subscriber_create_log(weston_logfile);
+	}
+
+	if (!logger) {
+		weston_log("fatal: failed to create log subscriber\n");
+		goto out_display;
+	}
+#endif
 
 	if (!flight_rec_scopes)
 		flight_rec_scopes = DEFAULT_FLIGHT_REC_SCOPES;
@@ -4298,7 +4383,14 @@ wet_main(int argc, char *argv[], const struct weston_testsuite_data *test_data)
 		weston_log("fatal: failed to create compositor\n");
 		goto out;
 	}
-
+#ifdef QCOM_BSP
+	wet.compositor->secure_mode = secure_mode;
+	if (secure_mode) {
+		weston_log("INFO: Running weston in secure mode\n");
+	} else {
+		weston_log("INFO: Running weston in non-secure mode\n");
+	}
+#endif
 	protocol_scope =
 		weston_log_ctx_add_log_scope(log_ctx, "proto",
 					     "Wayland protocol dump for all clients.\n",
@@ -4483,7 +4575,10 @@ out_signals:
 out_display:
 	weston_log_scope_destroy(log_scope);
 	log_scope = NULL;
-	weston_log_subscriber_destroy(logger);
+#ifdef QCOM_BSP
+	if (logger)
+		weston_log_subscriber_destroy(logger);
+#endif
 	if (flight_rec)
 		weston_log_subscriber_destroy(flight_rec);
 	weston_log_ctx_destroy(log_ctx);

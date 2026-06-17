@@ -335,27 +335,89 @@ DisplayError DestroyDisplay(uint32_t display_id)
     return kErrorNone;
 }
 
-bool GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config)
+DisplayError GetDisplayConfigCount(uint32_t display_id, uint32_t *count)
 {
     DisplayError error = kErrorNone;
     SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
     if (!dpy) {
         DLOGE("Failed as Display (%d) not created yet.", display_id);
-        return FAIL;
+        return kErrorNotSupported;
+    }
+
+    error = dpy->GetDisplayConfigCount(count);
+    if (error != kErrorNone) {
+        DLOGE("function failed with error = %d", error);
+    }
+
+#if SDM_DISPLAY_DEBUG
+DLOGD("function successful.");
+#endif
+
+    return error;
+}
+
+DisplayError GetDisplayConfigurationByIndex(uint32_t display_id, uint32_t index,
+                                    struct DisplayConfigInfo *display_config)
+{
+    DisplayError error = kErrorNone;
+    SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
+    if (!dpy) {
+        DLOGE("Failed as Display (%d) not created yet.", display_id);
+        return kErrorNotSupported;
+    }
+
+    error = dpy->GetDisplayConfigurationByIndex(index, display_config);
+    if (error != kErrorNone) {
+        DLOGE("function failed with error = %d", error);
+    }
+
+#if SDM_DISPLAY_DEBUG
+DLOGD("function successful.");
+#endif
+
+    return error;
+}
+
+DisplayError SetDisplayConfigurationByIndex(uint32_t display_id, uint32_t index)
+{
+    DisplayError error = kErrorNone;
+    SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
+    if (!dpy) {
+        DLOGE("Failed as Display (%d) not created yet.", display_id);
+        return kErrorNotSupported;
+    }
+
+    error = dpy->SetDisplayConfigurationByIndex(index);
+    if (error != kErrorNone) {
+        DLOGE("function failed with error = %d", error);
+    }
+
+#if SDM_DISPLAY_DEBUG
+DLOGD("function successful.");
+#endif
+
+    return error;
+}
+
+DisplayError GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config)
+{
+    DisplayError error = kErrorNone;
+    SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
+    if (!dpy) {
+        DLOGE("Failed as Display (%d) not created yet.", display_id);
+        return kErrorNotSupported;
     }
 
     error = dpy->GetDisplayConfiguration(display_config);
-
     if (error != kErrorNone) {
         DLOGE("function failed with error = %d", error);
-        return FAIL;
     }
 
     #if SDM_DISPLAY_DEBUG
     DLOGD("function successful.");
     #endif
 
-    return SUCCESS;
+    return error;
 }
 
 DisplayError SetDisplayConfiguration(uint32_t display_id,
@@ -394,6 +456,30 @@ DisplayError SetOutputBuffer(uint32_t display_id, void *gbm_bo)
     error = dpy->SetOutputBuffer(gbm_bo, release_fence);
     if (error != kErrorNone) {
         DLOGE("Failed SetOutputBuffer for Display(%d).", display_id);
+        return error;
+    }
+
+    #if SDM_DISPLAY_DEBUG
+    DLOGD("function successful.");
+    #endif
+
+    return kErrorNone;
+}
+
+DisplayError SetDisplayQsyncMode(uint32_t display_id, uint32_t mode)
+{
+    DisplayError error = kErrorNone;
+    SdmDisplayProxy *dpy = GetDisplayFromId(display_id);
+    if (!dpy) {
+        DLOGE("Failed as Display (%d) not created yet.", display_id);
+        return kErrorNotSupported;
+    } else {
+        DLOGD("SetDisplayQsyncMode Display (%d), mode: %d", display_id, mode);
+    }
+
+    error = dpy->SetQSyncMode(static_cast<sdm::QSyncMode>(mode));
+    if (error != kErrorNone) {
+        DLOGE("Failed SetDisplayQsyncMode with error = %d", error);
         return error;
     }
 

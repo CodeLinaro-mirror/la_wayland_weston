@@ -48,7 +48,9 @@ const struct weston_qti_extn_interface weston_qti_extn_impl = {
   power_on,
   power_off,
   set_output_state,
-  set_brightness
+  set_brightness,
+  set_output_qsync_mode,
+  set_output_fps
 };
 
 void power_on(struct wl_client *client, struct wl_resource *resource) {
@@ -125,6 +127,34 @@ void set_output_state(struct wl_client *client, struct wl_resource *resource,
   weston_log("set_output_state failed, output not found!\n");
 }
 
+void set_output_fps(struct wl_client *client, struct wl_resource *resource,
+                      const char *output_name, uint32_t fps) {
+  struct weston_compositor *compositor;
+  compositor = wl_resource_get_user_data(resource);
+  if (compositor == NULL) {
+    weston_log("error: compositor not found\n");
+    return;
+  }
+
+  struct weston_output *output;
+  wl_list_for_each(output, &compositor->output_list, link) {
+    if (!strcmp(output->name, output_name)) {
+      if (!output->set_fps) {
+        weston_log("error: set_fps not available for output %s\n", output->name);
+        return;
+      }
+      int ret = output->set_fps(output, fps);
+      if (ret != 0)
+        weston_log("set_output_fps failed for output %s\n", output->name);
+      else
+        weston_log("set output(%s) fps to %u\n", output->name, fps);
+
+      return;
+    }
+  }
+  weston_log("set_output_fps failed, output not found!\n");
+}
+
 void set_brightness(struct wl_client *client, struct wl_resource *resource,
                     const char* output_name, unsigned int brightness_value) {
   struct weston_compositor *compositor;
@@ -162,6 +192,61 @@ void set_brightness(struct wl_client *client, struct wl_resource *resource,
     }
   }
   weston_log("set_brightness failed, output not found!\n");
+}
+
+void set_output_qsync_mode(struct wl_client *client, struct wl_resource *resource,
+                      const char* output_name, uint32_t mode) {
+  struct weston_compositor *compositor = NULL;
+  compositor = wl_resource_get_user_data(resource);
+
+  if (compositor == NULL) {
+    weston_log("error: compositor not found\n");
+    return;
+  }
+
+  if (output_name == NULL) {
+    weston_log("error: invalid output name\n");
+    return;
+  }
+
+  size_t name_len = strnlen(output_name, MAX_OUPUT_NAME_LENGTH + 1);
+  if (name_len == 0 || name_len > MAX_OUPUT_NAME_LENGTH) {
+    weston_log("error: invalid ouput name length %zu\n", name_len);
+    return;
+  }
+
+  for (size_t i = 0; i < name_len; i++) {
+    if (!isprint((unsigned char)output_name[i]) && output_name[i] != '-' && output_name[i] != '_') {
+      weston_log("error: output name contains invalid characters\n");
+      return;
+    }
+  }
+
+  if (mode > 1) {
+    weston_log("error: invalid mode value %u (expected 0 or 1)\n", mode);
+    return;
+  }
+
+  struct weston_output *output;
+  wl_list_for_each(output, &compositor->output_list, link) {
+    if (output-> name && !strcmp(output->name, output_name)) {
+      if (output->set_qsync_mode == NULL) {
+        weston_log("error: set_qsync_mode not available for output %s\n", output->name);
+        return;
+      }
+
+      weston_log("%s set output(%s) qsync mode to mode: %d\n", __func__, output->name, mode);
+
+      uint32_t error = 0;
+      error = output->set_qsync_mode(output, mode);
+      if (error != 0) {
+        weston_log("Failed %s with error = %d\n", __func__, error);
+      }
+
+      return ;
+    }
+  }
+  weston_log("set_output_qsync_mode failed, output not found!\n");
 }
 
 void destroy(struct wl_client *client, struct wl_resource *resource) {

@@ -240,6 +240,8 @@ struct drm_backend {
 struct drm_mode {
 	struct weston_mode base;
 	drmModeModeInfo mode_info;
+	struct DisplayConfigInfo display_config;
+	uint32_t index;
 	uint32_t blob_id;
 };
 

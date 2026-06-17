@@ -50,6 +50,15 @@ qcom_bsp_enabled = get_option('qcom-bsp')
 
 simple_clients = [
 	{
+		'name': 'pcc-setting',
+		'sources': [
+			'pcc-setting.c',
+			pcc_control_client_protocol_h,
+			pcc_control_protocol_c,
+		],
+		'dep_objs': [ dep_wayland_client, dep_libshared ]
+	},
+	{
 		'name': 'damage',
 		'sources': [
 			'simple-damage.c',

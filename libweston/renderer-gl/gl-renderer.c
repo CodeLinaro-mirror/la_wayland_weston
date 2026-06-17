@@ -2677,7 +2677,16 @@ import_simple_dmabuf(struct gl_renderer *gr,
 			attribs[atti++] = attributes->modifier[3] >> 32;
 		}
 	}
-
+#ifdef QCOM_BSP
+	if (gr->secure_context) {
+		if (atti + 2 >= ARRAY_LENGTH(attribs)) {
+			weston_log("Error: EGL attribute array overflow\n");
+			return NULL;
+		}
+		attribs[atti++] = EGL_PROTECTED_CONTENT_EXT;
+		attribs[atti++] = EGL_TRUE;
+	}
+#endif
 	attribs[atti++] = EGL_NONE;
 
 	return gr->create_image(gr->egl_display, EGL_NO_CONTEXT,
@@ -3247,7 +3256,16 @@ import_simple_gbm_buffer(struct gl_renderer *gr, struct gbm_buffer *gbmbuf)
 			break;
 		}
 	}
-
+#ifdef QCOM_BSP
+	if (gr->secure_context) {
+		if (atti + 2 >= ARRAY_LENGTH(attribs)) {
+			weston_log("Error: EGL attribute array overflow\n");
+			return NULL;
+		}
+		attribs[atti++] = EGL_PROTECTED_CONTENT_EXT;
+		attribs[atti++] = EGL_TRUE;
+	}
+#endif
 	attribs[atti++] = EGL_NONE;
 
 	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->width=%d", gbmbuf->width);
@@ -3971,14 +3989,34 @@ gl_renderer_create_window_surface(struct gl_renderer *gr,
 {
 	EGLSurface egl_surface = EGL_NO_SURFACE;
 	EGLConfig egl_config;
+#ifdef QCOM_BSP
+	EGLint window_attribs[3];
+	unsigned int nattr = 0;
 
+	if (gr->secure_context) {
+		window_attribs[nattr++] = EGL_PROTECTED_CONTENT_EXT;
+		window_attribs[nattr++] = EGL_TRUE;
+	}
+#endif
 	egl_config = gl_renderer_get_egl_config(gr, EGL_WINDOW_BIT,
 						formats, formats_count);
 	if (egl_config == EGL_NO_CONFIG_KHR)
 		return EGL_NO_SURFACE;
 
 	log_egl_config_info(gr->egl_display, egl_config);
+#ifdef QCOM_BSP
+	window_attribs[nattr] = EGL_NONE;
 
+	if (gr->create_platform_window)
+		egl_surface = gr->create_platform_window(gr->egl_display,
+							 egl_config,
+							 window_for_platform,
+							 window_attribs);
+	else
+		egl_surface = eglCreateWindowSurface(gr->egl_display,
+						     egl_config,
+						     window_for_legacy, window_attribs);
+#elif
 	if (gr->create_platform_window)
 		egl_surface = gr->create_platform_window(gr->egl_display,
 							 egl_config,
@@ -3988,7 +4026,7 @@ gl_renderer_create_window_surface(struct gl_renderer *gr,
 		egl_surface = eglCreateWindowSurface(gr->egl_display,
 						     egl_config,
 						     window_for_legacy, NULL);
-
+#endif
 	return egl_surface;
 }
 
@@ -4422,11 +4460,24 @@ gl_renderer_setup(struct weston_compositor *ec)
 	struct gl_renderer *gr = get_renderer(ec);
 	const char *extensions;
 	EGLBoolean ret;
-
+#ifdef QCOM_BSP
+	//Run the GPU in secure_context if weston is running in secure mode
+	if (ec->secure_mode) {
+		weston_log("INFO: Switching GPU to secure context\n");
+		gr->secure_context = ec->secure_mode;
+	}
+#endif
 	EGLint context_attribs[16] = {
 		EGL_CONTEXT_CLIENT_VERSION, 0,
 	};
 	unsigned int nattr = 2;
+
+#ifdef QCOM_BSP
+	if (gr->secure_context) {
+		context_attribs[nattr++] = EGL_PROTECTED_CONTENT_EXT;
+		context_attribs[nattr++] = EGL_TRUE;
+	}
+#endif
 
 	if (!eglBindAPI(EGL_OPENGL_ES_API)) {
 		weston_log("failed to bind EGL_OPENGL_ES_API\n");
