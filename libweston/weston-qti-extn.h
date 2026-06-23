@@ -56,8 +56,9 @@ void set_output_qsync_mode(struct wl_client *client, struct wl_resource *resourc
 void set_output_state(struct wl_client *client, struct wl_resource *resource,
                       const char* output_name, unsigned int state);
 
-void set_output_fps(struct wl_client *client, struct wl_resource *resource,
-                    const char *output_name, uint32_t fps);
+void set_output_mode(struct wl_client *client, struct wl_resource *resource,
+                    const char *output_name, uint32_t fps,
+                    uint32_t width, uint32_t height);
 
 /** Advertise weston_qti_extn_setup support
  *

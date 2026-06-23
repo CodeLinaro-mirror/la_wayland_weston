@@ -32,6 +32,8 @@
 * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 
+#include "config.h"
+
 #include <assert.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -50,7 +52,7 @@ const struct weston_qti_extn_interface weston_qti_extn_impl = {
   set_output_state,
   set_brightness,
   set_output_qsync_mode,
-  set_output_fps
+  set_output_mode
 };
 
 void power_on(struct wl_client *client, struct wl_resource *resource) {
@@ -127,8 +129,10 @@ void set_output_state(struct wl_client *client, struct wl_resource *resource,
   weston_log("set_output_state failed, output not found!\n");
 }
 
-void set_output_fps(struct wl_client *client, struct wl_resource *resource,
-                      const char *output_name, uint32_t fps) {
+void set_output_mode(struct wl_client *client, struct wl_resource *resource,
+                      const char *output_name, uint32_t fps,
+                      uint32_t width, uint32_t height) {
+#ifdef QCOM_BSP
   struct weston_compositor *compositor;
   compositor = wl_resource_get_user_data(resource);
   if (compositor == NULL) {
@@ -139,20 +143,28 @@ void set_output_fps(struct wl_client *client, struct wl_resource *resource,
   struct weston_output *output;
   wl_list_for_each(output, &compositor->output_list, link) {
     if (!strcmp(output->name, output_name)) {
-      if (!output->set_fps) {
-        weston_log("error: set_fps not available for output %s\n", output->name);
+      if (!output->set_output_mode) {
+        weston_log("error: set_output_mode not available for output %s\n", output->name);
         return;
       }
-      int ret = output->set_fps(output, fps);
+
+      /* width/height of 0 means keep current resolution (fps-only switch) */
+      int target_w = (width  != 0) ? (int)width  : output->current_mode->width;
+      int target_h = (height != 0) ? (int)height : output->current_mode->height;
+
+      int ret = output->set_output_mode(output, fps, target_w, target_h);
       if (ret != 0)
-        weston_log("set_output_fps failed for output %s\n", output->name);
+        weston_log("set_output_mode failed for output %s (%dx%d@%u)\n",
+                   output->name, target_w, target_h, fps);
       else
-        weston_log("set output(%s) fps to %u\n", output->name, fps);
+        weston_log("set output(%s) mode to %dx%d@%u\n",
+                   output->name, target_w, target_h, fps);
 
       return;
     }
   }
-  weston_log("set_output_fps failed, output not found!\n");
+  weston_log("set_output_mode failed, output not found!\n");
+#endif /* QCOM_BSP */
 }
 
 void set_brightness(struct wl_client *client, struct wl_resource *resource,
