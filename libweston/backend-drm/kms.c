@@ -34,6 +34,9 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
+#ifdef QCOM_BSP
+#include <gbm_priv.h>
+#endif
 #include <libweston/libweston.h>
 #include <libweston/backend-drm.h>
 #include "shared/helpers.h"
@@ -75,6 +78,15 @@ struct drm_property_enum_info plane_rotation_enums[] = {
 	},
 };
 
+#ifdef QCOM_BSP
+struct drm_property_enum_info fb_translation_mode_enums[] = {
+	{ .name = "non_sec" },
+	{ .name = "sec" },
+	{ .name = "non_sec_direct_translation" },
+	{ .name = "sec_direct_translation" },
+};
+#endif
+
 const struct drm_property_info plane_props[] = {
 	[WDRM_PLANE_TYPE] = {
 		.name = "type",
@@ -101,6 +113,13 @@ const struct drm_property_info plane_props[] = {
 		.num_enum_values = WDRM_PLANE_ROTATION__COUNT,
 	 },
 	[WDRM_PLANE_ALPHA] = { .name = "alpha" },
+#ifdef QCOM_BSP
+	[WDRM_SECURE_FB] = {
+		.name = "fb_translation_mode",
+		.enum_values = fb_translation_mode_enums,
+		.num_enum_values = ARRAY_LENGTH(fb_translation_mode_enums),
+	},
+#endif
 };
 
 struct drm_property_enum_info dpms_state_enums[] = {
@@ -201,7 +220,9 @@ const struct drm_property_info crtc_props[] = {
 	[WDRM_CRTC_GAMMA_LUT] = { .name = "GAMMA_LUT", },
 	[WDRM_CRTC_GAMMA_LUT_SIZE] = { .name = "GAMMA_LUT_SIZE", },
 	[WDRM_CRTC_VRR_ENABLED] = { .name = "VRR_ENABLED", },
+#ifdef QCOM_BSP
 	[WDRM_CRTC_PCC] = { .name = "SDE_DSPP_PCC_V4", },
+#endif
 };
 
 
@@ -1184,6 +1205,7 @@ drm_output_apply_state_atomic(struct drm_output_state *state,
 				     current_mode->blob_id);
 		ret |= crtc_add_prop(req, crtc, WDRM_CRTC_ACTIVE, 1);
 
+#ifdef QCOM_BSP
 		if (output->pcc_enabled &&
 		    (output->pcc_needs_update || device->state_invalid)) {
 			if (output->pcc_blob_id == 0) {
@@ -1204,6 +1226,7 @@ drm_output_apply_state_atomic(struct drm_output_state *state,
 			if (!(*flags & DRM_MODE_ATOMIC_TEST_ONLY))
 				output->pcc_needs_update = false;
 		}
+#endif
 
 		if (!output->deprecated_gamma_is_set) {
 			ret |= crtc_add_prop_zero_ok(req, crtc,
@@ -1304,6 +1327,24 @@ drm_output_apply_state_atomic(struct drm_output_state *state,
 				      plane_state->dest_w);
 		ret |= plane_add_prop(req, plane, WDRM_PLANE_CRTC_H,
 				      plane_state->dest_h);
+#ifdef QCOM_BSP
+		if (plane_state->fb && plane_state->fb->bo &&
+		    plane->props[WDRM_SECURE_FB].prop_id != 0) {
+			uint32_t secure_status = 0;
+			int gbm_ret = gbm_perform(GBM_PERFORM_GET_SECURE_BUFFER_STATUS,
+				    plane_state->fb->bo, &secure_status);
+			if (gbm_ret != 0) {
+				weston_log("drm: gbm_perform secure status failed: %d\n", gbm_ret);
+				/* Abort the atomic commit for secure mode */
+				return -1;
+			}
+
+			if (secure_status > 0)
+				ret |= plane_add_prop(req, plane, WDRM_SECURE_FB, 1);
+			else
+				ret |= plane_add_prop(req, plane, WDRM_SECURE_FB, 0);
+		}
+#endif
 		if (plane->props[WDRM_PLANE_FB_DAMAGE_CLIPS].prop_id != 0)
 			ret |= plane_add_prop(req, plane, WDRM_PLANE_FB_DAMAGE_CLIPS,
 					      plane_state->damage_blob_id);

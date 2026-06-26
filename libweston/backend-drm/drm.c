@@ -73,11 +73,12 @@
 #include "linux-dmabuf.h"
 #include "linux-dmabuf-unstable-v1-server-protocol.h"
 #include "linux-explicit-synchronization.h"
-#include "pcc-control-server-protocol.h"
 #ifdef QCOM_BSP
+#include "pcc-control-server-protocol.h"
 #include "gbm-buffer-backend.h"
 #endif
 
+#ifdef QCOM_BSP
 #define PCC_COEFF_MASK     0x3FFFF
 #define PCC_COEFF_MAX_POS  0x0EF5C  /* +1.87 in S3.15 */
 #define PCC_COEFF_MIN_NEG  0x310A4  /* -1.87 in S3.15 */
@@ -170,6 +171,7 @@ drm_pcc_protocol_init(struct weston_compositor *ec)
 	wl_global_create(ec->wl_display, &pcc_control_interface, 1, ec, drm_bind_pcc);
 	weston_log("DRM backend: PCC protocol registered.\n");
 }
+#endif /* QCOM_BSP */
 
 static const char default_seat[] = "seat0";
 
@@ -2858,7 +2860,15 @@ drm_output_create(struct weston_backend *backend, const char *name)
 
 	output->max_bpc = 16;
 #ifdef BUILD_DRM_GBM
+#ifdef QCOM_BSP
+	if (b->compositor->secure_mode)
+		output->gbm_bo_flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING |
+				       GBM_BO_USE_PROTECTED;
+	else
+		output->gbm_bo_flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
+#else
 	output->gbm_bo_flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
+#endif
 #endif
 
 	weston_output_init(&output->base, b->compositor, name);
@@ -4216,7 +4226,9 @@ drm_backend_create(struct weston_compositor *compositor,
 		weston_log("Failed to register virtual output API.\n");
 		goto err_udev_monitor;
 	}
-        drm_pcc_protocol_init(compositor);
+#ifdef QCOM_BSP
+	drm_pcc_protocol_init(compositor);
+#endif
 
 	return b;
 
