@@ -36,6 +36,7 @@
 #include "config.h"
 
 #include "sdm-internal.h"
+#include "sdm-service/sdm_display_connect.h"
 
 static const char *const aspect_ratio_as_string[] = {
 	[WESTON_MODE_PIC_AR_NONE] = "",
@@ -158,54 +159,113 @@ drm_output_choose_mode(struct drm_output *output,
 	return tmp_mode;
 }
 
+static struct drm_mode *
+drm_output_add_mode(struct drm_output *output,
+		    struct DisplayConfigInfo *display_config,
+		    uint32_t index)
+{
+	struct drm_mode *mode = NULL;
+
+	mode = malloc(sizeof *mode);
+	if (mode == NULL)
+		return NULL;
+
+	mode->base.flags = 0;
+	mode->base.width = display_config->x_pixels;
+	mode->base.height = display_config->y_pixels;
+
+	mode->base.refresh = display_config->fps*1000;
+	mode->display_config = *display_config;
+	mode->index = index;
+	mode->blob_id = 0;
+
+	wl_list_insert(output->base.mode_list.prev, &mode->base.link);
+
+	return mode;
+}
+
 int
 drm_output_set_mode(struct weston_output *base,
 		    enum weston_drm_backend_output_mode mode,
 		    const char *modeline)
 {
 	struct drm_output *output = to_drm_output(base);
-	struct drm_mode *current;
-	int width, height, refresh;
-
+	struct drm_mode *current_mode = NULL;
 	struct drm_head *head = to_drm_head(weston_output_get_first_head(base));
+	struct DisplayConfigInfo current_config = {0};
+	struct DisplayConfigInfo display_config = {0};
+	uint32_t count = 0, index = 0;
+	int rc = 0;
+
 	output->display_id = head->connector_id;
 
 	if (output->virtual_output)
 		return -1;
 
-        struct DisplayConfigInfo display_config;
-        display_config.x_pixels        = 0;
-        display_config.y_pixels        = 0;
-        display_config.x_dpi           = 0.0f;
-        display_config.y_dpi           = 0.0f;
-        display_config.fps             = 0;
-        display_config.vsync_period_ns = 0;
-        display_config.is_yuv          = false;
+	/* Get current active display configuration */
+	rc = GetDisplayConfiguration(output->display_id, &current_config);
+	if (rc != kErrorNone) {
+		/* Failed to get config, use default */
+		current_config.x_pixels = 1920;
+		current_config.y_pixels = 1080;
+		current_config.fps = 60;
+	}
 
-        int rc = GetDisplayConfiguration(output->display_id, &display_config);
-        if (rc != 0) {
-            width   = display_config.x_pixels;
-            height  = display_config.y_pixels;
-            refresh = display_config.fps*1000;
-        } else { /* default 1080p, 60 fps */
-            width   = 1920;
-            height  = 1080;
-            refresh = 60*1000;
-        }
+	/* Enumerate all available display configurations */
+	rc = GetDisplayConfigCount(output->display_id, &count);
+	if (rc == kErrorNone && count > 0) {
+		uint32_t modes_added = 0;
+		for (index = 0; index < count; index++) {
+			struct drm_mode *mode = NULL;
 
-	current = zalloc(sizeof(struct drm_mode));
-	if (!current)
-		return -1;
+			rc = GetDisplayConfigurationByIndex(output->display_id,
+							    index, &display_config);
+			if (rc == kErrorNone) {
+				mode = drm_output_add_mode(output, &display_config, index);
+				if (!mode) {
+					weston_log("Failed to add mode %u for output %s\n",
+						   index, base->name);
+					continue;
+				}
+				modes_added++;
 
-	current->base.width = width;
-	current->base.height = height;
-	current->base.refresh = refresh;
+				/* Mark the current active mode */
+				if (mode->base.width == current_config.x_pixels &&
+				    mode->base.height == current_config.y_pixels &&
+				    mode->base.refresh == current_config.fps * 1000) {
+					mode->base.flags |= WL_OUTPUT_MODE_CURRENT;
+					current_mode = mode;
+				}
+			}
+		}
 
-	output->base.current_mode = &current->base;
-	output->base.current_mode->flags |= WL_OUTPUT_MODE_CURRENT;
+		if (modes_added == 0) {
+			weston_log("Warning: No modes could be enumerated for output %s\n",
+				   base->name);
+		}
+	} else {
+		weston_log("Failed to get display config count or count is 0 for output %s\n",
+			   base->name);
+	}
 
-	wl_list_insert(output->base.mode_list.prev, &current->base.link);
-	/* Set native_ fields, so weston_output_mode_switch_to_native() works */
+	/* Set current_mode, fallback to default if not found */
+	if (current_mode) {
+		output->base.current_mode = &current_mode->base;
+	} else {
+		/* Fallback: create a default mode if enumeration failed */
+		struct drm_mode *fallback = zalloc(sizeof(struct drm_mode));
+		if (!fallback)
+			return -1;
+
+		fallback->base.width = current_config.x_pixels;
+		fallback->base.height = current_config.y_pixels;
+		fallback->base.refresh = current_config.fps * 1000;
+		fallback->base.flags = WL_OUTPUT_MODE_CURRENT;
+
+		wl_list_insert(output->base.mode_list.prev, &fallback->base.link);
+		output->base.current_mode = &fallback->base;
+	}
+
 	output->base.native_mode = output->base.current_mode;
 	output->base.native_scale = output->base.current_scale;
 

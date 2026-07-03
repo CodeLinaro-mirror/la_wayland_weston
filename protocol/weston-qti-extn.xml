@@ -73,6 +73,18 @@
       <arg name="brightness_value" type="uint" summary="sets the brightness value"/>
     </request>
 
+    <request name="set_output_mode">
+      <description summary="set output mode (resolution + refresh rate) by output name">
+        Switch the selected display to the given resolution and refresh
+        rate. width/height = 0 means keep current resolution (refresh-rate
+        only switch).
+      </description>
+      <arg name="output_name" type="string" summary="output name"/>
+      <arg name="fps" type="uint" summary="mode refresh rate"/>
+      <arg name="width" type="uint" summary="mode width in pixels (0 = keep current)"/>
+      <arg name="height" type="uint" summary="mode height in pixels (0 = keep current)"/>
+    </request>
+
   </interface>
 
 </protocol>

@@ -164,6 +164,11 @@ class SdmDisplayInterface {
     virtual DisplayError SetVSyncState(bool enable, struct drm_output *output) = 0;
     virtual DisplayError GetDisplayConfiguration(struct DisplayConfigInfo *display_config) = 0;
     virtual DisplayError SetDisplayConfiguration(struct DisplayConfigInfo *display_config) = 0;
+    virtual DisplayError SetDisplayConfigurationByIndex(uint32_t index) = 0;
+    virtual DisplayError GetDisplayConfigCount(uint32_t *count) = 0;
+    virtual DisplayError GetDisplayConfigurationByIndex(uint32_t index,
+                                                        struct DisplayConfigInfo *display_config
+                                                        ) = 0;
     virtual DisplayError SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence) = 0;
     virtual DisplayError SetFrameDumpConfig(uint32_t count, CwbConfig &cwb_config,
                                             int32_t format) = 0;
@@ -208,6 +213,10 @@ class SdmNullDisplay : public SdmDisplayInterface {
     DisplayError SetVSyncState(bool enable, struct drm_output *output);
     DisplayError GetDisplayConfiguration(struct DisplayConfigInfo *display_config);
     DisplayError SetDisplayConfiguration(struct DisplayConfigInfo *display_config);
+    DisplayError SetDisplayConfigurationByIndex(uint32_t index);
+    DisplayError GetDisplayConfigCount(uint32_t *count);
+    DisplayError GetDisplayConfigurationByIndex(uint32_t index,
+                                                struct DisplayConfigInfo *display_config);
     DisplayError SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence);
     DisplayError SetFrameDumpConfig(uint32_t count, CwbConfig &cwb_config, int32_t format);
     DisplayError SetReadbackBuffer(void *gbm_buf, shared_ptr<Fence> acquire_fence,
@@ -249,6 +258,10 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
     DisplayError SetVSyncState(bool enable, struct drm_output *output);
     DisplayError GetDisplayConfiguration(struct DisplayConfigInfo *display_config);
     DisplayError SetDisplayConfiguration(struct DisplayConfigInfo *display_config);
+    DisplayError SetDisplayConfigurationByIndex(uint32_t index);
+    DisplayError GetDisplayConfigCount(uint32_t *count);
+    DisplayError GetDisplayConfigurationByIndex(uint32_t index,
+                                                struct DisplayConfigInfo *display_config);
     DisplayError SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence);
     DisplayError SetFrameDumpConfig(uint32_t count, CwbConfig &cwb_config, int32_t format);
     DisplayError SetReadbackBuffer(void *gbm_buf, shared_ptr<Fence> acquire_fence,
@@ -411,6 +424,16 @@ class SdmDisplayProxy {
     }
     DisplayError SetDisplayConfiguration(struct DisplayConfigInfo *display_config) {
       return display_intf_->SetDisplayConfiguration(display_config);
+    }
+    DisplayError GetDisplayConfigurationByIndex(uint32_t index,
+                                                struct DisplayConfigInfo *display_config) {
+      return display_intf_->GetDisplayConfigurationByIndex(index, display_config);
+    }
+    DisplayError SetDisplayConfigurationByIndex(uint32_t index) {
+      return display_intf_->SetDisplayConfigurationByIndex(index);
+    }
+    DisplayError GetDisplayConfigCount(uint32_t *count) {
+      return display_intf_->GetDisplayConfigCount(count);
     }
     DisplayError SetOutputBuffer(void *buf, shared_ptr<Fence> &release_fence) {
       return display_intf_->SetOutputBuffer(buf, release_fence);

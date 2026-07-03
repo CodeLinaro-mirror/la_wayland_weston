@@ -386,6 +386,98 @@ DisplayError SdmDisplay::GetPanelBrightness(float *brightness) {
     return display_intf_->GetPanelBrightness(brightness);
 }
 
+DisplayError SdmDisplay::GetDisplayConfigCount(uint32_t *count) {
+  return display_intf_->GetNumVariableInfoConfigs(count);
+}
+
+DisplayError SdmDisplay::SetDisplayConfigurationByIndex(uint32_t index) {
+    DisplayError error = kErrorNone;
+    DisplayConfigVariableInfo disp_config = {};
+
+    error = display_intf_->SetActiveConfig(index);
+
+    if (error != kErrorNone) {
+        DLOGE("Active Index not found. Error = %d", error);
+        return error;
+    }
+
+    error = display_intf_->GetConfig(index, &disp_config);
+
+    if (error != kErrorNone) {
+        DLOGE("Display Configuration failed. Error = %d", error);
+        return error;
+    }
+
+    fps_  = disp_config.fps;
+
+    /* Same-size guard: fps-only switches (DSI DFPS) reach this code path
+     * with resolution unchanged. On pipes without dest scaler,
+     * SetMixerResolution -> SetMixerAttributes returns kErrorNotSupported
+     * and would abort an otherwise valid fps switch. Skip the mixer/fb
+     * resize when only fps changes; SetActiveConfig alone is sufficient. */
+    DisplayConfigVariableInfo cur_config = {};
+    error = display_intf_->GetFrameBufferConfig(&cur_config);
+    if (error != kErrorNone) {
+        DLOGE("GetFrameBufferConfig failed: %d", error);
+        return error;
+    }
+
+    if (disp_config.x_pixels == cur_config.x_pixels &&
+        disp_config.y_pixels == cur_config.y_pixels) {
+        return kErrorNone;
+    }
+
+    /* SetActiveConfig only changes panel timing; resize mixer and fb too so
+     * the whole pipeline shares one resolution. */
+    error = display_intf_->SetMixerResolution(disp_config.x_pixels,
+                                              disp_config.y_pixels);
+    if (error != kErrorNone && error != kErrorNotSupported) {
+        DLOGE("SetMixerResolution(%ux%u) failed: %d",
+              disp_config.x_pixels, disp_config.y_pixels, error);
+        return error;
+    }
+    /* kErrorNotSupported here means resolution_switch_enabled_ is set: the
+     * DRM HAL already updated the layer mixer to the new size inside
+     * SetActiveConfig->UpdateMixerAttributes. The mixer is therefore correct
+     * even though the explicit call was rejected -- but the framebuffer
+     * target is NOT touched by SetActiveConfig, so we must still resize it
+     * below or the fb stays at the old size and the image is scaled into the
+     * top-left corner of the panel. */
+
+    error = display_intf_->SetFrameBufferConfig(disp_config);
+    if (error != kErrorNone) {
+        DLOGE("SetFrameBufferConfig(%ux%u) failed: %d",
+              disp_config.x_pixels, disp_config.y_pixels, error);
+        return error;
+    }
+
+    return kErrorNone;
+}
+
+DisplayError SdmDisplay::GetDisplayConfigurationByIndex(uint32_t index,
+                        struct DisplayConfigInfo *display_config) {
+    DisplayError error = kErrorNone;
+    DisplayConfigVariableInfo disp_config = {};
+
+    error = display_intf_->GetConfig(index, &disp_config);
+
+    if (error != kErrorNone) {
+        DLOGE("Display Configuration failed. Error = %d", error);
+        return error;
+    }
+
+    display_config->x_pixels     = disp_config.x_pixels;
+    display_config->y_pixels     = disp_config.y_pixels;
+    display_config->x_dpi        = disp_config.x_dpi;
+    display_config->y_dpi        = disp_config.y_dpi;
+    display_config->fps          = disp_config.fps;
+    display_config->vsync_period_ns = disp_config.vsync_period_ns;
+    display_config->is_yuv       = disp_config.is_yuv;
+    display_config->is_connected = true;
+
+    return kErrorNone;
+}
+
 DisplayError SdmDisplay::GetDisplayConfiguration(struct DisplayConfigInfo *display_config) {
     DisplayError error = kErrorNone;
     DisplayConfigVariableInfo disp_config;
@@ -2199,6 +2291,19 @@ DisplayError SdmNullDisplay::SetVSyncState(bool enable, struct drm_output *outpu
    *       the recent Weston release updates.
    */
   drm_output_ = output;
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::GetDisplayConfigurationByIndex(uint32_t index,
+                                                            struct DisplayConfigInfo *display_config) {
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::GetDisplayConfigCount(uint32_t *count) {
+  return kErrorNone;
+}
+
+DisplayError SdmNullDisplay::SetDisplayConfigurationByIndex(uint32_t index) {
   return kErrorNone;
 }
 

@@ -61,6 +61,8 @@ simple_clients = [
 			'weston-qti-extn-test.c',
 			weston_qti_extn_client_protocol_h,
 			weston_qti_extn_protocol_c,
+			xdg_output_unstable_v1_client_protocol_h,
+			xdg_output_unstable_v1_protocol_c,
 		],
 		'dep_objs': [ dep_wayland_client, dep_libshared ]
 	},
