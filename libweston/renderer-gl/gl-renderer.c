@@ -3150,6 +3150,7 @@ import_simple_gbm_buffer(struct gl_renderer *gr, struct gbm_buffer *gbmbuf)
 	int colorspace = 0;
 	ColorMetaData colormeta = {0};
 	int result = -1;
+	uint32_t secure_status = 0;
 
 	/* This requires the Mesa commit in
 	 * Mesa 10.3 (08264e5dad4df448e7718e782ad9077902089a07) or
@@ -3256,8 +3257,14 @@ import_simple_gbm_buffer(struct gl_renderer *gr, struct gbm_buffer *gbmbuf)
 			break;
 		}
 	}
-#ifdef QCOM_BSP
-	if (gr->secure_context) {
+
+	result = gbm_perform(GBM_PERFORM_GET_SECURE_BUFFER_STATUS, gbmbuf->bo, &secure_status);
+	if (result != 0) {
+		weston_log("drm: gbm_perform secure status failed in "
+			   "import_simple_gbm_buffer: %d\n", result);
+	}
+
+	if (result == 0 && secure_status > 0) {
 		if (atti + 2 >= ARRAY_LENGTH(attribs)) {
 			weston_log("Error: EGL attribute array overflow\n");
 			return NULL;
@@ -3265,7 +3272,7 @@ import_simple_gbm_buffer(struct gl_renderer *gr, struct gbm_buffer *gbmbuf)
 		attribs[atti++] = EGL_PROTECTED_CONTENT_EXT;
 		attribs[atti++] = EGL_TRUE;
 	}
-#endif
+
 	attribs[atti++] = EGL_NONE;
 
 	GBM_PROTOCOL_LOG(LOG_DBG,"gbmbuf->width=%d", gbmbuf->width);
