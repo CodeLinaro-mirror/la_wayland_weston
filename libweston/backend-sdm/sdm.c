@@ -219,6 +219,62 @@ drm_output_disable_vblank(struct drm_output *output)
 }
 
 static int
+on_output_refresh(int fd, uint32_t mask, void *data)
+{
+	struct drm_output *output = (struct drm_output *) data;
+	uint64_t v = 0;
+	int ret;
+
+	ret = read(fd, &v, sizeof(v));
+	if (ret != sizeof(v)) {
+		weston_log("[on_output_refresh] read len mismatch!\n");
+		return 0;
+	}
+
+	if (!output || !output->base.enabled)
+		return 0;
+
+	/* Safely on the compositor main thread now. */
+	weston_output_damage(&output->base);
+	return 0;
+}
+
+static int
+drm_output_enable_refresh_ev(struct drm_output *output)
+{
+	struct wl_event_loop *loop;
+
+	output->output_refresh_ev_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+	if (output->output_refresh_ev_fd < 0)
+		return -1;
+
+	loop = wl_display_get_event_loop(output->base.compositor->wl_display);
+	output->output_refresh_ev_source =
+		wl_event_loop_add_fd(loop, output->output_refresh_ev_fd,
+				     WL_EVENT_READABLE, on_output_refresh, output);
+	if (!output->output_refresh_ev_source) {
+		close(output->output_refresh_ev_fd);
+		output->output_refresh_ev_fd = -1;
+		return -1;
+	}
+	return 0;
+}
+
+static void
+drm_output_disable_refresh_ev(struct drm_output *output)
+{
+	if (output->output_refresh_ev_source != NULL) {
+		wl_event_source_remove(output->output_refresh_ev_source);
+		output->output_refresh_ev_source = NULL;
+	}
+
+	if (output->output_refresh_ev_fd != -1) {
+		close(output->output_refresh_ev_fd);
+		output->output_refresh_ev_fd = -1;
+	}
+}
+
+static int
 pageflip_timeout(void *data) {
 	/*
 	 * Our timer just went off, that means we're not receiving drm
@@ -1200,6 +1256,12 @@ drm_output_enable(struct weston_output *base)
 		return -1;
 	}
 
+	if (drm_output_enable_refresh_ev(output)) {
+		weston_log("Failed to create output refresh event\n");
+		drm_output_disable_vblank(output);
+		return -1;
+	}
+
 	drm_output_print_modes(output);
 
 	return 0;
@@ -1239,6 +1301,7 @@ drm_output_destroy(struct weston_output *base)
 	if (output->pageflip_timer)
 		wl_event_source_remove(output->pageflip_timer);
 
+	drm_output_disable_refresh_ev(output);
 	drm_output_disable_vblank(output);
 	weston_output_release(&output->base);
 
@@ -1262,6 +1325,7 @@ drm_output_disable(struct weston_output *base)
 
 	output->disable_pending = false;
 
+	drm_output_disable_refresh_ev(output);
 	SetVSyncState(output->display_id, false, output);
 
 	return 0;
@@ -1476,6 +1540,8 @@ drm_output_create(struct weston_backend *backend, const char *name)
 	output->destroy_pending = false;
 	output->disable_pending = false;
 	output->first_cycle = true;
+	output->vblank_ev_fd = -1;
+	output->output_refresh_ev_fd = -1;
 
 	weston_compositor_add_pending_output(&output->base, b->compositor);
 
@@ -2341,8 +2407,27 @@ void NotifyOnRefresh(struct drm_output *drm_output) {
   drm_output->atomic_complete_pending = true;
 }
 
-void NotifyOnQdcmRefresh(struct drm_output *output) {
-	weston_output_damage(&output->base);
+/*
+ * Request an out-of-band refresh of the output.
+ *
+ * Historically introduced for QDCM tuning (to avoid refresh conflicts with
+ * the main compositor loop) and now also used by LTM/ALS. These callers run
+ * on a binder thread (QDCM/QService), not the compositor main thread, so
+ * touching the repaint state machine directly here would race with
+ * idle_repaint() and trip its assert. Just wake the main thread; the actual
+ * damage is issued from on_output_refresh().
+ */
+void NotifyOnOutputRefresh(struct drm_output *output) {
+	uint64_t v = 1;
+	int ret;
+
+	if (!output || output->output_refresh_ev_fd < 0)
+		return;
+
+	ret = write(output->output_refresh_ev_fd, &v, sizeof(v));
+	if (ret != sizeof(v))
+		weston_log("[NotifyOnOutputRefresh] eventfd write failed: %s\n",
+			   strerror(errno));
 }
 
 void

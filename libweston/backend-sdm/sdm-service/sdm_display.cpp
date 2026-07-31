@@ -84,7 +84,7 @@
 
 #define __CLASS__ "SdmDisplay"
 extern "C" void NotifyOnRefresh(struct drm_output *);
-extern "C" void NotifyOnQdcmRefresh(struct drm_output *);
+extern "C" void NotifyOnOutputRefresh(struct drm_output *);
 
 namespace sdm {
 #define GET_GPU_TARGET_SLOT(max_layers) ((max_layers) - 1)
@@ -278,7 +278,7 @@ DisplayError SdmDisplay::HistogramEvent(int /* fd */, uint32_t /* blob_fd */) {
 void SdmDisplay::RefreshCallback()
 {
     if (drm_output_) {
-      NotifyOnQdcmRefresh(drm_output_);
+      NotifyOnOutputRefresh(drm_output_);
     }
 }
 
