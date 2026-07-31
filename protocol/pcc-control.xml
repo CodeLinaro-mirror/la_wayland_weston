@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="pcc_control">
+  <copyright>
+    Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+    SPDX-License-Identifier: BSD-3-Clause-Clear
+  </copyright>
+
+  <description summary="Post Color Correction control protocol">
+    This protocol allows a privileged client to set the Post Color
+    Correction (PCC) matrix on display outputs. The PCC matrix is a
+    3x3 color transformation applied by the DPU hardware after
+    composition. Coefficients are in S3.15 fixed-point format.
+
+    This protocol is intended for system-level color calibration tools
+    only and should not be exposed to untrusted clients.
+  </description>
+
+  <interface name="pcc_control" version="1">
+    <description summary="PCC color matrix control interface">
+      Interface for setting the Post Color Correction (PCC) 3x3 matrix
+      on display outputs. Once set, the matrix persists until explicitly
+      changed or the display pipeline is reset (e.g. VT switch).
+    </description>
+
+    <enum name="error">
+      <entry name="invalid_coefficients" value="0"
+        summary="provided coefficient values are out of the valid S3.15 range"/>
+    </enum>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the pcc_control object">
+        Informs the server that the client will not be using this
+        protocol object anymore. This does not affect the currently
+        applied PCC matrix on the display.
+      </description>
+    </request>
+
+    <request name="set_pcc">
+      <description summary="set the PCC 3x3 color correction matrix">
+        Sets the Post Color Correction matrix applied by the DPU hardware.
+        All nine coefficients are in S3.15 fixed-point format (18-bit
+        unsigned value representing a signed 3.15 fixed-point number).
+
+        The matrix transforms display output colors as follows:
+          [ R' ]   [ rr  rg  rb ] [ R ]
+          [ G' ] = [ gr  gg  gb ] [ G ]
+          [ B' ]   [ br  bg  bb ] [ B ]
+
+        The identity matrix is represented by rr=gg=bb=0x8000 and all
+        other coefficients set to 0.
+      </description>
+      <arg name="rr" type="uint" summary="red channel, red input coefficient (S3.15)"/>
+      <arg name="rg" type="uint" summary="red channel, green input coefficient (S3.15)"/>
+      <arg name="rb" type="uint" summary="red channel, blue input coefficient (S3.15)"/>
+      <arg name="gr" type="uint" summary="green channel, red input coefficient (S3.15)"/>
+      <arg name="gg" type="uint" summary="green channel, green input coefficient (S3.15)"/>
+      <arg name="gb" type="uint" summary="green channel, blue input coefficient (S3.15)"/>
+      <arg name="br" type="uint" summary="blue channel, red input coefficient (S3.15)"/>
+      <arg name="bg" type="uint" summary="blue channel, green input coefficient (S3.15)"/>
+      <arg name="bb" type="uint" summary="blue channel, blue input coefficient (S3.15)"/>
+    </request>
+  </interface>
+
+</protocol>

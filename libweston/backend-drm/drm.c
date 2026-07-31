@@ -73,9 +73,103 @@
 #include "linux-dmabuf.h"
 #include "linux-dmabuf-unstable-v1-server-protocol.h"
 #include "linux-explicit-synchronization.h"
+#include "pcc-control-server-protocol.h"
 #ifdef QCOM_BSP
 #include "gbm-buffer-backend.h"
 #endif
+
+#define PCC_COEFF_MASK     0x3FFFF
+#define PCC_COEFF_MAX_POS  0x0EF5C  /* +1.87 in S3.15 */
+#define PCC_COEFF_MIN_NEG  0x310A4  /* -1.87 in S3.15 */
+
+static int check_coeff(uint32_t val)
+{
+	if (val & ~PCC_COEFF_MASK) {
+		weston_log("pcc coeff 0x%x has invalid high bits (bit18+)\n", val);
+		return -EINVAL;
+	}
+
+	if (val <= PCC_COEFF_MAX_POS || val >= PCC_COEFF_MIN_NEG)
+		return 0;
+
+	weston_log("pcc coeff 0x%05x is out of range\n", val);
+	return -EINVAL;
+}
+
+static void
+drm_pcc_destroy(struct wl_client *client, struct wl_resource *resource)
+{
+	wl_resource_destroy(resource);
+}
+
+static void
+drm_pcc_set_pcc(struct wl_client *client, struct wl_resource *resource,
+		uint32_t rr, uint32_t rg, uint32_t rb,
+		uint32_t gr, uint32_t gg, uint32_t gb,
+		uint32_t br, uint32_t bg, uint32_t bb)
+{
+	struct weston_compositor *ec = wl_resource_get_user_data(resource);
+	struct weston_output *output_base;
+
+	wl_list_for_each(output_base, &ec->output_list, link) {
+		struct drm_output *output = to_drm_output(output_base);
+
+		if (!output)
+			continue;
+
+		/* Invalidate cached blob so it gets recreated with new values */
+		if (output->pcc_blob_id != 0) {
+			drmModeDestroyPropertyBlob(output->device->drm.fd,
+						   output->pcc_blob_id);
+			output->pcc_blob_id = 0;
+		}
+
+		if (check_coeff(rr) || check_coeff(rg) || check_coeff(rb)
+			|| check_coeff(gr) || check_coeff(gg) || check_coeff(gb)
+			|| check_coeff(br) || check_coeff(bg) || check_coeff(bb))
+			return;
+
+		output->pcc_conf.r.r = rr;
+		output->pcc_conf.r.g = rg;
+		output->pcc_conf.r.b = rb;
+		output->pcc_conf.g.r = gr;
+		output->pcc_conf.g.g = gg;
+		output->pcc_conf.g.b = gb;
+		output->pcc_conf.b.r = br;
+		output->pcc_conf.b.g = bg;
+		output->pcc_conf.b.b = bb;
+		output->pcc_enabled      = true;
+		output->pcc_needs_update = true;
+
+		weston_output_schedule_repaint(output_base);
+	}
+}
+
+static const struct pcc_control_interface drm_pcc_interface = {
+	.destroy = drm_pcc_destroy,
+	.set_pcc = drm_pcc_set_pcc,
+};
+
+static void
+drm_bind_pcc(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+{
+	struct weston_compositor *ec = data;
+	struct wl_resource *res;
+
+	res = wl_resource_create(client, &pcc_control_interface, version, id);
+	if (!res) {
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(res, &drm_pcc_interface, ec, NULL);
+}
+
+static void
+drm_pcc_protocol_init(struct weston_compositor *ec)
+{
+	wl_global_create(ec->wl_display, &pcc_control_interface, 1, ec, drm_bind_pcc);
+	weston_log("DRM backend: PCC protocol registered.\n");
+}
 
 static const char default_seat[] = "seat0";
 
@@ -4122,6 +4216,7 @@ drm_backend_create(struct weston_compositor *compositor,
 		weston_log("Failed to register virtual output API.\n");
 		goto err_udev_monitor;
 	}
+        drm_pcc_protocol_init(compositor);
 
 	return b;
 

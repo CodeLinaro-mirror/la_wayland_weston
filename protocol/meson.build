@@ -54,6 +54,7 @@ generated_protocols = [
 	[ 'xdg-shell', 'unstable', 'v6' ],
 	[ 'xdg-shell', 'stable' ],
 	[ 'xwayland-shell', 'staging', 'v1' ],
+	[ 'pcc-control', 'internal' ],
 ]
 
 if qcom_bsp_enabled
