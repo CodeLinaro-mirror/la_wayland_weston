@@ -334,6 +334,12 @@ struct drm_output {
 	enum wdrm_content_type content_type;
 	int vblank_ev_fd;
 	struct wl_event_source *vblank_ev_source;
+	/* Out-of-band output refresh requests (QDCM tuning, LTM/ALS, ...)
+	 * arrive on a binder thread; hand them to the compositor main thread
+	 * via an eventfd so the repaint state machine is only ever touched
+	 * from that thread. */
+	int output_refresh_ev_fd;
+	struct wl_event_source *output_refresh_ev_source;
 	struct {
 		unsigned int frame;
 		unsigned int sec;
@@ -506,7 +512,7 @@ is_virtual_output(int display_id);
 
 void NotifyOnRefresh(struct drm_output *drm_output);
 
-void NotifyOnQdcmRefresh(struct drm_output *output);
+void NotifyOnOutputRefresh(struct drm_output *output);
 
 #ifdef BUILD_DRM_VIRTUAL
 extern int
