@@ -73,7 +73,7 @@ static enum ops_index {
 	OPS_SET_OUTPUT_STATE,
 	OPS_SET_OUTPUT_BRIGHTNESS,
 	OPS_SET_OUTPUT_QSYNC_MODE,
-	OPS_SET_OUTPUT_FPS,
+	OPS_SET_OUTPUT_MODE,
 	OPS_EXIT
 };
 
@@ -342,7 +342,7 @@ ops_set_output_brightness(void)
 }
 
 static void
-ops_set_output_fps(void)
+ops_set_output_mode(void)
 {
 	struct output_info *output, *selected_out = NULL;
 	struct mode_info *mode, *selected_mode = NULL;
@@ -374,18 +374,9 @@ ops_set_output_fps(void)
 
 	i = 0;
 	wl_list_for_each(output, &output_list, link) {
-		/* Skip DP (DisplayPort) outputs */
-		if (output->has_name && strncmp(output->name, "DP-", 3) == 0) {
-			continue;
-		}
 		output_array[i++] = output;
 	}
 	output_count = i;
-
-	if (output_count == 0) {
-		printf("ERR: No non-DP outputs found\n");
-		goto cleanup;
-	}
 
 	while (menu_loop) {
 		if (!selected_out) {
@@ -493,19 +484,21 @@ ops_set_output_fps(void)
 			selected_mode = mode_array[choice - 1];
 			target_fps = selected_mode->refresh / 1000;
 
-			/* Execute FPS setting - only if output has a name */
+			/* Execute output mode setting - only if output has a name */
 			if (!selected_out->has_name) {
-				printf("ERR: Output has no name, cannot set FPS\n");
-				printf("     This output may not support dynamic FPS switching\n");
+				printf("ERR: Output has no name, cannot set mode\n");
 				selected_out = NULL;
 				continue;
 			}
 
-			printf("\nSetting %s refresh rate to %d Hz...\n",
-			       selected_out->name, target_fps);
-			weston_qti_extn_set_output_fps(display.qti_extn,
+			printf("\nSetting %s mode to %dx%d@%d Hz...\n",
+			       selected_out->name, selected_mode->width,
+			       selected_mode->height, target_fps);
+			weston_qti_extn_set_output_mode(display.qti_extn,
 						       selected_out->name,
-						       (uint32_t)target_fps);
+						       (uint32_t)target_fps,
+						       (uint32_t)selected_mode->width,
+						       (uint32_t)selected_mode->height);
 
 			/* Refresh output information to get updated current mode */
 			wl_display_roundtrip(display.display);
@@ -521,8 +514,9 @@ ops_set_output_fps(void)
 				}
 			}
 
-			printf("INFO: Set output(%s) fps to %u Hz\n",
-			       selected_out->name, (uint32_t)target_fps);
+			printf("INFO: Set output(%s) mode to %dx%d@%u Hz\n",
+			       selected_out->name, selected_mode->width,
+			       selected_mode->height, (uint32_t)target_fps);
 
 			/* Free mode array and continue with same output */
 			if (mode_array) {
@@ -615,7 +609,7 @@ print_menu(void)
 		"  3. Set Output State\n"
 		"  4. Set Brightness\n"
 		"  5. Set Qsync mode\n"
-		"  6. Set Output FPS\n"
+		"  6. Set Output Mode\n"
 		"  7. Exit\n"
 		"Enter your choice: ");
 }
@@ -672,8 +666,8 @@ main(int argc, char **argv)
 		case OPS_SET_OUTPUT_QSYNC_MODE:
 			ops_set_output_qsync_mode();
 			break;
-		case OPS_SET_OUTPUT_FPS:
-			ops_set_output_fps();
+		case OPS_SET_OUTPUT_MODE:
+			ops_set_output_mode();
 			break;
 		case OPS_EXIT:
 			loop = false;
