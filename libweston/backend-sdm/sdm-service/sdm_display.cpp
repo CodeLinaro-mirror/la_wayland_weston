@@ -84,7 +84,7 @@
 
 #define __CLASS__ "SdmDisplay"
 extern "C" void NotifyOnRefresh(struct drm_output *);
-extern "C" void NotifyOnQdcmRefresh(struct drm_output *);
+extern "C" void NotifyOnOutputRefresh(struct drm_output *);
 
 namespace sdm {
 #define GET_GPU_TARGET_SLOT(max_layers) ((max_layers) - 1)
@@ -278,7 +278,7 @@ DisplayError SdmDisplay::HistogramEvent(int /* fd */, uint32_t /* blob_fd */) {
 void SdmDisplay::RefreshCallback()
 {
     if (drm_output_) {
-      NotifyOnQdcmRefresh(drm_output_);
+      NotifyOnOutputRefresh(drm_output_);
     }
 }
 
@@ -426,6 +426,21 @@ DisplayError SdmDisplay::SetDisplayConfigurationByIndex(uint32_t index) {
     }
 
     fps_  = disp_config.fps;
+
+    error = display_intf_->SetMixerResolution(disp_config.x_pixels,
+                                              disp_config.y_pixels);
+    if (error != kErrorNone && error != kErrorNotSupported) {
+        DLOGE("SetMixerResolution(%ux%u) failed: %d",
+              disp_config.x_pixels, disp_config.y_pixels, error);
+        return error;
+    }
+
+    error = display_intf_->SetFrameBufferConfig(disp_config);
+    if (error != kErrorNone) {
+        DLOGE("SetFrameBufferConfig(%ux%u) failed: %d",
+              disp_config.x_pixels, disp_config.y_pixels, error);
+        return error;
+    }
 
     return kErrorNone;
 }
