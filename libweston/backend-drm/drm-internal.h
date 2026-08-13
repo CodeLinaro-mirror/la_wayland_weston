@@ -41,7 +41,9 @@
 #include <assert.h>
 #include <sys/mman.h>
 #include <time.h>
+#ifdef QCOM_BSP
 #include <display/drm/msm_drm_pp.h>
+#endif
 
 
 #include <xf86drm.h>
@@ -170,6 +172,9 @@ enum wdrm_plane_property {
 	WDRM_PLANE_ZPOS,
 	WDRM_PLANE_ROTATION,
 	WDRM_PLANE_ALPHA,
+#ifdef QCOM_BSP
+	WDRM_SECURE_FB,
+#endif
 	WDRM_PLANE__COUNT
 };
 
@@ -266,7 +271,9 @@ enum wdrm_crtc_property {
 	WDRM_CRTC_GAMMA_LUT,
 	WDRM_CRTC_GAMMA_LUT_SIZE,
 	WDRM_CRTC_VRR_ENABLED,
-        WDRM_CRTC_PCC,
+#ifdef QCOM_BSP
+	WDRM_CRTC_PCC,
+#endif
 	WDRM_CRTC__COUNT
 };
 
@@ -698,11 +705,13 @@ struct drm_output {
 
 	enum wdrm_content_type content_type;
 
+#ifdef QCOM_BSP
 	/* PCC (Post Color Correction), per-CRTC persistent state */
 	bool pcc_enabled;        /* true: PCC is active on this output */
 	bool pcc_needs_update;   /* true: new values pending, must re-submit */
 	struct drm_msm_pcc pcc_conf;
 	uint32_t pcc_blob_id;    /* cached DRM blob; 0 = needs (re)creation */
+#endif
 };
 
 void
