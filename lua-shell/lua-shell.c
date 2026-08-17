@@ -724,6 +724,23 @@ lua_shell_binding_destroy(struct lua_shell_binding *shbinding)
 	free(shbinding);
 }
 
+static struct lua_shell_view *
+get_main_lua_shell_view(struct weston_view *view)
+{
+	/**
+	 * shell views are not created for subsurfaces. So walk the parent tree
+	 * to retrieve main to e.g. give focus to.
+	 */
+
+	if (!view)
+		return NULL;
+
+	while (view->parent_view)
+		view = view->parent_view;
+
+	return get_lua_shell_view(view);
+}
+
 static void
 button_binding_cb(struct weston_pointer *pointer,
 		  const struct timespec *time,
@@ -731,20 +748,16 @@ button_binding_cb(struct weston_pointer *pointer,
 {
 	struct lua_shell_binding *shbinding = data;
 	struct lua_shell *ls = shbinding->shell;
-	struct lua_shell_view *shview = NULL;
+	struct lua_shell_view *shview = get_main_lua_shell_view(pointer->focus);
 	struct lua_shell_seat *shseat = get_lua_shell_seat(pointer->seat);
 
 	lua_rawgeti(ls->lua, LUA_REGISTRYINDEX, shbinding->callback_regid);
 
-	if (pointer->focus) {
-		shview = get_lua_shell_view(pointer->focus);
-		if (!shview)
-			return;
-
+	if (shview)
 		lua_rawgeti(ls->lua, LUA_REGISTRYINDEX, shview->lua_regid);
-	} else {
+	else
 		lua_pushnil(ls->lua);
-	}
+
 	lua_rawgeti(ls->lua, LUA_REGISTRYINDEX, shseat->lua_regid);
 	lua_pushnumber(ls->lua, button);
 	lua_shell_call_function(ls, "[button callback]", 3, 0);
@@ -780,17 +793,16 @@ touch_binding_cb(struct weston_touch *touch,
 {
 	struct lua_shell_binding *shbinding = data;
 	struct lua_shell *ls = shbinding->shell;
-	struct lua_shell_view *shview = NULL;
+	struct lua_shell_view *shview = get_main_lua_shell_view(touch->focus);
 	struct lua_shell_seat *shseat = get_lua_shell_seat(touch->seat);
 
 	lua_rawgeti(ls->lua, LUA_REGISTRYINDEX, shbinding->callback_regid);
 
-	if (touch->focus) {
-		shview = get_lua_shell_view(touch->focus);
+	if (shview)
 		lua_rawgeti(ls->lua, LUA_REGISTRYINDEX, shview->lua_regid);
-	} else {
+	else
 		lua_pushnil(ls->lua);
-	}
+
 	lua_rawgeti(ls->lua, LUA_REGISTRYINDEX, shseat->lua_regid);
 	lua_shell_call_function(ls, "[touch callback]", 2, 0);
 }
