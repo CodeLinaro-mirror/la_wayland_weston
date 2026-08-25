@@ -137,7 +137,12 @@ drm_assign_planes(struct weston_output *output_base)
 
 		buffer = ev->surface->buffer_ref.buffer;
 
-		if (!buffer) {
+		if (device->sprites_are_broken) {
+		    /* WESTON_FORCE_RENDERER (or non-atomic KMS) forces every
+		     * layer onto the GPU/FB target by marking it as skip, so
+		     * SDM will not assign it to a hardware overlay. */
+		    is_skip = true;
+		} else if (!buffer) {
 		    is_skip = true;
 		} else if ((buffer->type == WESTON_BUFFER_DMABUF) ||
 				(buffer->type == WESTON_BUFFER_GBMBUF)) {
