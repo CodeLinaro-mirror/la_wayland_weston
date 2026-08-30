@@ -247,7 +247,7 @@ DisplayError SdmDisplay::PFlip(int fd, unsigned int sequence, unsigned int tv_se
     return kErrorNone;
 }
 
-DisplayError SdmDisplay::Refresh() {
+DisplayError SdmDisplay::Refresh(RefreshType type) {
     RefreshCallback();
     return kErrorNone;
 }
