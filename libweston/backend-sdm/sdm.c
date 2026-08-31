@@ -706,6 +706,8 @@ drm_output_apply_pluggable_mode(struct weston_output *output_base,
 		return ret;
 	}
 
+	weston_output_damage(output_base);
+
 	return 0;
 }
 
