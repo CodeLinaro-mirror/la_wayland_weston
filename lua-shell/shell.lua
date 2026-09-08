@@ -326,10 +326,13 @@ function click_to_activate(focus_view, seat, button)
 
   if (active_view ~= nil) then
     active_view:deactivate()
+    active_view = nil
   end
 
-  focus_view:activate(seat)
-  active_view = focus_view
+  if (focus_view ~= nil) then
+    focus_view:activate(seat)
+    active_view = focus_view
+  end
 end
 
 function my_init()
