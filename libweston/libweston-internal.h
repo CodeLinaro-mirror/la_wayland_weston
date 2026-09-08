@@ -247,7 +247,7 @@ struct weston_renderer {
 
 struct weston_tearing_control {
 	struct weston_surface *surface;
-	bool may_tear;
+	struct wl_listener surface_destroy_listener;
 };
 
 bool

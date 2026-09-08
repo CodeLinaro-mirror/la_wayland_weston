@@ -315,7 +315,8 @@ enum weston_paint_node_status {
 	WESTON_PAINT_NODE_PLANE_DIRTY = 1 << 3,
 	WESTON_PAINT_NODE_BUFFER_DIRTY = 1 << 4,
 	WESTON_PAINT_NODE_BUFFER_PARAMS_DIRTY = 1 << 5,
-	WESTON_PAINT_NODE_ALL_DIRTY = (1 << 6) - 1,
+	WESTON_PAINT_NODE_RATE_DIRTY = 1 << 6,
+	WESTON_PAINT_NODE_ALL_DIRTY = (1 << 7) - 1,
 };
 
 
@@ -1796,6 +1797,9 @@ enum weston_surface_status {
 	WESTON_SURFACE_DIRTY_SUBSURFACE_CONFIG = 1 << 5,
 	/** surface added a frame callback */
 	WESTON_SURFACE_DIRTY_FRAME_CALLBACK = 1 << 6,
+	/** protocol has changed the way the surface interacts
+	 *  with output timings */
+	WESTON_SURFACE_DIRTY_RATE = 1 << 7,
 };
 
 struct weston_surface_state {
@@ -1851,6 +1855,9 @@ struct weston_surface_state {
 	/* wp_color_representation_surface_v1.set_coefficients_and_range */
 	/* wp_color_representation_surface_v1.set_chroma_location */
 	struct weston_color_representation color_representation;
+
+	/* wp_tearing_control_v1 */
+	bool may_tear;
 
 	/* wp_fifo_v1 */
 	bool fifo_barrier;
@@ -2003,7 +2010,9 @@ struct weston_surface {
 	enum weston_hdcp_protection current_protection;
 	enum weston_surface_protection_mode protection_mode;
 
-	struct weston_tearing_control *tear_control;
+	/** tearing_control_v1 */
+	struct weston_tearing_control *tearing_control;
+	bool may_tear;
 
 	struct weston_color_profile *color_profile;
 	struct weston_color_profile *preferred_color_profile;

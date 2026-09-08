@@ -159,6 +159,8 @@ weston_surface_state_init(struct weston_surface *surface,
 
 	weston_reset_color_representation(&state->color_representation);
 
+	state->may_tear = false;
+
 	state->fifo_barrier = false;
 	state->fifo_wait = false;
 
@@ -508,6 +510,11 @@ weston_surface_apply_state(struct weston_surface *surface,
 	/* Surface is now quiescent */
 	surface->is_unmapping = false;
 	surface->is_mapping = false;
+
+	if (status & WESTON_SURFACE_DIRTY_RATE) {
+		surface->may_tear = state->may_tear;
+		weston_surface_dirty_paint_nodes(surface, WESTON_PAINT_NODE_RATE_DIRTY);
+	}
 
 	if (state->fifo_barrier)
 		weston_fifo_surface_set_barrier(surface);
