@@ -404,6 +404,12 @@ struct verify_image_target {
 	struct two_norm_tolerance tol;
 };
 
+/** +/- 1.0 / 255 on every channel = sqrt(3), approximated */
+#define WESTON_VERIFY_IMAGE_MAX_LIMIT_DEFAULT (1.74 / 255)
+
+/** +/- 0.5 / 255 on every channel = sqrt(0.75), approximated */
+#define WESTON_VERIFY_IMAGE_AVG_LIMIT_DEFAULT (0.87 / 255)
+
 bool
 verify_image(pixman_image_t *shot,
 	     const struct verify_image_target *vit,
