@@ -1831,8 +1831,9 @@ write_visual_diff(pixman_image_t *ref_image,
  * The shot image size and the reference image size must both contain
  * the clip rectangle.
  *
- * This function uses the pixel value allowed fuzz appropriate for GL-renderer
- * with 8 bits per channel data.
+ * If the error limits in \c vit are both exactly 0.0, then the internal
+ * defaults of \c WESTON_VERIFY_IMAGE_AVG_LIMIT_DEFAULT and
+ * \c WESTON_VERIFY_IMAGE_MAX_LIMIT_DEFAULT are used.
  *
  * \param shot The image to be verified, usually a screenshot.
  * \param vit The arguments; the reference image, the clip rectangle, error
@@ -1850,9 +1851,8 @@ verify_image(pixman_image_t *shot,
 	     int seq_no)
 {
 	struct two_norm_tolerance tol = {
-		/* +/- 4/255 on every channel + 1/255 for fixture 5 of icc_output_decorations test */
-		.max_limit = 9.0 / 255.0,
-		.avg_limit = -1.0,
+		.max_limit = WESTON_VERIFY_IMAGE_MAX_LIMIT_DEFAULT,
+		.avg_limit = WESTON_VERIFY_IMAGE_AVG_LIMIT_DEFAULT,
 	};
 	struct pixel_diff_limit lim = {
 		.mode = ALPHA_COMPARE,
