@@ -32,6 +32,39 @@
 
 #include "sdm-service/sdm_display_interface.h"
 
+/*! @brief C-visible copy of sdm::DisplayError.
+ *  Original: sdm/include/core/sdm_types.h (C++ enum in namespace sdm).
+ *  Keep in sync with the original when SDM is updated.
+*/
+typedef enum {
+  kErrorNone,             //!< Call executed successfully.
+  kErrorUndefined,        //!< An unspecified error has occured.
+  kErrorNotSupported,     //!< Requested operation is not supported.
+  kErrorPermission,       //!< Operation is not permitted in current state.
+  kErrorVersion,          //!< Client is using advanced version of interfaces and calling into an
+                          //!< older version of display library.
+  kErrorDataAlignment,    //!< Client data structures are not aligned on naturual boundaries.
+  kErrorInstructionSet,   //!< 32-bit client is calling into 64-bit library or vice versa.
+  kErrorParameters,       //!< Invalid parameters passed to a method.
+  kErrorFileDescriptor,   //!< Invalid file descriptor.
+  kErrorMemory,           //!< System is running low on memory.
+  kErrorResources,        //!< Not enough hardware resources available to execute call.
+  kErrorHardware,         //!< A hardware error has occured.
+  kErrorTimeOut,          //!< The operation has timed out to prevent client from waiting forever.
+  kErrorShutDown,         //!< Driver is processing shutdown sequence
+  kErrorPerfValidation,   //!< Bandwidth or Clock requirement validation failure.
+  kErrorNoAppLayers,      //!< No App layer(s) in the draw cycle.
+  kErrorRotatorValidation,  //!< Rotator configuration validation failure.
+  kErrorNotValidated,     //!< Draw cycle has not been validated.
+  kErrorCriticalResource,   //!< Critical resource allocation has failed.
+  kErrorDeviceRemoved,    //!< A device was removed unexpectedly.
+  kErrorDriverData,       //!< Expected information from the driver is missing.
+  kErrorDeferred,         //!< Call's intended action is being deferred to a later time.
+  kErrorNeedsCommit,      //!< Display is expecting a Commit() to be issued.
+  kErrorNeedsValidate,    //!< Validate Phase is needed for this draw cycle.
+  kErrorNeedsLutRegen,    //!< Tonemapping LUT regen is needed for this draw cycle.
+}  DisplayError;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -158,6 +191,47 @@ int Prepare(uint32_t display_id, struct drm_output *output);
 */
 int Commit(uint32_t display_id, struct drm_output *output);
 
+/*! @brief Method to obtain display property count for a display_id requested.
+    @details Client shall use this method to display properties of requested
+    display id.
+
+    @param[in] display_id \link int \endlink
+    @param[in] count \link display mode count \endlink
+
+    @return \link DisplayError \endlink
+
+    @sa
+*/
+DisplayError GetDisplayConfigCount(uint32_t display_id, uint32_t *count);
+
+/*! @brief Method to obtain display property for a display_id requested by index.
+    @details Client shall use this method to get display properties of requested
+    display id by index.
+
+    @param[in] display_id \link int \endlink
+    @param[in] index \link uint \endlink
+    @param[in] display_config \link struct DisplayConfigInfo \endlink
+
+    @return \link DisplayError \endlink
+
+    @sa
+*/
+DisplayError GetDisplayConfigurationByIndex(uint32_t display_id, uint32_t index,
+                                            struct DisplayConfigInfo *display_config);
+
+/*! @brief Method to set display property for a display_id requested by index.
+    @details Client shall use this method to set display properties of requested
+    display id by index.
+
+    @param[in] display_id \link int \endlink
+    @param[in] index \link uint \endlink
+
+    @return \link DisplayError \endlink
+
+    @sa
+*/
+DisplayError SetDisplayConfigurationByIndex(uint32_t display_id, uint32_t index);
+
 /*! @brief Method to obtain display property for a display_id requested.
     @details Client shall use this method to display properties of requested
     display id.
@@ -169,7 +243,7 @@ int Commit(uint32_t display_id, struct drm_output *output);
 
     @sa
 */
-bool GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config);
+DisplayError GetDisplayConfiguration(uint32_t display_id, struct DisplayConfigInfo *display_config);
 
 /*! @brief Method to Set display property for a display_id requested.
     @details Client shall use this method to display properties of requested

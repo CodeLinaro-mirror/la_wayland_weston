@@ -364,6 +364,8 @@ struct weston_output {
 	void (*destroy)(struct weston_output *output);
 	void (*assign_planes)(struct weston_output *output, void *repaint_data);
 	int (*switch_mode)(struct weston_output *output, struct weston_mode *mode);
+	int (*set_output_mode)(struct weston_output *output_base, int target_fps,
+			       int target_width, int target_height);
 
 	/* backlight values are on 0-255 range, where higher is brighter */
 	int32_t backlight_current;

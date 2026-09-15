@@ -51,6 +51,12 @@
 #include "sdm-service/sdm_display_connect.h"
 #include "screen-capture.h"
 
+/* From libweston/backend.h (internal); forward-declared here to avoid
+ * pulling in that header on this weston-10 tree, where its incidental
+ * declarations conflict with libweston.h and require extra transitive
+ * includes. */
+void weston_head_set_connection_status(struct weston_head *head, bool connected);
+
 
 static const char default_seat[] = "seat0";
 #define FENCE_TIMEOUT 1000
@@ -556,6 +562,213 @@ static int
 drm_output_init_pixman(struct drm_output *output, struct drm_backend *b);
 static void
 drm_output_fini_pixman(struct drm_output *output);
+static int
+drm_output_switch_mode(struct weston_output *output_base,
+		       struct weston_mode *mode);
+
+
+static bool
+drm_output_is_pluggable(struct drm_output *output)
+{
+	return GetConnectorType(output->display_id) == 1; /* kPluggable */
+}
+
+static int
+drm_output_apply_mode(struct drm_output *output)
+{
+	struct drm_backend *b = to_drm_backend(output->base.compositor);
+
+	b->state_invalid = true;
+
+	if (b->use_pixman) {
+		drm_output_fini_pixman(output);
+		if (drm_output_init_pixman(output, b) < 0) {
+			weston_log("failed to init output pixman state with "
+				   "new mode\n");
+			return -1;
+		}
+	} else {
+		drm_output_fini_egl(output);
+		if (drm_output_init_egl(output, b) < 0) {
+			weston_log("failed to init output egl state with "
+				   "new mode");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+/*
+ * switch_mode callback used for pluggable (DP) outputs, installed only for the
+ * duration of drm_output_apply_pluggable_mode().
+ *
+ * The SDM display is still destroyed and recreated, but clients see a
+ * wl_output.mode change instead of a global remove/create cycle.
+ */
+static int
+drm_output_switch_mode_pluggable(struct weston_output *output_base,
+				 struct weston_mode *mode)
+{
+	struct drm_output *output = to_drm_output(output_base);
+	struct drm_mode *target = to_drm_mode(mode);
+	uint32_t display_id = output->display_id;
+	sdm_cbs_t sdm_cbs;
+	int ret = 0;
+
+	/* Stop vsync delivery and drop in-flight frame state before pulling the
+	 * SDM display out from under the output. */
+	drm_output_disable_vblank(output);
+	ClearSDMLayers(output);
+
+	if (output->next_fb) {
+		drm_fb_unref(output->next_fb);
+		output->next_fb = NULL;
+	}
+	output->page_flip_pending = false;
+	output->atomic_complete_pending = false;
+	output->commit_pending = false;
+	if (output_base->repaint_status == REPAINT_AWAITING_COMPLETION) {
+		output_base->repaint_status = REPAINT_NOT_SCHEDULED;
+		output_base->repaint_needed = false;
+	}
+	if (output->pageflip_timer)
+		wl_event_source_timer_update(output->pageflip_timer, 0);
+
+	/* Must precede the framebuffer rebuild: drm_output_init_pixman() and
+	 * drm_output_init_egl() both size the buffers from current_mode. */
+	output->base.current_mode->flags = 0;
+	output->base.current_mode = &target->base;
+	output->base.current_mode->flags =
+		WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED;
+
+	DestroyDisplay(display_id);
+
+	ret = CreateDisplay(display_id);
+	if (ret) {
+		weston_log("%s: CreateDisplay failed ret=%d\n", __func__, ret);
+		return -1;
+	}
+	sdm_cbs.vblank_cb = vblank_handler;
+	sdm_cbs.hotplug_cb = hotplug_handler;
+	RegisterCbs(display_id, &sdm_cbs);
+
+	/* Also re-programs mixer and fb to the new size; otherwise the output
+	 * renders into a small top-left corner of the panel. */
+	ret = SetDisplayConfigurationByIndex(display_id, target->index);
+	if (ret) {
+		weston_log("%s: SetDisplayConfigurationByIndex(%u) failed ret=%d\n",
+			   __func__, target->index, ret);
+		return -1;
+	}
+
+	SetDisplayState(display_id, WESTON_DPMS_ON);
+	output->dpms = WESTON_DPMS_ON;
+
+	/* first_cycle is normally set in drm_output_create(); the output is not
+	 * recreated here, so re-arm it by hand or the first frame after the
+	 * rebuild never forces the damage that restarts the repaint loop. */
+	output->first_cycle = true;
+
+	/* Resizes the renderer buffers to current_mode and rebuilds the
+	 * egl/pixman state; also sets state_invalid. */
+	if (drm_output_apply_mode(output) < 0)
+		return -1;
+
+	if (drm_output_enable_vblank(output) < 0) {
+		weston_log("%s: failed to re-create vblank event\n", __func__);
+		return -1;
+	}
+
+	return 0;
+}
+
+/*
+ * Switch a pluggable display to a new mode while keeping the weston_output --
+ * and therefore the wl_output global -- alive.
+ */
+static int
+drm_output_apply_pluggable_mode(struct weston_output *output_base,
+				struct drm_mode *target)
+{
+	struct drm_output *output = to_drm_output(output_base);
+	int ret = 0;
+
+	output->base.switch_mode = drm_output_switch_mode_pluggable;
+	ret = weston_output_mode_set_native(output_base, &target->base,
+					    output_base->current_scale);
+	output->base.switch_mode = drm_output_switch_mode;
+
+	if (ret) {
+		weston_log("%s: mode switch to %dx%d@%d failed ret=%d\n",
+			   __func__, target->base.width, target->base.height,
+			   target->base.refresh / 1000, ret);
+		return ret;
+	}
+
+	weston_output_damage(output_base);
+
+	return 0;
+}
+
+struct drm_pluggable_modeset {
+	struct weston_output *output_base;
+	struct weston_compositor *compositor;
+	struct drm_mode *target;
+	struct wl_event_source *idle_source;
+};
+
+static void
+drm_output_pluggable_modeset_idle(void *data)
+{
+	struct drm_pluggable_modeset *ms = data;
+	struct weston_output *output;
+	bool output_alive = false;
+
+	wl_list_for_each(output, &ms->compositor->output_list, link) {
+		if (output == ms->output_base) {
+			output_alive = true;
+			break;
+		}
+	}
+
+	if (output_alive)
+		drm_output_apply_pluggable_mode(ms->output_base, ms->target);
+
+	free(ms);
+}
+
+/*
+ * Defer the switch to an idle task: it must not run inline while a
+ * weston_qti_extn request is being dispatched, or it re-enters the compositor
+ * and wedges the repaint loop.
+ */
+static int
+drm_output_schedule_pluggable_mode(struct weston_output *output_base,
+				   struct drm_mode *target)
+{
+	struct weston_compositor *compositor = output_base->compositor;
+	struct wl_event_loop *loop;
+	struct drm_pluggable_modeset *ms;
+
+	ms = zalloc(sizeof(*ms));
+	if (!ms)
+		return -1;
+
+	ms->output_base = output_base;
+	ms->compositor = compositor;
+	ms->target = target;
+
+	loop = wl_display_get_event_loop(compositor->wl_display);
+	ms->idle_source = wl_event_loop_add_idle(loop,
+				drm_output_pluggable_modeset_idle, ms);
+	if (!ms->idle_source) {
+		free(ms);
+		return -1;
+	}
+
+	return 0;
+}
 
 static int
 drm_output_switch_mode(struct weston_output *output_base, struct weston_mode *mode)
@@ -614,6 +827,35 @@ create_gbm_device(int fd)
 	gbm = gbm_create_device(fd);
 
 	return gbm;
+}
+
+static int
+drm_set_output_mode(struct weston_output *output_base, int target_fps,
+	    int target_width, int target_height)
+{
+	struct drm_output *output = to_drm_output(output_base);
+	struct drm_mode *mode = NULL;
+
+	/* Runtime mode switch is only supported on pluggable outputs (DP).
+	 * Internal panels (DSI) are intentionally excluded: their fps-only
+	 * switch path is not validated here and can wedge the repaint loop. */
+	if (!drm_output_is_pluggable(output)) {
+		weston_log("%s: '%s' is not pluggable, runtime mode switch not supported\n",
+			   __func__, output_base->name);
+		return -1;
+	}
+
+	wl_list_for_each(mode, &output->base.mode_list, base.link) {
+		if (mode->base.width == target_width &&
+		    mode->base.height == target_height &&
+		    mode->base.refresh == (target_fps * 1000)) {
+			return drm_output_schedule_pluggable_mode(output_base, mode);
+		}
+	}
+
+	weston_log("No matching mode found for %dx%d@%d\n",
+		   target_width, target_height, target_fps);
+	return -1;
 }
 
 static int
@@ -903,6 +1145,7 @@ drm_output_enable(struct weston_output *base)
 	output->base.set_dpms = drm_set_dpms;
 	output->base.switch_mode = drm_output_switch_mode;
 	output->base.set_backlight = drm_set_backlight;
+	output->base.set_output_mode = drm_set_output_mode;
 	output->base.backlight_current = drm_get_backlight(output->display_id);
 	output->base.set_gamma = NULL;
 
@@ -1087,9 +1330,9 @@ drm_head_create(struct drm_backend *backend, struct udev_device *drm_device, int
 		display_config.is_yuv          = false;
 	}
 
-	bool rc = GetDisplayConfiguration(display_id, &display_config);
+	DisplayError rc = GetDisplayConfiguration(display_id, &display_config);
 
-	if (rc != 0) {
+	if (rc == kErrorNone) {
 		width   = display_config.x_pixels;
 		height  = display_config.y_pixels;
 		refresh = display_config.fps*1000;
