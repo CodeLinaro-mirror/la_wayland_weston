@@ -36,6 +36,7 @@
 #include <utils/debug.h>
 #include <utils/constants.h>
 #include <utils/formats.h>
+#include <utils/utils.h>
 #include <stdio.h>
 #include <string>
 #include <utility>

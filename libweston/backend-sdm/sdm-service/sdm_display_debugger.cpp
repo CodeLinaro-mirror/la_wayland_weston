@@ -198,9 +198,15 @@ void SdmDisplayDebugger::config_debug_level(void) {
   //file to configure debug level
   fp = fopen("/data/misc/display/sdm_dbg_cfg.txt", "r");
   if (fp) {
-      fscanf(fp, "%d", &verbose_level_);
+      int layer_dump = 0;
+      // Format: "<sdm_verbose_level> [<layer_stack_dump>]"
+      int n = fscanf(fp, "%d %d", &verbose_level_, &layer_dump);
+      if (n >= 2) {
+          layer_dump_enable_ = (layer_dump != 0);
+      }
       DebugAll(true /* enable */, verbose_level_);
-      printf("\n sdm debug level configured to %d\n", verbose_level_);
+      printf("\n sdm debug level configured to %d, layer stack dump %s\n",
+             verbose_level_, layer_dump_enable_ ? "enabled" : "disabled");
       fclose(fp);
   }
 }

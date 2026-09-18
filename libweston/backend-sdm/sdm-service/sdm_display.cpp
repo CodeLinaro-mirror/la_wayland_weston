@@ -92,8 +92,6 @@ namespace sdm {
 #define GET_CURSOR_SLOT(max_layers) ((max_layers) - 2)
 #define LEN_LOCAL 2048
 
-#define SDM_DISPLAY_DUMP_LAYER_STACK 0
-
 #define SDM_DEAFULT_NULL_DISPLAY_WIDTH 1920
 #define SDM_DEAFULT_NULL_DISPLAY_HEIGHT 1080
 #define SDM_DEAFULT_NULL_DISPLAY_FPS 60
@@ -1574,55 +1572,186 @@ DisplayError SdmDisplay::PostPrepare(struct drm_output *output)
     return error;
 }
 
-#if SDM_DISPLAY_DUMP_LAYER_STACK
-static void GetLayerStackDump(void *layerStack, char *buffer, uint32_t length) {
-  if (!buffer || !length) {
+#define APPEND(buf, off, ...) \
+  do { \
+    if ((off) < sizeof(buf)) { \
+      int _n = snprintf((buf) + (off), sizeof(buf) - (off), __VA_ARGS__); \
+      if (_n > 0) \
+        (off) += (_n < (int)(sizeof(buf) - (off)) ? _n : (int)(sizeof(buf) - (off) - 1)); \
+    } \
+  } while (0)
+
+static const char *WestonBufferTypeName(struct weston_buffer *buffer) {
+  if (!buffer)
+    return "none";
+
+  switch (buffer->type) {
+  case weston_buffer::WESTON_BUFFER_SHM:             return "SHM";
+  case weston_buffer::WESTON_BUFFER_DMABUF:          return "DMABUF";
+#ifdef QCOM_BSP
+  case weston_buffer::WESTON_BUFFER_GBMBUF:          return "GBM";
+#endif
+  case weston_buffer::WESTON_BUFFER_RENDERER_OPAQUE: return "RENDERER_OPAQUE";
+  case weston_buffer::WESTON_BUFFER_SOLID:           return "SOLID";
+  default:                                           return "UNKNOWN";
+  }
+}
+
+static void GetSurfaceClientInfo(struct weston_surface *surface,
+                                 pid_t *pid_out, char *name, size_t name_len) {
+  pid_t pid = -1;
+
+  if (name && name_len) {
+    name[0] = '\0';
+  }
+
+  if (surface && surface->resource) {
+    struct wl_client *client = wl_resource_get_client(surface->resource);
+    if (client) {
+      wl_client_get_credentials(client, &pid, NULL, NULL);
+    }
+  }
+
+  if (pid_out) {
+    *pid_out = pid;
+  }
+
+  if (name && name_len && pid > 0) {
+    char path[64] = {0};
+    snprintf(path, sizeof(path), "/proc/%d/comm", pid);
+    FILE *fp = fopen(path, "r");
+    if (fp) {
+      if (fgets(name, name_len, fp)) {
+        size_t n = strlen(name);
+        if (n > 0 && name[n - 1] == '\n')
+          name[n - 1] = '\0';
+      }
+      fclose(fp);
+    }
+  }
+}
+
+static void GetLayerStackDump(void *layerStack, struct drm_output *output,
+                              const char *disp_name) {
+  static int frame_count = 0;
+  struct LayerStack *layer_stack = reinterpret_cast<struct LayerStack *>(layerStack);
+
+  if (!layer_stack) {
     return;
   }
-  static int frame_count=0;
-  buffer[0] = '\0';
-  struct LayerStack *layer_stack;
-  layer_stack = reinterpret_cast<struct LayerStack *>(layerStack);
-  DLOGI("\n-------- Display Manager: Layer Stack Dump --------");
-  fprintf(stderr,"Frame:%d LayerStack: NumLayers:%d flags:0x%x\n",
-                frame_count, layer_stack->layers.size(), layer_stack->flags);
+
+  char flags_str[LEN_LOCAL] = {0};
+  size_t flags_off = 0;
+  const LayerStackFlags &sf = layer_stack->flags;
+  APPEND(flags_str, flags_off, "%s", sf.geometry_changed ? " geometry_changed" : "");
+  APPEND(flags_str, flags_off, "%s", sf.skip_present ? " skip_present" : "");
+  APPEND(flags_str, flags_off, "%s", sf.video_present ? " video_present" : "");
+  APPEND(flags_str, flags_off, "%s", sf.secure_present ? " secure_present" : "");
+  APPEND(flags_str, flags_off, "%s", sf.animating ? " animating" : "");
+  APPEND(flags_str, flags_off, "%s", sf.attributes_changed ? " attributes_changed" : "");
+  APPEND(flags_str, flags_off, "%s", sf.cursor_present ? " cursor_present" : "");
+  APPEND(flags_str, flags_off, "%s", sf.hdr_present ? " hdr_present" : "");
+  APPEND(flags_str, flags_off, "%s", sf.mask_present ? " mask_present" : "");
+  APPEND(flags_str, flags_off, "%s", sf.stitch_present ? " stitch_present" : "");
+  APPEND(flags_str, flags_off, "%s", sf.demura_present ? " demura_present" : "");
+
+  weston_log("\n");
+  weston_log("-------- Display Manager: Layer Stack Dump [%s] --------\n",
+        disp_name);
+  weston_log("[%s] Frame:%d LayerStack: NumLayers:%zu flags:0x%x [%s ]\n",
+        disp_name, frame_count, layer_stack->layers.size(),
+        sf.flags, flags_str);
 
   for (uint32_t i = 0; i < layer_stack->layers.size(); i++) {
       char buf[LEN_LOCAL] = {0};
+      size_t off = 0;
 
-      struct Layer *layer;
-      struct LayerBuffer buffer;
-      layer = layer_stack->layers.at(i);
-      buffer = layer->input_buffer;
+      struct Layer *layer = layer_stack->layers.at(i);
+      struct LayerBuffer &input_buffer = layer->input_buffer;
 
-      memset(buf, '\0', LEN_LOCAL);
-      snprintf(buf, sizeof(buf), "Layer: %d\n    width  = %d,     height = %d", i,
-        layer->input_buffer.width, layer->input_buffer.height);
-      snprintf(buf, sizeof(buf), "%s\n LayerComposition = %#x", buf, layer->composition);
-      snprintf(buf, sizeof(buf), "%s\n src_rect (LTRB) = %4.2f, %4.2f, %4.2f, %4.2f",
-        buf, layer->src_rect.left, layer->src_rect.top,
+      APPEND(buf, off, "Layer %d:\n", i);
+      APPEND(buf, off, "    width x height    = %d x %d\n",
+        input_buffer.width, input_buffer.height);
+      APPEND(buf, off, "    format            = %s\n",
+        GetFormatString(input_buffer.format));
+      APPEND(buf, off, "    src_rect (LTRB)   = %.2f, %.2f, %.2f, %.2f\n",
+        layer->src_rect.left, layer->src_rect.top,
         layer->src_rect.right, layer->src_rect.bottom);
-      snprintf(buf, sizeof(buf), "%s\n dst_rect (LTRB) = %4.2f, %4.2f, %4.2f, %4.2f", buf,
-        layer->dst_rect.left, layer->dst_rect.top, layer->dst_rect.right,
-        layer->dst_rect.bottom);
-      snprintf(buf, sizeof(buf), "%s\n LayerBlending = %#x", buf, layer->blending);
-      snprintf(buf, sizeof(buf), "%s\n LayerTransform:rotation= %f,flip_horizontal=%s,flip_vertical=%s",
-        buf, layer->transform.rotation, (layer->transform.flip_horizontal? \
-        "true":"false"), (layer->transform.flip_vertical? "true":"false"));
-      snprintf(buf, sizeof(buf), "%s\n Plane Alpha = %#x, frame_rate = %d,  solid_fill_color = %d",
-        buf, layer->plane_alpha, layer->frame_rate, layer->solid_fill_color);
-      snprintf(buf, sizeof(buf), "%s\n LayerFlags = %#x", buf, layer->flags);
-      snprintf(buf, sizeof(buf), "%s\t LayerFlags.skip = %d", buf, layer->flags.skip);
-      snprintf(buf, sizeof(buf), "%s\n LayerBuffer Flags: hdr:%d secure:%d video:%d", buf,
-                    buffer.flags.hdr, buffer.flags.secure, buffer.flags.video);
+      APPEND(buf, off, "    dst_rect (LTRB)   = %.2f, %.2f, %.2f, %.2f\n",
+        layer->dst_rect.left, layer->dst_rect.top,
+        layer->dst_rect.right, layer->dst_rect.bottom);
+      {
+        float src_w = layer->src_rect.right - layer->src_rect.left;
+        float src_h = layer->src_rect.bottom - layer->src_rect.top;
+        float dst_w = layer->dst_rect.right - layer->dst_rect.left;
+        float dst_h = layer->dst_rect.bottom - layer->dst_rect.top;
+        if (src_w > 0.0f && src_h > 0.0f && dst_w > 0.0f && dst_h > 0.0f) {
+          float sw = dst_w / src_w;
+          float sh = dst_h / src_h;
+          const char *tag = (sw > 1.0f || sh > 1.0f) ? "UPSCALE" :
+                            (sw < 1.0f || sh < 1.0f) ? "DOWNSCALE" : "1:1";
+          APPEND(buf, off, "    scale (W x H)     = %gx x %gx  [%s]\n", sw, sh, tag);
+        }
+      }
+      APPEND(buf, off, "    LayerBlending     = %#x\n", layer->blending);
+      APPEND(buf, off, "    Transform         = rotation:%.1f flip_h:%s flip_v:%s\n",
+        layer->transform.rotation, (layer->transform.flip_horizontal ? "true":"false"),
+        (layer->transform.flip_vertical ? "true":"false"));
+      APPEND(buf, off, "    PlaneAlpha        = %#x, solid_fill_color = %d\n",
+        layer->plane_alpha, layer->solid_fill_color);
+      APPEND(buf, off, "    LayerFlags        = %#x (skip:%d)\n",
+        layer->flags.flags, layer->flags.skip);
+      APPEND(buf, off, "    LayerBuffer Flags = hdr:%d secure:%d video:%d",
+        input_buffer.flags.hdr, input_buffer.flags.secure, input_buffer.flags.video);
 
-      fprintf(stderr,"\n%s\n", buf);
+      weston_log("%s\n", buf);
   }
+
+  if (output) {
+      struct sdm_layer *sdm_layer = nullptr;
+      uint32_t idx = 0;
+
+      weston_log("Client input buffers:\n");
+      wl_list_for_each_reverse(sdm_layer, &output->sdm_layer_list, link) {
+          struct weston_surface *surface =
+              (sdm_layer->pnode && sdm_layer->pnode->view) ?
+                  sdm_layer->pnode->view->surface : nullptr;
+          struct weston_buffer *buffer = sdm_layer->fb ?
+              sdm_layer->buffer_ref.buffer :
+              (surface ? surface->buffer_ref.buffer : nullptr);
+          pid_t pid = -1;
+          char cname[64] = {0};
+
+          GetSurfaceClientInfo(surface, &pid, cname, sizeof(cname));
+
+          weston_log("    view %u: buffer_type = %s client = %s(pid %d) "
+              "(cursor:%d scanout:%d skip:%d)\n",
+              idx++, WestonBufferTypeName(buffer),
+              cname[0] ? cname : "unknown", pid,
+              sdm_layer->is_cursor, sdm_layer->is_scanout, sdm_layer->is_skip);
+      }
+  }
+
   frame_count++;
 
   return;
 }
-#endif
+#undef APPEND
+
+static void GetCompositionDump(void *layerStack, const char *disp_name) {
+  struct LayerStack *layer_stack = reinterpret_cast<struct LayerStack *>(layerStack);
+
+  if (!layer_stack) {
+    return;
+  }
+
+  weston_log("-------- SDM Composition Decision [%s] --------\n", disp_name);
+  for (uint32_t i = 0; i < layer_stack->layers.size(); i++) {
+      struct Layer *layer = layer_stack->layers.at(i);
+      weston_log("    Layer %u: %s (%#x)\n",
+          i, GetCompositionName(layer->composition), layer->composition);
+  }
+}
 
 DisplayError SdmDisplay::Prepare(struct drm_output *output)
 {
@@ -1632,10 +1761,6 @@ DisplayError SdmDisplay::Prepare(struct drm_output *output)
       return kErrorNotSupported;
     }
 
-#if SDM_DISPLAY_DUMP_LAYER_STACK
-    char dump_buffer[8192] = {0};
-#endif
-
     error = PrePrepare(output);
     if (error != kErrorNone) {
         DLOGE("failed during PrePrepare");
@@ -1643,10 +1768,10 @@ DisplayError SdmDisplay::Prepare(struct drm_output *output)
 
     HandleInputDump(output);
 
-#if SDM_DISPLAY_DUMP_LAYER_STACK
-    // Dump all input layers of the layer stack:
-    GetLayerStackDump(&layer_stack_, dump_buffer, sizeof(dump_buffer));
-#endif
+    if (SdmDisplayDebugger::LayerStackDumpEnabled()) {
+        GetLayerStackDump(&layer_stack_, output,
+            (output && output->base.name) ? output->base.name : GetDisplayString());
+    }
 
     if (display_type_ == kVirtual) {
         layer_stack_.output_buffer = std::make_shared<sdm::LayerBuffer>(output_buffer_);
@@ -1739,6 +1864,11 @@ DisplayError SdmDisplay::Commit(struct drm_output *output)
     if (ret != kErrorNone) {
         DLOGE("PreCommit failed!");
         ret = kErrorNone;
+    }
+
+    if (SdmDisplayDebugger::LayerStackDumpEnabled()) {
+        GetCompositionDump(&layer_stack_,
+            (output && output->base.name) ? output->base.name : GetDisplayString());
     }
 
     prev_output_ = output;
