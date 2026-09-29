@@ -84,7 +84,7 @@
 
 #define __CLASS__ "SdmDisplay"
 extern "C" void NotifyOnRefresh(struct drm_output *);
-extern "C" void NotifyOnQdcmRefresh(struct drm_output *);
+extern "C" void NotifyOnOutputRefresh(struct drm_output *);
 
 namespace sdm {
 #define GET_GPU_TARGET_SLOT(max_layers) ((max_layers) - 1)
@@ -247,7 +247,7 @@ DisplayError SdmDisplay::PFlip(int fd, unsigned int sequence, unsigned int tv_se
     return kErrorNone;
 }
 
-DisplayError SdmDisplay::Refresh() {
+DisplayError SdmDisplay::Refresh(RefreshType type) {
     RefreshCallback();
     return kErrorNone;
 }
@@ -278,7 +278,7 @@ DisplayError SdmDisplay::HistogramEvent(int /* fd */, uint32_t /* blob_fd */) {
 void SdmDisplay::RefreshCallback()
 {
     if (drm_output_) {
-      NotifyOnQdcmRefresh(drm_output_);
+      NotifyOnOutputRefresh(drm_output_);
     }
 }
 
@@ -426,6 +426,21 @@ DisplayError SdmDisplay::SetDisplayConfigurationByIndex(uint32_t index) {
     }
 
     fps_  = disp_config.fps;
+
+    error = display_intf_->SetMixerResolution(disp_config.x_pixels,
+                                              disp_config.y_pixels);
+    if (error != kErrorNone && error != kErrorNotSupported) {
+        DLOGE("SetMixerResolution(%ux%u) failed: %d",
+              disp_config.x_pixels, disp_config.y_pixels, error);
+        return error;
+    }
+
+    error = display_intf_->SetFrameBufferConfig(disp_config);
+    if (error != kErrorNone) {
+        DLOGE("SetFrameBufferConfig(%ux%u) failed: %d",
+              disp_config.x_pixels, disp_config.y_pixels, error);
+        return error;
+    }
 
     return kErrorNone;
 }
@@ -1002,11 +1017,76 @@ DisplayError SdmDisplay::UpdateMetaData(sdm::Layer *layer, struct LayerGeometry 
             }
         }
 
+        if (src->color_metadata.dynamicMetaDataValid &&
+            src->color_metadata.dynamicMetaDataLen > 0) {
+            const uint32_t raw_dynamic_metadata_len =
+                static_cast<uint32_t>(src->color_metadata.dynamicMetaDataLen);
+            const size_t max_dynamic_metadata_len =
+                sizeof(dst->dynamicMetadata.dynamicMetaDataPayload);
+
+            if (static_cast<size_t>(raw_dynamic_metadata_len) <=
+                max_dynamic_metadata_len) {
+                const size_t dynamic_metadata_len =
+                    static_cast<size_t>(raw_dynamic_metadata_len);
+
+            const bool dynamic_metadata_changed =
+                !dst->dynamicMetadata.dynamicMetaDataValid ||
+                dst->dynamicMetadata.dynamicMetaDataLen != raw_dynamic_metadata_len ||
+                memcmp(dst->dynamicMetadata.dynamicMetaDataPayload,
+                       src->color_metadata.dynamicMetaDataPayload,
+                       dynamic_metadata_len) != 0;
+
+            if (dynamic_metadata_changed) {
+                dst->dynamicMetadata.dynamicMetaDataValid = true;
+                dst->dynamicMetadata.dynamicMetaDataLen = raw_dynamic_metadata_len;
+
+                memcpy(dst->dynamicMetadata.dynamicMetaDataPayload,
+                       src->color_metadata.dynamicMetaDataPayload,
+                       dynamic_metadata_len);
+
+                metadata_changed = true;
+        }
+
+            } else {
+                DLOGW("HDR Vivid dynamic metadata len too large: len=%u, max=%zu, dropping",
+                      raw_dynamic_metadata_len,
+                      max_dynamic_metadata_len);
+
+                if (dst->dynamicMetadata.dynamicMetaDataValid ||
+                    dst->dynamicMetadata.dynamicMetaDataLen != 0) {
+                    dst->dynamicMetadata.dynamicMetaDataValid = false;
+                    dst->dynamicMetadata.dynamicMetaDataLen = 0;
+
+                    metadata_changed = true;
+
+                    DLOGD("HDR Vivid dynamic metadata cleared");
+                }
+            }
+        } else {
+            if (dst->dynamicMetadata.dynamicMetaDataValid ||
+                dst->dynamicMetadata.dynamicMetaDataLen != 0) {
+                dst->dynamicMetadata.dynamicMetaDataValid = false;
+                dst->dynamicMetadata.dynamicMetaDataLen = 0;
+
+                metadata_changed = true;
+
+                DLOGD("HDR Vivid dynamic metadata cleared");
+            }
+        }
+
         // Set update flag if content metadata has changed
         if (metadata_changed) {
             layer->update_mask.set(kContentMetadata);
             DLOGD("BT2020 content metadata changed");
         }
+    } else if (dst->dynamicMetadata.dynamicMetaDataValid ||
+               dst->dynamicMetadata.dynamicMetaDataLen != 0) {
+               // Clear stale HDR Vivid metadata when switching from BT2020 to non-BT2020.
+               dst->dynamicMetadata.dynamicMetaDataValid = false;
+               dst->dynamicMetadata.dynamicMetaDataLen = 0;
+               layer->update_mask.set(kContentMetadata);
+
+               DLOGD("Non-BT2020: HDR Vivid dynamic metadata cleared");
     }
 
     return kErrorNone;
@@ -2137,8 +2217,20 @@ DisplayError SdmDisplay::SetHWDetailedEnhancerConfig(void *params) {
         de_tuning_cfg_data->params.de_lpf_h, de_tuning_cfg_data->params.de_lpf_m,
         de_tuning_cfg_data->params.de_lpf_l);
 #endif
+#ifdef DISP_DE_VER_3005
+      DLOGV_IF(kTagQDCM,
+               "sharpen_level1 %d, sharpen_level2 %d, filter_config %d, "
+               "polarity_en %d, halo suppress factor %d, detail suppress factor %d, "
+               "optimization mode %d",
+               de_tuning_cfg_data->params.sharpen_level1,
+               de_tuning_cfg_data->params.sharpen_level2,
+               de_tuning_cfg_data->params.filter_config,
+               de_tuning_cfg_data->params.polarity_en,
+               de_tuning_cfg_data->params.halo_suppression_factor,
+               de_tuning_cfg_data->params.detail_suppression_factor,
+               de_tuning_cfg_data->params.optimization_mode);
+#endif
       if (de_tuning_cfg_data->params.flags & kDeTuningFlagSharpFactor) {
-        de_data.override_flags |= kOverrideDESharpen1;
         de_data.sharp_factor = de_tuning_cfg_data->params.sharp_factor;
       }
 
@@ -2178,6 +2270,11 @@ DisplayError SdmDisplay::SetHWDetailedEnhancerConfig(void *params) {
           case kDeContentQualHigh:
             de_data.quality_level = kContentQualityHigh;
             break;
+#ifdef DISP_DE_VER_3005
+          case kDeContentQualExtreme:
+            de_data.quality_level = kContentQualityExtreme;
+            break;
+#endif
           case kDeContentQualUnknown:
           default:
             de_data.quality_level = kContentQualityUnknown;
@@ -2209,6 +2306,68 @@ DisplayError SdmDisplay::SetHWDetailedEnhancerConfig(void *params) {
         de_data.de_lpf_h = de_tuning_cfg_data->params.de_lpf_h;
         de_data.de_lpf_m = de_tuning_cfg_data->params.de_lpf_m;
         de_data.de_lpf_l = de_tuning_cfg_data->params.de_lpf_l;
+      }
+#endif
+#ifdef DISP_DE_VER_3005
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagSharpenLevel1) {
+        de_data.override_flags |= kOverrideDESharpen1;
+        de_data.sharpen_level1 = de_tuning_cfg_data->params.sharpen_level1;
+      }
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagSharpenLevel2) {
+        de_data.override_flags |= kOverrideDESharpen2;
+        de_data.sharpen_level2 = de_tuning_cfg_data->params.sharpen_level2;
+      }
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagPolarityEn) {
+        de_data.override_flags |= kOverrideDEPolarityEn;
+        de_data.polarity_en = de_tuning_cfg_data->params.polarity_en;
+      }
+
+      de_data.halo_suppression_factor = de_tuning_cfg_data->params.halo_suppression_factor;
+      de_data.detail_suppression_factor = de_tuning_cfg_data->params.detail_suppression_factor;
+
+      if (de_tuning_cfg_data->params.flags & kDeTuningFlagFilterConfig) {
+        de_data.override_flags |= kOverrideDEFilterConfig;
+        switch (de_tuning_cfg_data->params.filter_config) {
+          case kDeFilterEdgeDirected:
+            de_data.filter_config = kFilterEdgeDirected;
+            break;
+          case kDeFilterCircular:
+            de_data.filter_config = kFilterCircular;
+            break;
+          case kDeFilterSeparable:
+            de_data.filter_config = kFilterSeparable;
+            break;
+          case kDeFilterBilinear:
+            de_data.filter_config = kFilterBilinear;
+            break;
+          default:
+            de_data.filter_config = kFilterMax;
+            de_data.override_flags &= ~kOverrideDEFilterConfig;
+            break;
+        }
+      }
+
+      switch (de_tuning_cfg_data->params.optimization_mode) {
+        case kDeOptimizationQuality:
+          de_data.optimization_mode = kOptimizationQuality;
+          break;
+        case kDeOptimizationBalanced:
+          de_data.optimization_mode = kOptimizationBalanced;
+          break;
+        case kDeOptimizationPower:
+          de_data.optimization_mode = kOptimizationPower;
+          break;
+        case kDeOptimizationBalancedHigh:
+          de_data.optimization_mode = kOptimizationBalancedHigh;
+          break;
+        case kDeOptimizationBalancedLow:
+          de_data.optimization_mode = kOptimizationBalancedLow;
+          break;
+        default:
+          de_data.optimization_mode = kOptimizationQuality;
+          break;
       }
 #endif
     }

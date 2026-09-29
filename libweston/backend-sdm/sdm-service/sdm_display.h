@@ -297,7 +297,7 @@ class SdmDisplay : public SdmDisplayInterface, DisplayEventHandler, SdmDisplayDe
 
     /*! @brief Event handler for events received by Display HAL. */
     virtual DisplayError HandleEvent(DisplayEvent event);
-    virtual DisplayError Refresh();
+    virtual DisplayError Refresh(RefreshType type);
     virtual void MMRMEvent(bool restricted){
       return;
     }

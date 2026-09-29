@@ -38,6 +38,7 @@
 #include <gbm_priv.h>
 #include "sdm-internal.h"
 #include <libweston/libweston.h>
+#include "backend.h"
 #include "sdm-service/sdm_display_connect.h"
 #include "shared/string-helpers.h"
 #include "shared/timespec-util.h"
@@ -215,6 +216,62 @@ drm_output_disable_vblank(struct drm_output *output)
 	}
 
 	SetVSyncState(output->display_id, false, output);
+}
+
+static int
+on_output_refresh(int fd, uint32_t mask, void *data)
+{
+	struct drm_output *output = (struct drm_output *) data;
+	uint64_t v = 0;
+	int ret = 0;
+
+	ret = read(fd, &v, sizeof(v));
+	if (ret != sizeof(v)) {
+		weston_log("[on_output_refresh] read len mismatch!\n");
+		return 0;
+	}
+
+	if (!output || !output->base.enabled)
+		return 0;
+
+	/* Safely on the compositor main thread now. */
+	weston_output_damage(&output->base);
+	return 0;
+}
+
+static int
+drm_output_enable_refresh_ev(struct drm_output *output)
+{
+	struct wl_event_loop *loop = NULL;
+
+	output->output_refresh_ev_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+	if (output->output_refresh_ev_fd < 0)
+		return -1;
+
+	loop = wl_display_get_event_loop(output->base.compositor->wl_display);
+	output->output_refresh_ev_source =
+		wl_event_loop_add_fd(loop, output->output_refresh_ev_fd,
+				     WL_EVENT_READABLE, on_output_refresh, output);
+	if (!output->output_refresh_ev_source) {
+		close(output->output_refresh_ev_fd);
+		output->output_refresh_ev_fd = -1;
+		return -1;
+	}
+	return 0;
+}
+
+static void
+drm_output_disable_refresh_ev(struct drm_output *output)
+{
+	if (output->output_refresh_ev_source != NULL) {
+		wl_event_source_remove(output->output_refresh_ev_source);
+		output->output_refresh_ev_source = NULL;
+	}
+
+	if (output->output_refresh_ev_fd != -1) {
+		close(output->output_refresh_ev_fd);
+		output->output_refresh_ev_fd = -1;
+	}
 }
 
 static int
@@ -585,6 +642,187 @@ static int
 drm_output_init_pixman(struct drm_output *output, struct drm_backend *b);
 static void
 drm_output_fini_pixman(struct drm_output *output);
+static int
+drm_output_switch_mode(struct weston_output *output_base,
+		       struct weston_mode *mode);
+
+#ifdef QCOM_BSP
+static bool
+drm_output_is_pluggable(struct drm_output *output)
+{
+	return GetConnectorType(output->display_id) == 1; /* kPluggable */
+}
+
+/*
+ * switch_mode callback used for pluggable (DP) outputs, installed only for the
+ * duration of drm_output_apply_pluggable_mode().
+ *
+ * The SDM display is still destroyed and recreated, but clients see a
+ * wl_output.mode change instead of a global remove/create cycle.
+ */
+static int
+drm_output_switch_mode_pluggable(struct weston_output *output_base,
+				 struct weston_mode *mode)
+{
+	struct drm_output *output = to_drm_output(output_base);
+	struct drm_mode *target = to_drm_mode(mode);
+	uint32_t display_id = output->display_id;
+	sdm_cbs_t sdm_cbs;
+	int ret = 0;
+
+	/* Stop vsync delivery and drop in-flight frame state before pulling the
+	 * SDM display out from under the output.  */
+	drm_output_disable_vblank(output);
+	ClearSDMLayers(output);
+
+	if (output->next_fb) {
+		drm_fb_unref(output->next_fb);
+		output->next_fb = NULL;
+	}
+	output->page_flip_pending = false;
+	output->atomic_complete_pending = false;
+	output->commit_pending = false;
+	output->mode_switch_pending = false;
+	if (output_base->repaint_status == REPAINT_AWAITING_COMPLETION) {
+		output_base->repaint_status = REPAINT_NOT_SCHEDULED;
+		output_base->repaint_needed = false;
+	}
+	if (output->pageflip_timer)
+		wl_event_source_timer_update(output->pageflip_timer, 0);
+
+	/* Must precede the framebuffer rebuild: drm_output_init_pixman() and
+	 * drm_output_init_egl() both size the buffers from current_mode. */
+	output->base.current_mode->flags = 0;
+	output->base.current_mode = &target->base;
+	output->base.current_mode->flags =
+		WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED;
+
+	DestroyDisplay(display_id);
+
+	ret = CreateDisplay(display_id);
+	if (ret) {
+		weston_log("%s: CreateDisplay failed ret=%d\n", __func__, ret);
+		return -1;
+	}
+	sdm_cbs.vblank_cb = vblank_handler;
+	sdm_cbs.hotplug_cb = hotplug_handler;
+	RegisterCbs(display_id, &sdm_cbs);
+
+	/* Also re-programs mixer and fb to the new size; otherwise the output
+	 * renders into a small top-left corner of the panel. */
+	ret = SetDisplayConfigurationByIndex(display_id, target->index);
+	if (ret) {
+		weston_log("%s: SetDisplayConfigurationByIndex(%u) failed ret=%d\n",
+			   __func__, target->index, ret);
+		return -1;
+	}
+
+	SetDisplayState(display_id, WESTON_DPMS_ON);
+	output->dpms = WESTON_DPMS_ON;
+
+	/* first_cycle is normally set in drm_output_create(); the output is not
+	 * recreated here, so re-arm it by hand or the first frame after the
+	 * rebuild never forces the damage that restarts the repaint loop. */
+	output->first_cycle = true;
+
+	/* Resizes the renderer buffers to current_mode and rebuilds the
+	 * egl/pixman state; also sets device->state_invalid. */
+	if (drm_output_apply_mode(output) < 0)
+		return -1;
+
+	if (drm_output_enable_vblank(output) < 0) {
+		weston_log("%s: failed to re-create vblank event\n", __func__);
+		return -1;
+	}
+
+	return 0;
+}
+
+/*
+ * Switch a pluggable display to a new mode while keeping the weston_output --
+ * and therefore the wl_output global -- alive.
+ */
+static int
+drm_output_apply_pluggable_mode(struct weston_output *output_base,
+				struct drm_mode *target)
+{
+	struct drm_output *output = to_drm_output(output_base);
+	int ret = 0;
+
+	output->base.switch_mode = drm_output_switch_mode_pluggable;
+	ret = weston_output_mode_set_native(output_base, &target->base,
+					    output_base->current_scale);
+	output->base.switch_mode = drm_output_switch_mode;
+
+	if (ret) {
+		weston_log("%s: mode switch to %dx%d@%d failed ret=%d\n",
+			   __func__, target->base.width, target->base.height,
+			   target->base.refresh / 1000, ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+struct drm_pluggable_modeset {
+	struct weston_output *output_base;
+	struct weston_compositor *compositor;
+	struct drm_mode *target;
+	struct wl_event_source *idle_source;
+};
+
+static void
+drm_output_pluggable_modeset_idle(void *data)
+{
+	struct drm_pluggable_modeset *ms = data;
+	struct weston_output *output;
+	bool output_alive = false;
+
+	wl_list_for_each(output, &ms->compositor->output_list, link) {
+		if (output == ms->output_base) {
+			output_alive = true;
+			break;
+		}
+	}
+
+	if (output_alive)
+		drm_output_apply_pluggable_mode(ms->output_base, ms->target);
+
+	free(ms);
+}
+
+/*
+ * Defer the switch to an idle task: it must not run inline while a
+ * weston_qti_extn request is being dispatched, or it re-enters the compositor
+ * and wedges the repaint loop.
+ */
+static int
+drm_output_schedule_pluggable_mode(struct weston_output *output_base,
+				   struct drm_mode *target)
+{
+	struct weston_compositor *compositor = output_base->compositor;
+	struct wl_event_loop *loop;
+	struct drm_pluggable_modeset *ms;
+
+	ms = zalloc(sizeof(*ms));
+	if (!ms)
+		return -1;
+
+	ms->output_base = output_base;
+	ms->compositor = compositor;
+	ms->target = target;
+
+	loop = wl_display_get_event_loop(compositor->wl_display);
+	ms->idle_source = wl_event_loop_add_idle(loop,
+				drm_output_pluggable_modeset_idle, ms);
+	if (!ms->idle_source) {
+		free(ms);
+		return -1;
+	}
+
+	return 0;
+}
+#endif /* QCOM_BSP */
 
 static int
 drm_output_switch_mode(struct weston_output *output_base, struct weston_mode *mode)
@@ -665,30 +903,41 @@ drm_output_apply_mode(struct drm_output *output)
 	return 0;
 }
 
+#ifdef QCOM_BSP
 static int
-drm_set_fps(struct weston_output *output_base, int target_fps)
+drm_set_output_mode(struct weston_output *output_base, int target_fps,
+	    int target_width, int target_height)
 {
 	struct drm_output *output = to_drm_output(output_base);
 	struct drm_mode *mode = NULL;
 
 	wl_list_for_each(mode, &output->base.mode_list, base.link) {
-		if (mode->base.width == output_base->current_mode->width &&
-		    mode->base.height == output_base->current_mode->height &&
+		if (mode->base.width == target_width &&
+		    mode->base.height == target_height &&
 		    mode->base.refresh == (target_fps * 1000)) {
+			int ret;
 
-			int ret = drm_output_switch_mode(output_base, &mode->base);
+			if (drm_output_is_pluggable(output)) {
+				return drm_output_schedule_pluggable_mode(output_base, mode);
+			}
+
+			ret = drm_output_switch_mode(output_base, &mode->base);
+
 			if (ret == 0) {
 				weston_output_schedule_repaint(output_base);
 			} else {
-				weston_log("Failed to switch to %d FPS\n", target_fps);
+				weston_log("Failed to switch to %dx%d@%d\n",
+					   target_width, target_height, target_fps);
 			}
 			return ret;
 		}
 	}
 
-	weston_log("No matching mode found for %d FPS\n", target_fps);
+	weston_log("No matching mode found for %dx%d@%d\n",
+		   target_width, target_height, target_fps);
 	return -1;
 }
+#endif /* QCOM_BSP */
 
 static int
 init_pixman(struct drm_backend *b)
@@ -1029,12 +1278,20 @@ drm_output_enable(struct weston_output *base)
 	output->base.set_qsync_mode = drm_set_qsync_mode;
 	output->base.switch_mode = drm_output_switch_mode;
 	output->base.set_backlight = drm_set_backlight;
-	output->base.set_fps = drm_set_fps;
+#ifdef QCOM_BSP
+	output->base.set_output_mode = drm_set_output_mode;
+#endif
 	output->base.backlight_current = drm_get_backlight(output->display_id);
 	output->base.set_gamma = NULL;
 
 	if (drm_output_enable_vblank(output)) {
 		weston_log("Failed to create vblank event\n");
+		return -1;
+	}
+
+	if (drm_output_enable_refresh_ev(output)) {
+		weston_log("Failed to create output refresh event\n");
+		drm_output_disable_vblank(output);
 		return -1;
 	}
 
@@ -1077,6 +1334,7 @@ drm_output_destroy(struct weston_output *base)
 	if (output->pageflip_timer)
 		wl_event_source_remove(output->pageflip_timer);
 
+	drm_output_disable_refresh_ev(output);
 	drm_output_disable_vblank(output);
 	weston_output_release(&output->base);
 
@@ -1100,6 +1358,7 @@ drm_output_disable(struct weston_output *base)
 
 	output->disable_pending = false;
 
+	drm_output_disable_refresh_ev(output);
 	SetVSyncState(output->display_id, false, output);
 
 	return 0;
@@ -1323,6 +1582,8 @@ drm_output_create(struct weston_backend *backend, const char *name)
 	output->destroy_pending = false;
 	output->disable_pending = false;
 	output->first_cycle = true;
+	output->vblank_ev_fd = -1;
+	output->output_refresh_ev_fd = -1;
 
 	weston_compositor_add_pending_output(&output->base, b->compositor);
 
@@ -2188,8 +2449,27 @@ void NotifyOnRefresh(struct drm_output *drm_output) {
   drm_output->atomic_complete_pending = true;
 }
 
-void NotifyOnQdcmRefresh(struct drm_output *output) {
-	weston_output_damage(&output->base);
+/*
+ * Request an out-of-band refresh of the output.
+ *
+ * Historically introduced for QDCM tuning (to avoid refresh conflicts with
+ * the main compositor loop) and now also used by LTM/ALS. These callers run
+ * on a binder thread (QDCM/QService), not the compositor main thread, so
+ * touching the repaint state machine directly here would race with
+ * idle_repaint() and trip its assert. Just wake the main thread; the actual
+ * damage is issued from on_output_refresh().
+ */
+void NotifyOnOutputRefresh(struct drm_output *output) {
+	uint64_t v = 1;
+	int ret = 0;
+
+	if (!output || output->output_refresh_ev_fd < 0)
+		return;
+
+	ret = write(output->output_refresh_ev_fd, &v, sizeof(v));
+	if (ret != sizeof(v))
+		weston_log("[NotifyOnOutputRefresh] eventfd write failed: %s\n",
+			   strerror(errno));
 }
 
 void
