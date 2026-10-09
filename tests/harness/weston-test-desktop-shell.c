@@ -299,7 +299,7 @@ wet_shell_init(struct weston_compositor *ec,
 
 	output = weston_shell_utils_get_default_output(dts->compositor);
 	struct weston_curtain_params background_params = {
-		.r = 0.16, .g = 0.32, .b = 0.48, .a = 1.0,
+		.r = 40.0 / 255, .g = 81.0 / 255, .b = 122.0 / 255, .a = 1.0,
 		.pos = output->pos,
 		.width = output->width, .height = output->height,
 		.capture_input = true,
