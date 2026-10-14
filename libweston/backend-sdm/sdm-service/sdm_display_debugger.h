@@ -66,6 +66,7 @@ class SdmDisplayDebugger : public DebugHandler {
   SdmDisplayDebugger();
   static inline SdmDisplayDebugger* Get() { return &debug_handler_; }
   static const char *DumpDir() { return "/data/misc/display"; }
+  static inline bool LayerStackDumpEnabled() { return debug_handler_.layer_dump_enable_; }
   void config_debug_level(void);
   void config_trace_debug(void);
 
@@ -102,6 +103,7 @@ class SdmDisplayDebugger : public DebugHandler {
   std::bitset<32> log_mask_;
   int verbose_level_ = ERROR;
   int trace_debug_ = 0;
+  bool layer_dump_enable_ = false;
 };
 
 }  // namespace sdm
