@@ -642,6 +642,9 @@ static int
 drm_output_init_pixman(struct drm_output *output, struct drm_backend *b);
 static void
 drm_output_fini_pixman(struct drm_output *output);
+static int
+drm_output_switch_mode(struct weston_output *output_base,
+		       struct weston_mode *mode);
 
 #ifdef QCOM_BSP
 static bool
@@ -651,29 +654,27 @@ drm_output_is_pluggable(struct drm_output *output)
 }
 
 /*
- * Switch a pluggable display to a new mode by faking an HPD cycle:
- * tear down the weston_output, recreate the SDM display, apply the target
- * config, and let the compositor rebuild the output through layoutput.
+ * switch_mode callback used for pluggable (DP) outputs, installed only for the
+ * duration of drm_output_apply_pluggable_mode().
+ *
+ * The SDM display is still destroyed and recreated, but clients see a
+ * wl_output.mode change instead of a global remove/create cycle.
  */
 static int
-drm_output_reenable_pluggable_mode(struct weston_output *output_base,
-					   struct drm_mode *target)
+drm_output_switch_mode_pluggable(struct weston_output *output_base,
+				 struct weston_mode *mode)
 {
 	struct drm_output *output = to_drm_output(output_base);
-	struct weston_compositor *compositor = output_base->compositor;
-	struct weston_head *head = weston_output_get_first_head(output_base);
+	struct drm_mode *target = to_drm_mode(mode);
 	uint32_t display_id = output->display_id;
-	uint32_t target_index = target->index;
 	sdm_cbs_t sdm_cbs;
-	int ret;
+	int ret = 0;
 
-	if (!head) {
-		weston_log("%s: no head for output, abort\n", __func__);
-		return -1;
-	}
+	/* Stop vsync delivery and drop in-flight frame state before pulling the
+	 * SDM display out from under the output.  */
+	drm_output_disable_vblank(output);
+	ClearSDMLayers(output);
 
-	/* Drop in-flight frame state so the output teardown won't bail on a
-	 * pending flip. Do not touch output_base after the disconnect below. */
 	if (output->next_fb) {
 		drm_fb_unref(output->next_fb);
 		output->next_fb = NULL;
@@ -681,50 +682,86 @@ drm_output_reenable_pluggable_mode(struct weston_output *output_base,
 	output->page_flip_pending = false;
 	output->atomic_complete_pending = false;
 	output->commit_pending = false;
+	output->mode_switch_pending = false;
 	if (output_base->repaint_status == REPAINT_AWAITING_COMPLETION) {
 		output_base->repaint_status = REPAINT_NOT_SCHEDULED;
 		output_base->repaint_needed = false;
 	}
+	if (output->pageflip_timer)
+		wl_event_source_timer_update(output->pageflip_timer, 0);
 
-	/* Disconnect edge: destroys the weston_output; head and SDM display survive. */
-	weston_head_set_connection_status(head, false);
-	weston_compositor_flush_heads_changed(compositor);
+	/* Must precede the framebuffer rebuild: drm_output_init_pixman() and
+	 * drm_output_init_egl() both size the buffers from current_mode. */
+	output->base.current_mode->flags = 0;
+	output->base.current_mode = &target->base;
+	output->base.current_mode->flags =
+		WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED;
 
 	DestroyDisplay(display_id);
 
 	ret = CreateDisplay(display_id);
 	if (ret) {
 		weston_log("%s: CreateDisplay failed ret=%d\n", __func__, ret);
-		/* SdmDisplayProxy falls back to null_disp_ on failure; safe to reconnect. */
-		goto reconnect;
+		return -1;
 	}
 	sdm_cbs.vblank_cb = vblank_handler;
 	sdm_cbs.hotplug_cb = hotplug_handler;
 	RegisterCbs(display_id, &sdm_cbs);
 
-	/* Also re-programs mixer and fb to the new size; otherwise the rebuilt
-	 * output renders into a small top-left corner of the panel. */
-	ret = SetDisplayConfigurationByIndex(display_id, target_index);
+	/* Also re-programs mixer and fb to the new size; otherwise the output
+	 * renders into a small top-left corner of the panel. */
+	ret = SetDisplayConfigurationByIndex(display_id, target->index);
 	if (ret) {
 		weston_log("%s: SetDisplayConfigurationByIndex(%u) failed ret=%d\n",
-			   __func__, target_index, ret);
-		goto reconnect;
+			   __func__, target->index, ret);
+		return -1;
 	}
 
 	SetDisplayState(display_id, WESTON_DPMS_ON);
+	output->dpms = WESTON_DPMS_ON;
 
-reconnect:
-	/* Connect edge (also reached on failure, so a mid-switch error never
-	 * leaves the head permanently disconnected): layoutput rebuilds the
-	 * output; shell re-requests bg/panel. */
-	weston_head_set_connection_status(head, true);
-	weston_compositor_flush_heads_changed(compositor);
+	/* first_cycle is normally set in drm_output_create(); the output is not
+	 * recreated here, so re-arm it by hand or the first frame after the
+	 * rebuild never forces the damage that restarts the repaint loop. */
+	output->first_cycle = true;
 
-	/* On success damage only the rebuilt output, not all (avoids an
-	 * unrelated internal panel repainting/flickering on every switch). */
-	if (!ret && head->output)
-		weston_output_damage(head->output);
-	return ret;
+	/* Resizes the renderer buffers to current_mode and rebuilds the
+	 * egl/pixman state; also sets device->state_invalid. */
+	if (drm_output_apply_mode(output) < 0)
+		return -1;
+
+	if (drm_output_enable_vblank(output) < 0) {
+		weston_log("%s: failed to re-create vblank event\n", __func__);
+		return -1;
+	}
+
+	return 0;
+}
+
+/*
+ * Switch a pluggable display to a new mode while keeping the weston_output --
+ * and therefore the wl_output global -- alive.
+ */
+static int
+drm_output_apply_pluggable_mode(struct weston_output *output_base,
+				struct drm_mode *target)
+{
+	struct drm_output *output = to_drm_output(output_base);
+	int ret = 0;
+
+	output->base.switch_mode = drm_output_switch_mode_pluggable;
+	ret = weston_output_mode_set_native(output_base, &target->base,
+					    output_base->current_scale);
+	output->base.switch_mode = drm_output_switch_mode;
+
+	if (ret) {
+		weston_log("%s: mode switch to %dx%d@%d failed ret=%d\n",
+			   __func__, target->base.width, target->base.height,
+			   target->base.refresh / 1000, ret);
+		return ret;
+	}
+
+	return 0;
 }
 
 struct drm_pluggable_modeset {
@@ -735,16 +772,12 @@ struct drm_pluggable_modeset {
 };
 
 static void
-drm_output_reenable_pluggable_idle(void *data)
+drm_output_pluggable_modeset_idle(void *data)
 {
 	struct drm_pluggable_modeset *ms = data;
 	struct weston_output *output;
 	bool output_alive = false;
 
-	/* output_base may have been destroyed (e.g. DP unplug) between
-	 * scheduling and now. The compositor outlives all outputs, so walk
-	 * its output_list to confirm the target is still present before
-	 * touching it. */
 	wl_list_for_each(output, &ms->compositor->output_list, link) {
 		if (output == ms->output_base) {
 			output_alive = true;
@@ -753,13 +786,13 @@ drm_output_reenable_pluggable_idle(void *data)
 	}
 
 	if (output_alive)
-		drm_output_reenable_pluggable_mode(ms->output_base, ms->target);
+		drm_output_apply_pluggable_mode(ms->output_base, ms->target);
 
 	free(ms);
 }
 
 /*
- * Defer the rebuild to an idle task: it must not run inline while a
+ * Defer the switch to an idle task: it must not run inline while a
  * weston_qti_extn request is being dispatched, or it re-enters the compositor
  * and wedges the repaint loop.
  */
@@ -781,7 +814,7 @@ drm_output_schedule_pluggable_mode(struct weston_output *output_base,
 
 	loop = wl_display_get_event_loop(compositor->wl_display);
 	ms->idle_source = wl_event_loop_add_idle(loop,
-				drm_output_reenable_pluggable_idle, ms);
+				drm_output_pluggable_modeset_idle, ms);
 	if (!ms->idle_source) {
 		free(ms);
 		return -1;
