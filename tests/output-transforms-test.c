@@ -154,6 +154,8 @@ output_transform(struct wet_testsuite_data *suite_data,
 
 	struct verify_image_target vit = {
 		.ref.basename = refname,
+		.tol.avg_limit = WESTON_VERIFY_IMAGE_AVG_LIMIT_DEFAULT,
+		.tol.max_limit = 5.2 / 255,
 	};
 	match = verify_screen_content(client, &vit, 0);
 	test_assert_true(match);
