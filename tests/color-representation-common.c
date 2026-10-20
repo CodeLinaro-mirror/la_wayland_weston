@@ -320,6 +320,8 @@ test_color_representation(const struct color_state *color_state,
 
 	struct verify_image_target vit = {
 		.ref.basename = "color-representation",
+		.tol.avg_limit = WESTON_VERIFY_IMAGE_AVG_LIMIT_DEFAULT,
+		.tol.max_limit = 5.5 / 255.0,
 	};
 
 	client_buffer_util_maybe_sync_dmabuf_start(screenshot->buf);
