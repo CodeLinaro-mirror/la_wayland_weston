@@ -482,6 +482,8 @@ opaque_pixel_conversion(struct wet_testsuite_data *suite_data)
 	struct verify_image_target vit = {
 		.ref.basename = "shaper_matrix",
 		.ref.seq_no = arg->ref_image_index,
+		.tol.avg_limit = arg->avg_tol / 255.0,
+		.tol.max_limit = WESTON_VERIFY_IMAGE_MAX_LIMIT_DEFAULT,
 	};
 
 	struct client *client;
@@ -688,6 +690,8 @@ output_icc_alpha_blend(struct wet_testsuite_data *suite_data)
 	struct verify_image_target vit = {
 		.ref.basename = "output_icc_alpha_blend",
 		.ref.seq_no = arg->ref_image_index,
+		.tol.avg_limit = WESTON_VERIFY_IMAGE_AVG_LIMIT_DEFAULT,
+		.tol.max_limit = 2.5 / 255,
 	};
 	struct client *client;
 	struct buffer *bg;
