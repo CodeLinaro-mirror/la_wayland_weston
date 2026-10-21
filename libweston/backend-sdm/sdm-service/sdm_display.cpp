@@ -1017,6 +1017,7 @@ int SdmDisplayInterface::GetDrmMasterFd() {
         return kErrorNotSupported;
         }
     master->GetHandle(&fd);
+        DLOGE("Acquire DRMMaster instance");
     return fd;
 }
 
