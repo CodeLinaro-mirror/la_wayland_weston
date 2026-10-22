@@ -55,12 +55,12 @@ fixture_setup(struct weston_test_harness *harness, const struct setup_args *arg)
 	struct compositor_setup setup;
 
 	compositor_setup_defaults(&setup);
-        setup.backend = arg->backend;
+	setup.backend = arg->backend;
 	setup.renderer = WESTON_RENDERER_GL;
 	setup.width = 200;
 	setup.height = 200;
 	setup.shell = SHELL_TEST_DESKTOP;
-        setup.refresh = HIGHEST_OUTPUT_REFRESH;
+	setup.refresh = HIGHEST_OUTPUT_REFRESH;
 
 	return weston_test_harness_execute_as_client(harness, &setup);
 }
@@ -69,16 +69,16 @@ DECLARE_FIXTURE_SETUP_WITH_ARG(fixture_setup, my_setup_args, meta);
 static enum test_result_code
 dmabuf_screenshot(struct wet_testsuite_data *suite_data)
 {
-        struct client *client;
-        struct wl_subcompositor *subco;
+	struct client *client;
+	struct wl_subcompositor *subco;
 	struct wl_surface *surf;
 	struct wl_subsurface *subsurf;
-        struct buffer *buf_main, *buf_sub;
-        struct buffer *buf_screenshot;
-        struct rectangle clip;
-        bool match;
-        pixman_image_t *shot;
-        pixman_color_t red, green;
+	struct buffer *buf_main, *buf_sub;
+	struct buffer *buf_screenshot;
+	struct rectangle clip;
+	bool match;
+	pixman_image_t *shot;
+	pixman_color_t red, green;
 
 	if (!client_buffer_util_is_dmabuf_supported()) {
 		testlog("%s: Skipped: udmabuf not supported\n", get_test_name());
@@ -88,30 +88,29 @@ dmabuf_screenshot(struct wet_testsuite_data *suite_data)
 	color_rgb888(&red, 255, 0, 0);
 	color_rgb888(&green, 0, 255, 0);
 
-        client = create_client_and_test_surface(0, 0, 100, 100);
-        subco = client_get_subcompositor(client);
+	client = create_client_and_test_surface(0, 0, 100, 100);
+	subco = client_get_subcompositor(client);
 
 	/* move the pointer clearly away from our screenshooting area */
 	weston_test_move_pointer(client->test->weston_test, 0, 1, 0, 2, 30);
 
-        surf = wl_compositor_create_surface(client->wl_compositor);
+	surf = wl_compositor_create_surface(client->wl_compositor);
 	subsurf = wl_subcompositor_get_subsurface(subco, surf,
 						  client->surface->wl_surface);
 
-        buf_main = surface_commit_color(client, client->surface->wl_surface,
-                                        &red, 100, 100);
+	buf_main = surface_commit_color(client, client->surface->wl_surface,
+					&red, 100, 100);
 
-        wl_subsurface_set_position(subsurf, 100, 100);
-        buf_sub = surface_commit_color(client, surf,
-                                       &green, 100, 100);
+	wl_subsurface_set_position(subsurf, 100, 100);
+	buf_sub = surface_commit_color(client, surf, &green, 100, 100);
 
-        wl_surface_commit(client->surface->wl_surface);
+	wl_surface_commit(client->surface->wl_surface);
 
-        buf_screenshot = client_capture_output(client, client->output,
-                                               WESTON_CAPTURE_V1_SOURCE_FRAMEBUFFER,
-                                               CLIENT_BUFFER_TYPE_DMABUF);
+	buf_screenshot = client_capture_output(client, client->output,
+					       WESTON_CAPTURE_V1_SOURCE_FRAMEBUFFER,
+					       CLIENT_BUFFER_TYPE_DMABUF);
 
-        /* only the colored squares area matters */
+	/* only the colored squares area matters */
 	clip.x = 0;
 	clip.y = 0;
 	clip.width = 200;
@@ -129,16 +128,16 @@ dmabuf_screenshot(struct wet_testsuite_data *suite_data)
 	match = verify_image(shot, &vit, 0);
 	client_buffer_util_maybe_sync_dmabuf_end(buf_screenshot->buf);
 
-        pixman_image_unref(shot);
+	pixman_image_unref(shot);
 	buffer_destroy(buf_sub);
 	buffer_destroy(buf_main);
 	buffer_destroy(buf_screenshot);
 	wl_subcompositor_destroy(subco);
 	wl_subsurface_destroy(subsurf);
 	wl_surface_destroy(surf);
-        client_destroy(client);
+	client_destroy(client);
 
-        return match ? RESULT_OK : RESULT_FAIL;
+	return match ? RESULT_OK : RESULT_FAIL;
 }
 
 DECLARE_TEST_LIST(
