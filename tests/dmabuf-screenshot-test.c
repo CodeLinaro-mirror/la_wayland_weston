@@ -76,11 +76,8 @@ screenshot(struct wet_testsuite_data *suite_data)
         struct buffer *buf_main, *buf_sub;
         struct buffer *buf_screenshot;
         struct rectangle clip;
-        char *fname;
         bool match;
         pixman_image_t *shot;
-        pixman_image_t *reference;
-        pixman_image_t *diffimg;
         pixman_color_t red, green;
 
 	if (!client_buffer_util_is_dmabuf_supported()) {
@@ -114,33 +111,25 @@ screenshot(struct wet_testsuite_data *suite_data)
                                                WESTON_CAPTURE_V1_SOURCE_FRAMEBUFFER,
                                                CLIENT_BUFFER_TYPE_DMABUF);
 
-        /* load reference image */
-        fname = screenshot_reference_filename("dmabuf-screenshot", 0);
-        reference = load_image_from_png(fname);
-        free(fname);
-
         /* only the colored squares area matters */
 	clip.x = 0;
 	clip.y = 0;
 	clip.width = 200;
 	clip.height = 200;
 
+	struct verify_image_target vit = {
+		.ref.basename = "dmabuf-screenshot",
+		.clip = &clip,
+		.tol.max_limit = 0.0,
+		.tol.avg_limit = -1.0,
+	};
+
 	client_buffer_util_maybe_sync_dmabuf_start(buf_screenshot->buf);
 	shot = image_convert_to_a8r8g8b8(buf_screenshot->image);
-        match = check_images_match(shot, reference, &clip, NULL);
+	match = verify_image(shot, &vit, 0);
 	client_buffer_util_maybe_sync_dmabuf_end(buf_screenshot->buf);
 
-	testlog("Screenshot %s reference image\n", match? "equal to" : "different from");
-	if (!match) {
-		diffimg = visualize_image_difference(shot, reference, &clip, NULL);
-		fname = output_filename_for_test_case("error", 0, "png");
-		write_image_as_png(diffimg, fname);
-		pixman_image_unref(diffimg);
-		free(fname);
-	}
-
         pixman_image_unref(shot);
-        pixman_image_unref(reference);
 	buffer_destroy(buf_sub);
 	buffer_destroy(buf_main);
 	buffer_destroy(buf_screenshot);
