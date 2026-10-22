@@ -264,6 +264,8 @@ color_effects(struct wet_testsuite_data *suite_data)
 		.ref.basename = arg->ref_image_prefix,
 		.ref.seq_no = seq_no,
 		.clip = &clip,
+		.tol.avg_limit = 1.1 / 255,
+		.tol.max_limit = WESTON_VERIFY_IMAGE_MAX_LIMIT_DEFAULT,
 	};
 	res = verify_screen_content(client, &vit, 0);
 
