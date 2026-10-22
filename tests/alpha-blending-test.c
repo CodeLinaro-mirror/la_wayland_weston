@@ -352,6 +352,8 @@ alpha_blend(struct wet_testsuite_data *suite_data)
 	args = &my_setup_args[get_test_fixture_index()];
 	if (args->color_management) {
 		vit.ref.seq_no = 1;
+		vit.tol.avg_limit = WESTON_VERIFY_IMAGE_AVG_LIMIT_DEFAULT;
+		vit.tol.max_limit = 2.5 / 255;
 		space = BLEND_LINEAR;
 	} else {
 		vit.ref.seq_no = 0;
