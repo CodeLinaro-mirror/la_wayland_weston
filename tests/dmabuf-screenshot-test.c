@@ -67,7 +67,7 @@ fixture_setup(struct weston_test_harness *harness, const struct setup_args *arg)
 DECLARE_FIXTURE_SETUP_WITH_ARG(fixture_setup, my_setup_args, meta);
 
 static enum test_result_code
-screenshot(struct wet_testsuite_data *suite_data)
+dmabuf_screenshot(struct wet_testsuite_data *suite_data)
 {
         struct client *client;
         struct wl_subcompositor *subco;
@@ -142,5 +142,5 @@ screenshot(struct wet_testsuite_data *suite_data)
 }
 
 DECLARE_TEST_LIST(
-	TESTFN(screenshot),
+	TESTFN(dmabuf_screenshot),
 );
