@@ -1115,9 +1115,7 @@ pixman_renderer_init(struct weston_compositor *ec)
 		return -1;
 	}
 
-	renderer = zalloc(sizeof *renderer);
-	if (renderer == NULL)
-		return -1;
+	renderer = xzalloc(sizeof *renderer);
 
 	renderer->repaint_debug = 0;
 	renderer->debug_color = NULL;
