@@ -53,8 +53,8 @@
 #include <libweston/backend-vnc.h>
 #include <libweston/weston-log.h>
 #include "pixel-formats.h"
-#include "pixman-renderer.h"
 #include "renderer-gl/gl-renderer.h"
+#include "renderer-pixman/pixman-renderer.h"
 #include "renderer-vulkan/vulkan-renderer.h"
 #include "shared/weston-egl-ext.h"
 

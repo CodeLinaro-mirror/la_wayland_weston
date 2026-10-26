@@ -38,7 +38,7 @@ srcs_libweston = [
 	'noop-renderer.c',
 	'output-capture.c',
 	'pixel-formats.c',
-	'pixman-renderer.c',
+	'renderer-pixman/pixman-renderer.c',
 	'plugin-registry.c',
 	'surface-state.c',
 	'tearing-control.c',

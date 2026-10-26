@@ -48,11 +48,11 @@
 #include <libweston/libweston.h>
 #include <libweston/backend-wayland.h>
 #include "renderer-gl/gl-renderer.h"
+#include "renderer-pixman/pixman-renderer.h"
 #include "renderer-vulkan/vulkan-renderer.h"
 #include "renderer-borders.h"
 #include "shared/weston-drm-fourcc.h"
 #include "shared/weston-egl-ext.h"
-#include "pixman-renderer.h"
 #include "shared/helpers.h"
 #include "shared/image-loader.h"
 #include "shared/os-compatibility.h"

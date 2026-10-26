@@ -44,7 +44,7 @@
 #include <libweston/libweston.h>
 #include <libweston/backend-rdp.h>
 #include <libweston/pixel-formats.h>
-#include "pixman-renderer.h"
+#include "renderer-pixman/pixman-renderer.h"
 #include "renderer-gl/gl-renderer.h"
 #include "renderer-vulkan/vulkan-renderer.h"
 #include "shared/weston-egl-ext.h"

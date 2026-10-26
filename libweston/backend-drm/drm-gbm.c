@@ -37,7 +37,7 @@
 #include <dlfcn.h>
 
 #include "drm-internal.h"
-#include "pixman-renderer.h"
+#include "renderer-pixman/pixman-renderer.h"
 #include "pixel-formats.h"
 #include "renderer-gl/gl-renderer.h"
 #include "renderer-vulkan/vulkan-renderer.h"
