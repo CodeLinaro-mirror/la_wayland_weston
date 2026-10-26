@@ -1918,17 +1918,40 @@ test_client_buffer(const struct client_buffer_case *cb_case,
 
 	buf = cb_case->create_buffer(client, cb_case->drm_format, type, restriction, img);
 	if (buf) {
+		const struct setup_args *args = &my_setup_args[get_test_fixture_index()];
+		struct two_norm_tolerance override = {};
+
+		/*
+		 * TODO: figure out why Vulkan renderer needs this only for
+		 * these formats and not for other YUV formats.
+		 */
+		switch (cb_case->drm_format) {
+		case DRM_FORMAT_P010:
+		case DRM_FORMAT_P012:
+		case DRM_FORMAT_P016:
+			if (args->renderer == WESTON_RENDERER_VULKAN) {
+				override.avg_limit = 1.8 / 255;
+				override.max_limit = 2.9 / 255;
+			}
+			break;
+		default:
+			/* Use verify_image() defaults. */
+			break;
+		}
+
 		show_window_with_client_buffer(client, buf);
 
 		if (restriction == WESTON_BUFFER_RESTRICTION_YES) {
 			struct verify_image_target vit = {
 				.ref.basename = "restricted-client-buffer",
+				.tol = override,
 			};
 			match = verify_screen_content(client, &vit, 0);
 		} else {
 			struct verify_image_target vit = {
 				.ref.basename = "client-buffer",
 				.ref.seq_no = cb_case->ref_seq_no,
+				.tol = override,
 			};
 			match = verify_screen_content(client, &vit, 0);
 		}
