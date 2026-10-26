@@ -1103,7 +1103,7 @@ debug_binding(struct weston_keyboard *keyboard, const struct timespec *time,
 
 static struct pixman_renderer_interface pixman_renderer_interface;
 
-WL_EXPORT int
+static struct weston_renderer *
 pixman_renderer_init(struct weston_compositor *ec)
 {
 	struct pixman_renderer *renderer;
@@ -1112,7 +1112,7 @@ pixman_renderer_init(struct weston_compositor *ec)
 
 	if (ec->renderer_restricted_context) {
 		weston_log("Pixman renderer does not support restricted context\n");
-		return -1;
+		return NULL;
 	}
 
 	renderer = xzalloc(sizeof *renderer);
@@ -1163,7 +1163,7 @@ pixman_renderer_init(struct weston_compositor *ec)
 
 	wl_signal_init(&renderer->destroy_signal);
 
-	return 0;
+	return &renderer->base;
 }
 
 static void
@@ -1274,3 +1274,14 @@ static struct pixman_renderer_interface pixman_renderer_interface = {
 	.output_create = pixman_renderer_output_create,
 	.output_destroy = pixman_renderer_output_destroy,
 };
+
+struct weston_renderer *
+renderer_init(struct weston_compositor *compositor,
+              struct weston_renderer_options *options);
+
+WL_EXPORT struct weston_renderer *
+renderer_init(struct weston_compositor *compositor,
+              struct weston_renderer_options *options)
+{
+	return pixman_renderer_init(compositor);
+}

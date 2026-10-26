@@ -11526,6 +11526,9 @@ weston_compositor_init_renderer(struct weston_compositor *compositor,
 				enum weston_renderer_type renderer_type,
 				const struct weston_renderer_options *options)
 {
+	struct weston_renderer *(*renderer_init)(struct weston_compositor *c,
+						 const struct weston_renderer_options *options);
+	struct weston_renderer *renderer;
 	const struct gl_renderer_interface *gl_renderer;
 	const struct gl_renderer_display_options *gl_options;
 	const struct vulkan_renderer_interface *vulkan_renderer;
@@ -11573,10 +11576,19 @@ weston_compositor_init_renderer(struct weston_compositor *compositor,
 			   "to enable the Vulkan validation layers\n");
 		break;
 	case WESTON_RENDERER_PIXMAN:
-		ret = pixman_renderer_init(compositor);
-		if (ret < 0)
-			return ret;
+		renderer_init = weston_load_module("pixman-renderer.so",
+						   "renderer_init",
+						   LIBWESTON_MODULEDIR);
+		if (!renderer_init)
+			return -1;
+
+		renderer = renderer_init(compositor, options);
+		if (renderer == NULL)
+			return -1;
+
+		compositor->renderer = renderer;
 		weston_log("Using Pixman renderer\n");
+		ret = 0;
 		break;
 	default:
 		ret = -1;

@@ -30,9 +30,6 @@
 #include "libweston-internal.h"
 #include "pixman.h"
 
-int
-pixman_renderer_init(struct weston_compositor *ec);
-
 struct pixman_renderer_output_options {
 	/** Composite into a shadow buffer, copying to the hardware buffer */
 	bool use_shadow;

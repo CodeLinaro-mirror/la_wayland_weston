@@ -38,7 +38,6 @@ srcs_libweston = [
 	'noop-renderer.c',
 	'output-capture.c',
 	'pixel-formats.c',
-	'renderer-pixman/pixman-renderer.c',
 	'plugin-registry.c',
 	'surface-state.c',
 	'tearing-control.c',
@@ -271,6 +270,7 @@ dep_lib_renderer_borders = declare_dependency(
 
 subdir('color-lcms')
 subdir('renderer-gl')
+subdir('renderer-pixman')
 subdir('renderer-vulkan')
 subdir('backend-drm')
 subdir('backend-headless')
