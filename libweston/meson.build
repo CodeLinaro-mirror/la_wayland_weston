@@ -35,7 +35,7 @@ srcs_libweston = [
 	'linux-explicit-synchronization.c',
 	'linux-sync-file.c',
 	'log.c',
-	'noop-renderer.c',
+	'renderer-noop/noop-renderer.c',
 	'output-capture.c',
 	'pixel-formats.c',
 	'plugin-registry.c',
