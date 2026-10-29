@@ -55,7 +55,15 @@ weston_vnc_output_get_api(struct weston_compositor *compositor)
 	return (const struct weston_vnc_output_api *)api;
 }
 
-#define WESTON_VNC_BACKEND_CONFIG_VERSION 2
+#define WESTON_VNC_BACKEND_CONFIG_VERSION 3
+
+/** Transport for VNC client connections. */
+enum weston_vnc_transport {
+	/** Native RFB over TCP (default). */
+	WESTON_VNC_TRANSPORT_TCP = 0,
+	/** RFB over WebSocket. */
+	WESTON_VNC_TRANSPORT_WEBSOCKET,
+};
 
 struct weston_vnc_backend_config {
 	struct weston_backend_config base;
@@ -66,6 +74,7 @@ struct weston_vnc_backend_config {
 	char *server_cert;
 	char *server_key;
 	bool disable_tls;
+	enum weston_vnc_transport transport;
 };
 
 #ifdef  __cplusplus

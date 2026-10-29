@@ -1218,8 +1218,21 @@ vnc_backend_create(struct weston_compositor *compositor,
 	struct vnc_backend *backend;
 	struct wl_event_loop *loop;
 	struct weston_head *base, *next;
+	enum nvnc_stream_type stream_type;
 	int ret;
 	int fd;
+
+	switch (config->transport) {
+	case WESTON_VNC_TRANSPORT_TCP:
+		stream_type = NVNC_STREAM_NORMAL;
+		break;
+	case WESTON_VNC_TRANSPORT_WEBSOCKET:
+		stream_type = NVNC_STREAM_WEBSOCKET;
+		break;
+	default:
+		weston_log("Invalid VNC transport: %d\n", config->transport);
+		return NULL;
+	}
 
 	backend = zalloc(sizeof *backend);
 	if (backend == NULL)
@@ -1313,7 +1326,7 @@ vnc_backend_create(struct weston_compositor *compositor,
 		goto err_aml;
 
 	ret = nvnc_listen_tcp(backend->server, config->bind_address, config->port,
-			      NVNC_STREAM_NORMAL);
+			      stream_type);
 	if (ret)
 		goto err_nvnc;
 

@@ -4339,12 +4339,26 @@ load_vnc_backend(struct weston_compositor *c,
 	struct weston_vnc_backend_config config  = {{ 0, }};
 	struct weston_config_section *section;
 	struct wet_backend *wb;
+	char *transport;
 
 	struct wet_output_config *parsed_options = wet_init_parsed_options(c);
 	if (!parsed_options)
 		return -1;
 
 	weston_vnc_backend_config_init(&config);
+
+	section = weston_config_get_section(wc, "vnc", NULL, NULL);
+	weston_config_section_get_string(section, "transport", &transport, "tcp");
+	if (strcmp(transport, "tcp") == 0) {
+		config.transport = WESTON_VNC_TRANSPORT_TCP;
+	} else if (strcmp(transport, "websocket") == 0) {
+		config.transport = WESTON_VNC_TRANSPORT_WEBSOCKET;
+	} else {
+		weston_log("Invalid VNC transport \"%s\"\n", transport);
+		free(transport);
+		return -1;
+	}
+	free(transport);
 
 	const struct weston_option vnc_options[] = {
 		{ WESTON_OPTION_INTEGER, "width", 0, &parsed_options->width },
@@ -4360,7 +4374,6 @@ load_vnc_backend(struct weston_compositor *c,
 
 	config.renderer = renderer;
 
-	section = weston_config_get_section(wc, "vnc", NULL, NULL);
 	weston_config_section_get_int(section, "refresh-rate",
 				      &config.refresh_rate,
 				      VNC_DEFAULT_FREQ);
