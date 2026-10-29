@@ -364,9 +364,6 @@ weston_binding_list_destroy_all(struct wl_list *list);
 void
 touch_calibrator_mode_changed(struct weston_compositor *compositor);
 
-int
-noop_renderer_init(struct weston_compositor *ec);
-
 void
 weston_compositor_add_head(struct weston_compositor *compositor,
 			   struct weston_head *head);

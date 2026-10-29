@@ -11590,6 +11590,21 @@ weston_compositor_init_renderer(struct weston_compositor *compositor,
 		weston_log("Using Pixman renderer\n");
 		ret = 0;
 		break;
+	case WESTON_RENDERER_NOOP:
+		renderer_init = weston_load_module("noop-renderer.so",
+						   "renderer_init",
+						   LIBWESTON_MODULEDIR);
+		if (!renderer_init)
+			return -1;
+
+		renderer = renderer_init(compositor, options);
+		if (renderer == NULL)
+			return -1;
+
+		compositor->renderer = renderer;
+		weston_log("Using Noop renderer\n");
+		ret = 0;
+		break;
 	default:
 		ret = -1;
 	}

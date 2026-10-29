@@ -745,7 +745,9 @@ headless_backend_create(struct weston_compositor *compositor,
 				weston_log("Error: no-op renderer does not support decorations.\n");
 				goto err_input;
 			}
-			ret = noop_renderer_init(compositor);
+			ret = weston_compositor_init_renderer(compositor,
+							      WESTON_RENDERER_NOOP,
+							      NULL);
 			break;
 		default:
 			weston_log("Error: unsupported renderer\n");

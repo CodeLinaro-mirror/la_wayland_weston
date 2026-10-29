@@ -147,7 +147,7 @@ noop_renderer_add_shm_format(struct weston_compositor *ec,
 	wl_display_add_shm_format(ec->wl_display, info->format);
 }
 
-WL_EXPORT int
+static struct weston_renderer *
 noop_renderer_init(struct weston_compositor *ec)
 {
 	struct noop_renderer *renderer;
@@ -176,5 +176,16 @@ noop_renderer_init(struct weston_compositor *ec)
 	noop_renderer_add_shm_format(ec, PIXMAN_a8r8g8b8);
 	noop_renderer_add_shm_format(ec, PIXMAN_x8r8g8b8);
 
-	return 0;
+	return &renderer->base;
+}
+
+struct weston_renderer *
+renderer_init(struct weston_compositor *compositor,
+	      struct weston_renderer_options *options);
+
+WL_EXPORT struct weston_renderer *
+renderer_init(struct weston_compositor *compositor,
+	      struct weston_renderer_options *options)
+{
+	return noop_renderer_init(compositor);
 }

@@ -35,7 +35,6 @@ srcs_libweston = [
 	'linux-explicit-synchronization.c',
 	'linux-sync-file.c',
 	'log.c',
-	'renderer-noop/noop-renderer.c',
 	'output-capture.c',
 	'pixel-formats.c',
 	'plugin-registry.c',
@@ -270,6 +269,7 @@ dep_lib_renderer_borders = declare_dependency(
 
 subdir('color-lcms')
 subdir('renderer-gl')
+subdir('renderer-noop')
 subdir('renderer-pixman')
 subdir('renderer-vulkan')
 subdir('backend-drm')
