@@ -31,6 +31,7 @@
 #include <libweston/libweston.h>
 #include "libweston-internal.h"
 #include "pixel-formats.h"
+#include "shared/xalloc.h"
 
 struct noop_renderer {
 	struct weston_renderer base;
@@ -151,9 +152,7 @@ noop_renderer_init(struct weston_compositor *ec)
 {
 	struct noop_renderer *renderer;
 
-	renderer = zalloc(sizeof *renderer);
-	if (renderer == NULL)
-		return -1;
+	renderer = xzalloc(sizeof *renderer);
 
 	renderer->base.repaint_output = noop_renderer_repaint_output;
 	renderer->base.resize_output = noop_renderer_resize_output;
