@@ -4544,12 +4544,15 @@ populate_supported_dmabuf_formats(struct weston_compositor *ec,
 	struct vulkan_renderer *vr = get_renderer(ec);
 
 	for (unsigned int i = 0; i < pixel_format_get_info_count(); i++) {
-		const struct pixel_format_info *format = pixel_format_get_info_by_index(i);
+		const struct pixel_format_info *info = pixel_format_get_info_by_index(i);
 
-		if (format->vulkan_format == VK_FORMAT_UNDEFINED)
+		if (info->hide_from_clients)
 			continue;
 
-		vulkan_renderer_query_dmabuf_format(vr, format);
+		if (info->vulkan_format == VK_FORMAT_UNDEFINED)
+			continue;
+
+		vulkan_renderer_query_dmabuf_format(vr, info);
 	}
 
 	return 0;
