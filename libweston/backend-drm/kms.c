@@ -1914,6 +1914,13 @@ drm_output_apply_state_atomic(struct drm_output_state *state,
 				ret |= plane_add_prop(req, plane,
 						      WDRM_PLANE_COLOR_PIPELINE, 0);
 			}
+		} else {
+			ret |= drm_plane_set_color_encoding(plane,
+							    plane_state->color_encoding,
+							    req);
+			ret |= drm_plane_set_color_range(plane,
+							 plane_state->color_range,
+							 req);
 		}
 
 		modifier_name = "None";
@@ -1952,13 +1959,6 @@ drm_output_apply_state_atomic(struct drm_output_state *state,
 		ret |= drm_plane_set_blend_mode(plane,
 						plane_state->blend_mode,
 						req);
-
-		ret |= drm_plane_set_color_encoding(plane,
-						    plane_state->color_encoding,
-						    req);
-
-		ret |= drm_plane_set_color_range(plane,
-						 plane_state->color_range, req);
 
 		if (ret != 0) {
 			weston_log("couldn't set plane state\n");
