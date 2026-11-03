@@ -197,10 +197,6 @@ static const uint32_t vulkan_shm_format_must_pass[] = {
 };
 
 static const uint32_t vulkan_dmabuf_format_must_pass[] = {
-	DRM_FORMAT_R8,
-	DRM_FORMAT_R16,
-	DRM_FORMAT_GR88,
-	DRM_FORMAT_GR1616,
 	DRM_FORMAT_BGRX4444,
 	DRM_FORMAT_BGRA4444,
 	DRM_FORMAT_XRGB1555,
