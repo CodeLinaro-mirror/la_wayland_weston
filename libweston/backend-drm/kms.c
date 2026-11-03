@@ -1501,6 +1501,25 @@ drm_connector_set_underscan(struct drm_connector *connector,
 }
 
 static int
+drm_connector_set_color_format(struct drm_connector *connector,
+			       enum wdrm_color_format color_format,
+			       drmModeAtomicReq *req)
+{
+	assert(color_format >= 0);
+	assert(color_format < WDRM_COLOR_FORMAT__COUNT);
+
+	if (!drm_connector_has_prop(connector, WDRM_CONNECTOR_COLOR_FORMAT)) {
+		if (color_format == WDRM_COLOR_FORMAT_AUTO)
+			return 0;
+
+		return -1;
+	}
+
+	return connector_add_prop_enum(req, connector,
+				       WDRM_CONNECTOR_COLOR_FORMAT, color_format);
+}
+
+static int
 drm_plane_set_color_encoding(struct drm_plane *plane,
 			     enum wdrm_plane_color_encoding color_encoding,
 			     drmModeAtomicReq *req)
@@ -1521,25 +1540,6 @@ drm_plane_set_color_encoding(struct drm_plane *plane,
 
 	return plane_add_prop_enum(req, plane, WDRM_PLANE_COLOR_ENCODING,
 				   color_encoding);
-}
-
-static int
-drm_connector_set_color_format(struct drm_connector *connector,
-			       enum wdrm_color_format color_format,
-			       drmModeAtomicReq *req)
-{
-	assert(color_format >= 0);
-	assert(color_format < WDRM_COLOR_FORMAT__COUNT);
-
-	if (!drm_connector_has_prop(connector, WDRM_CONNECTOR_COLOR_FORMAT)) {
-		if (color_format == WDRM_COLOR_FORMAT_AUTO)
-			return 0;
-
-		return -1;
-	}
-
-	return connector_add_prop_enum(req, connector,
-				       WDRM_CONNECTOR_COLOR_FORMAT, color_format);
 }
 
 static int
