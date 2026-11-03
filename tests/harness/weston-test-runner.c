@@ -673,6 +673,7 @@ main(int argc, char *argv[])
 	enum test_result_code ret;
 	enum test_result_code result = RESULT_OK;
 	const struct fixture_setup_array *fsa;
+	const char *envvarname = "WESTON_CI_LEAK_DL_HANDLES";
 	char *leak_dl_handles;
 	int fi;
 	int fi_end;
@@ -689,14 +690,24 @@ main(int argc, char *argv[])
          * This hack works so well that it also solved the obscure leak reports
 	 * for lavapipe and libgallium!
 	 */
-	leak_dl_handles = getenv("WESTON_CI_LEAK_DL_HANDLES");
+	leak_dl_handles = getenv(envvarname);
 	if (leak_dl_handles) {
 		char* token;
 
 		token = strtok(leak_dl_handles, ":");
 		while (token) {
-			if (strlen(token) > 0)
-				(void) dlopen(token, RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE);
+			if (strlen(token) > 0) {
+				void *ret;
+
+				ret = dlopen(token, RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE);
+				if (ret) {
+					testlog("%s dlopened %s\n", envvarname, token);
+				} else {
+					testlog("%s dlopen failed: %s\n",
+						envvarname, dlerror() ?: "???");
+					abort();
+				}
+			}
 			token = strtok(NULL, ":");
 		}
 	}
