@@ -1519,6 +1519,16 @@ drm_connector_set_color_format(struct drm_connector *connector,
 				       WDRM_CONNECTOR_COLOR_FORMAT, color_format);
 }
 
+static bool
+drm_plane_has_prop(struct drm_plane *plane,
+		   enum wdrm_plane_property prop)
+{
+	if (plane->props[prop].prop_id != 0)
+		return true;
+
+	return false;
+}
+
 static int
 drm_plane_set_color_encoding(struct drm_plane *plane,
 			     enum wdrm_plane_color_encoding color_encoding,
@@ -1529,7 +1539,7 @@ drm_plane_set_color_encoding(struct drm_plane *plane,
 	weston_assert_s32_ge(wc, color_encoding, 0);
 	weston_assert_s32_lt(wc, color_encoding, WDRM_PLANE_COLOR_ENCODING__COUNT);
 
-	if (plane->props[WDRM_PLANE_COLOR_ENCODING].prop_id == 0) {
+	if (!drm_plane_has_prop(plane, WDRM_PLANE_COLOR_ENCODING)) {
 		if (color_encoding == WDRM_PLANE_COLOR_ENCODING_DEFAULT)
 			return 0;
 
@@ -1552,7 +1562,7 @@ drm_plane_set_color_range(struct drm_plane *plane,
 	weston_assert_s32_ge(wc, color_range, 0);
 	weston_assert_s32_lt(wc, color_range, WDRM_PLANE_COLOR_RANGE__COUNT);
 
-	if (plane->props[WDRM_PLANE_COLOR_RANGE].prop_id == 0) {
+	if (!drm_plane_has_prop(plane, WDRM_PLANE_COLOR_RANGE)) {
 		if (color_range == WDRM_PLANE_COLOR_RANGE_DEFAULT)
 			return 0;
 
@@ -1575,7 +1585,7 @@ drm_plane_set_blend_mode(struct drm_plane *plane,
 	weston_assert_s32_ge(wc, blend_mode, 0);
 	weston_assert_s32_lt(wc, blend_mode, WDRM_PLANE_BLEND__COUNT);
 
-	if (plane->props[WDRM_PLANE_BLEND].prop_id == 0) {
+	if (!drm_plane_has_prop(plane, WDRM_PLANE_BLEND)) {
 		if (blend_mode == WDRM_PLANE_BLEND_DEFAULT)
 			return 0;
 
@@ -1892,11 +1902,11 @@ drm_output_apply_state_atomic(struct drm_output_state *state,
 				      plane_state->dest_w);
 		ret |= plane_add_prop(req, plane, WDRM_PLANE_CRTC_H,
 				      plane_state->dest_h);
-		if (plane->props[WDRM_PLANE_FB_DAMAGE_CLIPS].prop_id != 0)
+		if (drm_plane_has_prop(plane, WDRM_PLANE_FB_DAMAGE_CLIPS))
 			ret |= plane_add_prop(req, plane, WDRM_PLANE_FB_DAMAGE_CLIPS,
 					      plane_state->damage_blob_id);
 
-		if (plane->props[WDRM_PLANE_COLOR_PIPELINE].prop_id != 0) {
+		if (drm_plane_has_prop(plane, WDRM_PLANE_COLOR_PIPELINE)) {
 			if (plane_state->pipeline_state) {
 				ret |= drm_color_pipeline_program(req, plane_state->pipeline_state,
 								  "\t\t\t");
@@ -1922,7 +1932,7 @@ drm_output_apply_state_atomic(struct drm_output_state *state,
 					      plane_state->in_fence_fd);
 		}
 
-		if (plane->props[WDRM_PLANE_ROTATION].prop_id != 0)
+		if (drm_plane_has_prop(plane, WDRM_PLANE_ROTATION))
 			ret |= plane_add_prop(req, plane, WDRM_PLANE_ROTATION,
 					      plane_state->rotation);
 
