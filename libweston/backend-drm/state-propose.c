@@ -1153,6 +1153,11 @@ drm_output_propose_state_try_reuse(struct weston_output *output_base,
 		return NULL;
 	}
 
+	if (output->state_cur->dpms != WESTON_DPMS_ON) {
+		debug_propose_fail(output, mode, "output wasn't on");
+		return NULL;
+	}
+
 	if (output_base->paint_node_changes & ~WESTON_PAINT_NODE_BUFFER_DIRTY) {
 		debug_propose_fail(output, mode, "state is outdated");
 		return NULL;
